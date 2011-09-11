@@ -70,6 +70,8 @@ ifdef ENABLE_TESTS
 DIRS += tests
 endif
 
+DIRS += jit-test
+
 MODULE		    = js
 LIBRARY_NAME	    = mozjs
 STATIC_LIBRARY_NAME = js_static
@@ -665,7 +667,7 @@ endif
 JITFLAGS = ,m,j,mj,mjp,am,amj,amjp,amd,n,mn,jn,mjn,mjpn,amn,amjn,amjpn,amdn
 check-jit-test::
 	$(wildcard $(RUN_TEST_PROGRAM)) $(PYTHON) -u $(srcdir)/jit-test/jit_test.py \
-	        --valgrind --no-slow --no-progress --tinderbox --jitflags=$(JITFLAGS) $(DIST)/bin/js$(BIN_SUFFIX)
+	        --valgrind --no-slow --no-progress --tinderbox $(DIST)/bin/jit-test-runner$(BIN_SUFFIX)
 
 check:: check-jit-test
 

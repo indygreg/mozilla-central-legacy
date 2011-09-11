@@ -45,7 +45,7 @@ os.path.relpath = _relpath
 class Test:
     def __init__(self, path):
         self.path = path       # path to test file
-        
+
         self.jitflags = []     # jit flags to enable
         self.slow = False      # True means the test is slow-running
         self.allow_oom = False # True means that OOM is not considered a failure
@@ -133,7 +133,7 @@ def get_test_cmd(path, jitflags, lib_dir, shell_args):
     # We may have specified '-a' or '-d' twice: once via --jitflags, once
     # via the "|jit-test|" line.  Remove dups because they are toggles.
     return ([ JS ] + list(set(jitflags)) + shell_args +
-            [ '-e', expr, '-f', os.path.join(lib_dir, 'prolog.js'), '-f', path ])
+            [ expr, os.path.join(lib_dir, 'prolog.js') ])
 
 def set_limits():
     # resource module not supported on all platforms
@@ -156,7 +156,7 @@ def read_and_unlink(path):
     os.unlink(path)
     return d
 
-def th_run_cmd(cmdline, options, l):
+def th_run_cmd(cmdline, options, l, input):
     # close_fds and preexec_fn are not supported on Windows and will
     # cause a ValueError.
     if sys.platform != 'win32':
@@ -165,13 +165,13 @@ def th_run_cmd(cmdline, options, l):
     p = Popen(cmdline, stdin=PIPE, stdout=PIPE, stderr=PIPE, **options)
 
     l[0] = p
-    out, err = p.communicate()
+    out, err = p.communicate(input)
     l[1] = (out, err, p.returncode)
 
-def run_timeout_cmd(cmdline, options, timeout=60.0):
+def run_timeout_cmd(cmdline, options, input, timeout=60.0):
     l = [ None, None ]
     timed_out = False
-    th = Thread(target=th_run_cmd, args=(cmdline, options, l))
+    th = Thread(target=th_run_cmd, args=(cmdline, options, l, input))
     th.start()
     th.join(timeout)
     while th.isAlive():
@@ -190,13 +190,13 @@ def run_timeout_cmd(cmdline, options, timeout=60.0):
     (out, err, code) = l[1]
     return (out, err, code, timed_out)
 
-def run_cmd(cmdline, env, timeout):
-    return run_timeout_cmd(cmdline, { 'env': env }, timeout)
+def run_cmd(cmdline, env, input, timeout):
+    return run_timeout_cmd(cmdline, { 'env': env }, input, timeout)
 
 def run_cmd_avoid_stdio(cmdline, env, timeout):
     stdoutPath, stderrPath = tmppath('jsstdout'), tmppath('jsstderr')
     env['JS_STDOUT'] = stdoutPath
-    env['JS_STDERR'] = stderrPath       
+    env['JS_STDERR'] = stderrPath
     _, __, code = run_timeout_cmd(cmdline, { 'env': env }, timeout)
     return read_and_unlink(stdoutPath), read_and_unlink(stderrPath), code
 
@@ -233,7 +233,7 @@ def run_test(test, lib_dir, shell_args):
         sys.stdout.write('Exit code: %s\n' % code)
     if test.valgrind:
         sys.stdout.write(err)
-    return (check_output(out, err, code, test.allow_oom, test.error), 
+    return (check_output(out, err, code, test.allow_oom, test.error),
             out, err, code, timed_out)
 
 def check_output(out, err, rc, allow_oom, expectedError):
@@ -275,30 +275,49 @@ def run_tests(tests, test_dir, lib_dir, shell_args):
     complete = False
     doing = 'before starting'
     try:
+        paths = []
         for i, test in enumerate(tests):
-            doing = 'on %s'%test.path
-            ok, out, err, code, timed_out = run_test(test, lib_dir, shell_args)
-            doing = 'after %s'%test.path
+            paths.append(test.path)
 
-            if not ok:
-                failures.append([ test, out, err, code, timed_out ])
+        test = tests[0]
+        env = os.environ.copy()
 
-            if OPTIONS.tinderbox:
-                if ok:
-                    print_tinderbox("TEST-PASS", test);
-                else:
-                    lines = [ _ for _ in out.split('\n') + err.split('\n')
-                              if _ != '' ]
-                    if len(lines) >= 1:
-                        msg = lines[-1]
-                    else:
-                        msg = ''
-                    print_tinderbox("TEST-UNEXPECTED-FAIL", test, msg);
+        cmd = get_test_cmd(test.path, test.jitflags, lib_dir, shell_args)
+        print(subprocess.list2cmdline(cmd))
 
-            n = i + 1
-            if pb:
-                pb.label = '[%4d|%4d|%4d]'%(n - len(failures), len(failures), n)
-                pb.update(n)
+        print '\n'.join(paths)
+
+        run = run_cmd
+        out, err, code, timed_out = run(cmd, env, '\n'.join(paths), OPTIONS.timeout)
+
+        sys.stdout.write(out)
+        sys.stdout.write(err)
+        sys.stdout.write('Exit code: %s\n' % code)
+
+        #for i, test in enumerate(tests):
+        #    doing = 'on %s'%test.path
+        #    ok, out, err, code, timed_out = run_test(test, lib_dir, shell_args)
+        #    doing = 'after %s'%test.path
+        #
+        #    if not ok:
+        #        failures.append([ test, out, err, code, timed_out ])
+        #
+        #    if OPTIONS.tinderbox:
+        #        if ok:
+        #            print_tinderbox("TEST-PASS", test);
+        #        else:
+        #            lines = [ _ for _ in out.split('\n') + err.split('\n')
+        #                      if _ != '' ]
+        #            if len(lines) >= 1:
+        #                msg = lines[-1]
+        #            else:
+        #                msg = ''
+        #            print_tinderbox("TEST-UNEXPECTED-FAIL", test, msg);
+        #
+        #    n = i + 1
+        #    if pb:
+        #        pb.label = '[%4d|%4d|%4d]'%(n - len(failures), len(failures), n)
+        #        pb.update(n)
         complete = True
     except KeyboardInterrupt:
         print_tinderbox("TEST-UNEXPECTED-FAIL", test);
@@ -349,7 +368,7 @@ def run_tests(tests, test_dir, lib_dir, shell_args):
         return True
 
 def parse_jitflags():
-    jitflags = [ [ '-' + flag for flag in flags ] 
+    jitflags = [ [ '-' + flag for flag in flags ]
                  for flags in OPTIONS.jitflags.split(',') ]
     for flags in jitflags:
         for flag in flags:
@@ -389,7 +408,7 @@ def main(argv):
     op = OptionParser(usage='%prog [options] JS_SHELL [TESTS]')
     op.add_option('-s', '--show-cmd', dest='show_cmd', action='store_true',
                   help='show js shell command run')
-    op.add_option('-f', '--show-failed-cmd', dest='show_failed', 
+    op.add_option('-f', '--show-failed-cmd', dest='show_failed',
                   action='store_true', help='show command lines of failed tests')
     op.add_option('-o', '--show-output', dest='show_output', action='store_true',
                   help='show output from js shell')
@@ -486,32 +505,23 @@ def main(argv):
     if not OPTIONS.run_slow:
         test_list = [ _ for _ in test_list if not _.slow ]
 
-    # The full test list is ready. Now create copies for each JIT configuration.
-    job_list = []
-    jitflags_list = parse_jitflags()
-    for test in test_list:
-        for jitflags in jitflags_list:
-            new_test = test.copy()
-            new_test.jitflags.extend(jitflags)
-            job_list.append(new_test)
-    
-
     shell_args = shlex.split(OPTIONS.shell_args)
 
+    # [gps] handicapped for new JIT runner testing
     if OPTIONS.debug:
-        if len(job_list) > 1:
+        if len(test_list) > 1:
             print('Multiple tests match command line arguments, debugger can only run one')
-            for tc in job_list:
-                print('    %s'%tc.path)
+            #for tc in job_list:
+            #    print('    %s'%tc.path)
             sys.exit(1)
 
-        tc = job_list[0]
-        cmd = [ 'gdb', '--args' ] + get_test_cmd(tc.path, tc.jitflags, lib_dir, shell_args)
-        call(cmd)
-        sys.exit()
+        #tc = job_list[0]
+        #cmd = [ 'gdb', '--args' ] + get_test_cmd(tc.path, tc.jitflags, lib_dir, shell_args)
+        #call(cmd)
+        #sys.exit()
 
     try:
-        ok = run_tests(job_list, test_dir, lib_dir, shell_args)
+        ok = run_tests(test_list, test_dir, lib_dir, shell_args)
         if not ok:
             sys.exit(2)
     except OSError:
