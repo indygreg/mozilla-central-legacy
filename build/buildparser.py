@@ -342,19 +342,23 @@ class BuildMakefile(object):
     def get_defines(self):
         return self._get_variable_string('DEFINES')
 
+    def get_transformed_reldir(self):
+        return self.reldir.replace('\\', '_').replace('/', '_')
+
     def get_library_info(self):
         library = self.get_library()
         assert(library is not None)
 
         d = {
-            'name':           library,
-            'dir':            self.dir,
-            'defines':        self.get_defines(),
-            'cppsrcs':        self.get_cpp_sources(),
-            'xpidlsrcs':      self._get_variable_split('XPIDLSRCS'),
-            'exports':        self._get_variable_split('EXPORTS'),
-            'mozillaexports': self._get_variable_split('EXPORTS_mozilla'),
-            'srcdir':         self._get_variable_string('srcdir'),
+            'name':            library,
+            'normalized_name': self.get_transformed_reldir(),
+            'dir':             self.dir,
+            'defines':         self.get_defines(),
+            'cppsrcs':         self.get_cpp_sources(),
+            'xpidlsrcs':       self._get_variable_split('XPIDLSRCS'),
+            'exports':         self._get_variable_split('EXPORTS'),
+            'mozillaexports':  self._get_variable_split('EXPORTS_mozilla'),
+            'srcdir':          self._get_variable_string('srcdir'),
         }
 
         return d
@@ -368,7 +372,7 @@ class VisualStudioBuilder(object):
 
         return self.build_project(
             version=version,
-            name='%s_%s' % ( module, library['name'] ),
+            name=library['normalized_name'],
             dir=library['dir'],
             source_dir=library['srcdir'],
             cpp_sources=library['cppsrcs'],
@@ -385,7 +389,7 @@ class VisualStudioBuilder(object):
         '''
         return self.build_project(
             version=version,
-            name=makefile.reldir.replace('\\', '_').replace('/', '_'),
+            name=makefile.get_transformed_reldir(),
             dir=makefile.dir,
             source_dir=makefile.get_source_dir()
         )
