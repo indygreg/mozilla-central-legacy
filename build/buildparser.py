@@ -351,13 +351,68 @@ class VisualStudioBuilder(object):
     def build_project_for_library(self, library, module, version='2008'):
         '''Takes a library info dict and converts to a project file'''
 
+        return self.build_project(
+            version=version,
+            name='%s_%s' % ( module, library['name'] ),
+            dir=library['dir'],
+            source_dir=library['srcdir'],
+            cpp_sources=library['cppsrcs'],
+            export_headers=library['exports'],
+            internal_headers=library['mozillaexports'],
+            idl_sources=library['xpidlsrcs']
+        )
+
+    def build_project(self, version='2008', name=None, dir=None,
+                      source_dir=None,
+                      cpp_sources=[], export_headers=[], internal_headers=[],
+                      idl_sources=[]
+                      ):
+        '''Convert parameters into a Visual Studio Project File string.
+
+        Arguments:
+
+          version  string
+                   Visual Studio Product Version. One of {2005, 2008, 2010,
+                    2011}.
+
+          name  string
+                Project Name
+
+          dir  string
+               Directory in tree this project corresponds to
+
+          source_dir  string
+                      Directory where source files can be found
+
+          cpp_sources  list
+                       C++ source files for this project
+
+          export_headers  list
+                          header files exported as part of library
+
+          internal_headers list
+                           header files used internally
+
+          idl_sources  list
+                       IDL source files
+        '''
+
+        if not name:
+            raise Exception('name must be specified')
+
+        if not dir:
+            raise Exception('dir must be specified')
+
+        if not source_dir:
+            raise Exception('source_dir must be specified')
+
         id = str(uuid1())
         strversion = visual_studio_product_to_internal_version(version)
 
         root = Element('VisualStudioProject', attrib={
             'ProjectType':   'Visual C++',
             'Version':       strversion,
-            'Name':          '%s_%s' % ( module, library['name'] ),
+            'Name':          name,
             'ProjectGUID':   id,
             'RootNamespace': 'mozilla',
             'Keyword':       'Win32Proj',
@@ -378,7 +433,7 @@ class VisualStudioBuilder(object):
             InheritedPropertySheets='.\mozilla.vsprops'
         )
 
-        pymake = '$(PYMAKE) -C %s' % library['dir']
+        pymake = '$(PYMAKE) -C %s' % dir
 
         tool_make = Element('Tool', Name='VCNMakeTool',
             BuildCommandLine=pymake,
@@ -387,7 +442,7 @@ class VisualStudioBuilder(object):
             PreprocessorDefinitions='',
             IncludeSearchPath='',
             AssemblySearchPath='',
-            #Output=''
+            # TODO Output
         )
         configuration.append(tool_make)
 
@@ -395,35 +450,39 @@ class VisualStudioBuilder(object):
         root.append(configurations)
 
         files = Element('Files')
-        filter_source = Element('Filter',
-            Name='Source Files',
-            Filter='cpp;c;cc;cxx',
-            UniqueIdentifier=str(uuid1())
-        )
-        for f in library['cppsrcs']:
-            filter_source.append(Element('File', RelativePath=join(library['srcdir'], f)))
-        files.append(filter_source)
+        if len(cpp_sources):
+            filter_source = Element('Filter',
+                Name='Source Files',
+                Filter='cpp;c;cc;cxx',
+                UniqueIdentifier=str(uuid1())
+            )
+            for f in cpp_sources:
+                filter_source.append(Element('File', RelativePath=join(source_dir, f)))
+            files.append(filter_source)
 
-        if len(library['xpidlsrcs']):
+        all_headers = export_headers
+        all_headers.extend(internal_headers)
+        all_headers.sort()
+        if len(all_headers):
+            filter_headers = Element('Filter',
+                Name='Header Files',
+                Filter='h;hpp;hxx',
+                UniqueIdentifier=str(uuid1())
+            )
+            for f in all_headers:
+                filter_headers.append(Element('File', RelativePath=join(source_dir, f)))
+            files.append(filter_headers)
+
+        idl_sources.sort()
+        if len(idl_sources):
             filter_idl = Element('Filter',
                 Name='IDL Files',
                 Filter='idl',
                 UniqueIdentifier=str(uuid1())
             )
-            for f in library['xpidlsrcs']:
-                filter_idl.append(Element('File', RelativePath=join(library['srcdir'], f)))
+            for f in idl_sources:
+                filter_idl.append(Element('File', RelativePath=join(source_dir, f)))
             files.append(filter_idl)
-
-        filter_headers = Element('Filter',
-            Name='Header Files',
-            Filter='h;hpp;hxx',
-            UniqueIdentifier=str(uuid1())
-        )
-        for f in library['exports']:
-            filter_headers.append(Element('File', RelativePath=join(library['srcdir'], f)))
-        for f in library['mozillaexports']:
-            filter_headers.append(Element('File', RelativePath=join(library['srcdir'], f)))
-        files.append(filter_headers)
 
         root.append(files)
 
