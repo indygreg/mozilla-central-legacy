@@ -234,7 +234,6 @@ class BuildParser(object):
                 )
                 handle_project(proj, id, name)
 
-
         # now produce the Solution file
         slnpath = join(outdir, 'mozilla.sln')
         configid = str(uuid1())
@@ -378,7 +377,8 @@ class VisualStudioBuilder(object):
             cpp_sources=library['cppsrcs'],
             export_headers=library['exports'],
             internal_headers=library['mozillaexports'],
-            idl_sources=library['xpidlsrcs']
+            idl_sources=library['xpidlsrcs'],
+            defines=library['defines'],
         )
 
     def build_project_for_generic(self, makefile, version='2008'):
@@ -391,13 +391,15 @@ class VisualStudioBuilder(object):
             version=version,
             name=makefile.get_transformed_reldir(),
             dir=makefile.dir,
-            source_dir=makefile.get_source_dir()
+            source_dir=makefile.get_source_dir(),
+            defines=makefile._get_variable_string('DEFINES'),
         )
 
     def build_project(self, version='2008', name=None, dir=None,
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
-                      idl_sources=[]
+                      idl_sources=[],
+                      defines=''
                       ):
         '''Convert parameters into a Visual Studio Project File string.
 
@@ -427,6 +429,9 @@ class VisualStudioBuilder(object):
 
           idl_sources  list
                        IDL source files
+
+          defines  string
+                   Preprocessor definitions
         '''
 
         if not name:
@@ -471,7 +476,7 @@ class VisualStudioBuilder(object):
             BuildCommandLine=pymake,
             # TODO RebuildCommandLine
             CleanCommandLine='%s clean' % pymake,
-            PreprocessorDefinitions='',
+            PreprocessorDefinitions=defines,
             IncludeSearchPath='',
             AssemblySearchPath='',
             # TODO Output
