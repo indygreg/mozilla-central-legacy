@@ -50,6 +50,31 @@ from xml.etree.ElementTree import ElementTree, Element
 
 import xml.etree.ElementTree
 
+# TODO validate mappings are correct. only 2008 confirmed so far
+def visual_studio_product_to_internal_version(version, solution=False):
+    if solution:
+        if version == '2005':
+            return '9.00'
+        elif version == '2008':
+            return '10.00'
+        elif version == '2010':
+            return '11.00'
+        elif version == '2011':
+            return '12.00'
+        else:
+            raise Exception('Unknown version seen: %s' % version)
+    else:
+        if version == '2005':
+            return '8.00'
+        elif version == '2008':
+            return '9.00'
+        elif version == '2010':
+            return '10.00'
+        elif version == '2011':
+            return '11.00'
+        else:
+            raise Exception('Unknown version seen: %s' % version)
+
 class BuildParser(object):
     '''Extracts metadata from the build system.'''
 
@@ -113,7 +138,7 @@ class BuildParser(object):
 
         return d
 
-    def build_visual_studio_files(self):
+    def build_visual_studio_files(self, version='2008'):
         builder = VisualStudioBuilder()
         outdir = join(self.dir, 'msvc')
 
@@ -123,11 +148,12 @@ class BuildParser(object):
         # TODO fix directories causing us hurt for unknown reasons
         ignore_dirs = [
             'js/src/xpconnect', # hangs
-            'modules/libbz2',   # somehow calls itself recursively
+            'modules/libbz2',   # somehow forks and calls itself recursively
             'security/manager', # hangs
         ]
 
         projects = {}
+        strversion = visual_studio_product_to_internal_version(version, True)
 
         process_dirs = self.get_platform_dirs()
         process_dirs.extend(self.get_base_dirs())
@@ -149,7 +175,8 @@ class BuildParser(object):
 
             info = self.get_module_data(dir)
             for library in info['libraries']:
-                proj, id = builder.build_project_from_library(library, module)
+                proj, id = builder.build_project_for_library(library, module,
+                                                             version=version)
 
                 name = '%s_%s' % ( module, library['name'])
                 filename = '%s.vcproj' % name
@@ -174,7 +201,7 @@ class BuildParser(object):
         configid = str(uuid1())
         with open(slnpath, 'w') as fh:
             # Visual Studio seems to require this header
-            print >>fh, 'Microsoft Visual Studio Solution File, Format Version 10.00'
+            print >>fh, 'Microsoft Visual Studio Solution File, Format Version %s' % strversion
 
             # write out entries for each project
             for project in projects.itervalues():
@@ -278,14 +305,15 @@ class VisualStudioBuilder(object):
     def __init__(self):
         pass
 
-    def build_project_from_library(self, library, module):
+    def build_project_for_library(self, library, module, version='2008'):
         '''Takes a library info dict and converts to a project file'''
 
         id = str(uuid1())
+        strversion = visual_studio_product_to_internal_version(version)
 
         root = Element('VisualStudioProject', attrib={
             'ProjectType':   'Visual C++',
-            'Version':       '9.00',
+            'Version':       strversion,
             'Name':          '%s_%s' % ( module, library['name'] ),
             'ProjectGUID':   id,
             'RootNamespace': 'mozilla',

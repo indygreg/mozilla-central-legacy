@@ -46,10 +46,14 @@ sys.path.append('build/pymake')
 from buildparser import BuildParser
 from sys import argv, exit
 
-if len(argv) != 2:
-    print 'Usage: generate-msvc.py /path/to/obj/dir'
+if len(argv) < 2 or len(argv) > 3:
+    print 'Usage: generate-msvc.py /path/to/obj/dir [visual-studio-version]'
     exit(1)
 
 path = argv[1]
+version = '2008'
+if len(argv) == 3:
+    version = argv[2]
+
 parser = BuildParser(path)
-parser.build_visual_studio_files()
+parser.build_visual_studio_files(version=version)
