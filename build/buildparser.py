@@ -83,28 +83,26 @@ class BuildParser(object):
             raise Exception('Path not absolute: %s' % objdir)
 
         self.dir = objdir
-        self.topmakefile = Makefile(workdir=self.dir)
 
         path = join(objdir, 'Makefile')
         if not exists(path):
             raise Exception('Makefile does not exist: %s' % path)
 
-        self.topmakefile.include(path)
-        self.topmakefile.finishparsing()
+        makefile = Makefile(workdir=self.dir)
+        makefile.include(path)
+        makefile.finishparsing()
 
-    def _get_variable_as_list(self, v):
-        value = self.topmakefile.variables.get(v, True)[2]
-        return value.resolvesplit(self.topmakefile, self.topmakefile.variables)
+        self.topmakefile = BuildMakefile(makefile)
 
     def get_tiers(self):
-        return self._get_variable_as_list('TIERS')
+        return self.topmakefile._get_variable_split('TIERS')
 
     def get_platform_dirs(self):
-        return self._get_variable_as_list('tier_platform_dirs')
+        return self.topmakefile._get_variable_split('tier_platform_dirs')
 
     def get_base_dirs(self):
         '''Obtain a list of the configured base directories'''
-        return self._get_variable_as_list('tier_base_dirs')
+        return self.topmakefile._get_variable_split('tier_base_dirs')
 
     def get_dir_makefile(self, path):
         full = join(self.dir, path)
@@ -118,6 +116,9 @@ class BuildParser(object):
         m.finishparsing()
 
         return (BuildMakefile(m), full, file)
+
+    def get_top_source_directory(self):
+        return self.topmakefile._get_variable_string('topsrcdir')
 
     def get_module_data(self, path):
         makefile, full, file = self.get_dir_makefile(path)
@@ -142,14 +143,41 @@ class BuildParser(object):
 
         return d
 
-    def build_visual_studio_files(self, version='2008'):
+    def build_visual_studio_files(self, python=None, version='2008', pymake=None):
+        '''Build Visual Studio files for the tree
+
+        Calling this will result in a bunch of files being written to
+        objdir/msvc.
+
+        Currently, the written files are far from feature complete. For
+        example, we don't yet know how to handle all the Makefiles in the
+        tree.
+
+        Arguments:
+
+          version - Visual Studio product version to write files for. One of
+                    {2005, 2008, 2010, or 2011}. Specified as a string.
+
+          pymake - Path to pymake command line program. Defaults to
+                   topsrcdir/pymake/make.py.
+          python - Path to python executable that is runnable from Visual
+                   Studio. Currently, this must be specified. In the future, we
+                   might auto-discover it.
+        '''
+        if pymake is None:
+            pymake = join(self.get_top_source_directory(), 'build', 'pymake', 'make.py')
+
+        if python is None:
+            # TODO try to find by environment
+            raise Exception('Could not find Python')
+
         builder = VisualStudioBuilder()
         outdir = join(self.dir, 'msvc')
 
         if not exists(outdir):
             mkdir(outdir)
 
-        # TODO fix directories causing us hurt for unknown reasons
+        # TODO fix directories causing us hurt
         ignore_dirs = [
             'js/src/xpconnect', # hangs
             'modules/libbz2',   # somehow forks and calls itself recursively
@@ -200,7 +228,7 @@ class BuildParser(object):
 
                 projects[id] = entry
 
-        # now product the Solution file
+        # now produce the Solution file
         slnpath = join(outdir, 'mozilla.sln')
         configid = str(uuid1())
         with open(slnpath, 'w') as fh:
@@ -225,6 +253,17 @@ class BuildParser(object):
                 print >>fh, '\t\t{%s}.Build.Build.0 = Build|Win32' % project['id']
             print >>fh, '\tEndGlobalSection'
             print >>fh, 'EndGlobal'
+
+        # solution properties file defines a bunch of constants
+        props = Element('VisualStudioPropertySheet', ProjectType='Visual C++',
+            Version='8.00',
+            Name='mozilla-build',
+        )
+        props.append(Element('UserMacro', Name='PYTHON', Value=python))
+        props.append(Element('UserMacro', Name='PYMAKE', Value='$(PYTHON) %s' % pymake))
+        propspath = join(outdir, 'mozilla.vsprops')
+        with open(propspath, 'w') as fh:
+            fh.write(xml.etree.ElementTree.tostring(props, encoding='utf-8'))
 
 class BuildMakefile(object):
     '''A wrapper around a PyMake Makefile tailored to Mozilla's build system'''
@@ -329,16 +368,28 @@ class VisualStudioBuilder(object):
         root.append(platforms)
         root.append(Element('ToolFiles'))
 
-        configuration_type = '4' # static library
+        configuration_type = '0' # Makefile
 
         configurations = Element('Configurations')
         configuration = Element('Configuration',
             Name='Build|Win32',
-            OutputDirectory=library['dir'],
-            IntermediateDirectory=library['dir'],
             ConfigurationType=configuration_type,
-            CharacterSet='1'
+            CharacterSet='1',
+            InheritedPropertySheets='.\mozilla.vsprops'
         )
+
+        pymake = '$(PYMAKE) -C %s' % library['dir']
+
+        tool_make = Element('Tool', Name='VCNMakeTool',
+            BuildCommandLine=pymake,
+            # TODO RebuildCommandLine
+            CleanCommandLine='%s clean' % pymake,
+            PreprocessorDefinitions='',
+            IncludeSearchPath='',
+            AssemblySearchPath='',
+            #Output=''
+        )
+        configuration.append(tool_make)
 
         configurations.append(configuration)
         root.append(configurations)

@@ -44,16 +44,23 @@ import sys
 sys.path.append('build/pymake')
 
 from buildparser import BuildParser
+from optparse import OptionParser
 from sys import argv, exit
 
-if len(argv) < 2 or len(argv) > 3:
-    print 'Usage: generate-msvc.py /path/to/obj/dir [visual-studio-version]'
+op = OptionParser(usage='usage: %prog [options] /path/to/objdir/')
+op.add_option('-v', '--version', dest='version', default='2008',
+              help='Visual Studio version. One of 2005, 2008, 2010, or 2011')
+op.add_option('-p', '--python', dest='python', default=None,
+              help='Python executable runnable from Windows shell')
+
+
+(options, args) = op.parse_args()
+
+if len(args) != 1:
+    print 'Path not specified'
     exit(1)
 
-path = argv[1]
-version = '2008'
-if len(argv) == 3:
-    version = argv[2]
+path = args[0]
 
 parser = BuildParser(path)
-parser.build_visual_studio_files(version=version)
+parser.build_visual_studio_files(version=options.version, python=options.python)
