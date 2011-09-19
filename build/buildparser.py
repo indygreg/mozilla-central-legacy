@@ -42,7 +42,7 @@
 # Building doesn't work at all.
 
 from os import getpid, mkdir
-from os.path import exists, isabs, join, dirname
+from os.path import abspath, exists, isabs, join, dirname
 from pymake.data import Makefile
 from shutil import rmtree
 from uuid import uuid1
@@ -190,6 +190,23 @@ class BuildParser(object):
         process_dirs = self.get_platform_dirs()
         process_dirs.extend(self.get_base_dirs())
         process_dirs.sort()
+
+        def handle_project(project, id, name):
+            filename = '%s.vcproj' % name
+            projfile = join(outdir, filename)
+
+            with open(projfile, 'w') as fh:
+                #print 'Writing %s' % projfile
+                fh.write(proj)
+
+            entry = {
+                'id':       id,
+                'name':     name,
+                'filename': filename,
+            }
+
+            projects[id] = entry
+
         for dir in process_dirs:
             if dir in ignore_dirs:
                 continue
@@ -197,36 +214,26 @@ class BuildParser(object):
             print 'Processing directory: %s' % dir
             m = self.get_dir_makefile(dir)[0]
 
-            if not m.is_module():
-                print 'UNHANDLED DIRECTORY: %s' % dir
-                continue
+            if m.is_module():
+                module = m.get_module()
 
-            module = m.get_module()
+                #print '%s Processing module in: %s' % ( getpid(), dir )
 
-            #print '%s Processing module in: %s' % ( getpid(), dir )
+                info = self.get_module_data(dir)
+                for library in info['libraries']:
+                    proj, id, name = builder.build_project_for_library(
+                        library, module, version=version
+                    )
 
-            info = self.get_module_data(dir)
-            for library in info['libraries']:
-                proj, id = builder.build_project_for_library(library, module,
-                                                             version=version)
+                    handle_project(proj, id, name)
+            else:
+                # fall back to generic case
+                print 'UNRECOGNIZED MAKEFILE PATTERN: %s' % dir
+                proj, id, name = builder.build_project_for_generic(
+                    m, version=version
+                )
+                handle_project(proj, id, name)
 
-                name = '%s_%s' % ( module, library['name'])
-                filename = '%s.vcproj' % name
-                projfile = join(outdir, filename)
-
-                with open(projfile, 'w') as fh:
-                    #print 'Writing %s' % projfile
-                    fh.write(proj)
-
-                entry = {
-                    'id':       id,
-                    'name':     name,
-                    'module':   module,
-                    'library':  library,
-                    'filename': filename,
-                }
-
-                projects[id] = entry
 
         # now produce the Solution file
         slnpath = join(outdir, 'mozilla.sln')
@@ -276,6 +283,11 @@ class BuildMakefile(object):
 
         self.module = self.get_module()
 
+        objtop = abspath(join(self.dir, self._get_variable_string('DEPTH')))
+        absdir = abspath(self.dir)
+
+        self.reldir = absdir[len(objtop)+1:]
+
     def _get_variable_string(self, name):
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
@@ -321,6 +333,9 @@ class BuildMakefile(object):
     def get_top_source_dir(self):
         return self._get_variable_string('topsrcdir')
 
+    def get_source_dir(self):
+        return self._get_variable_string('srcdir')
+
     def get_exports(self):
         return self._get_variable_split('EXPORTS')
 
@@ -360,6 +375,19 @@ class VisualStudioBuilder(object):
             export_headers=library['exports'],
             internal_headers=library['mozillaexports'],
             idl_sources=library['xpidlsrcs']
+        )
+
+    def build_project_for_generic(self, makefile, version='2008'):
+        '''Takes a BuildMakefile and produces a project file
+
+        This version is called when we don't know how to process the Makefile.
+        It simply calls out to PyMake.
+        '''
+        return self.build_project(
+            version=version,
+            name=makefile.reldir.replace('\\', '_').replace('/', '_'),
+            dir=makefile.dir,
+            source_dir=makefile.get_source_dir()
         )
 
     def build_project(self, version='2008', name=None, dir=None,
@@ -489,4 +517,4 @@ class VisualStudioBuilder(object):
         root.append(Element('Globals'))
 
         s = xml.etree.ElementTree.tostring(root, encoding='utf-8')
-        return (s, id)
+        return (s, id, name)
