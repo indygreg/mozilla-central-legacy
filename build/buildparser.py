@@ -125,7 +125,8 @@ class BuildParser(object):
         assert(makefile.is_module())
 
         d = {
-            'libraries': []
+            'libraries': [],
+            'unhandled': [],
         }
 
         dirs = makefile.get_dirs()
@@ -139,7 +140,7 @@ class BuildParser(object):
                 d['libraries'].append(submake.get_library_info())
                 continue
 
-            print 'UNHANDLED DIRECTORY: %s' % subpath
+            d['unhandled'].append(subpath)
 
         return d
 
@@ -211,24 +212,38 @@ class BuildParser(object):
             if dir in ignore_dirs:
                 continue
 
-            print 'Processing directory: %s' % dir
             m = self.get_dir_makefile(dir)[0]
 
             if m.is_module():
                 module = m.get_module()
 
-                #print '%s Processing module in: %s' % ( getpid(), dir )
+                print 'Processing module "%s" in %s' % ( module, dir )
 
                 info = self.get_module_data(dir)
+                names = []
                 for library in info['libraries']:
                     proj, id, name = builder.build_project_for_library(
                         library, module, version=version
                     )
 
                     handle_project(proj, id, name)
+                    names.append(name)
+
+                if len(names):
+                    print 'Wrote projects for libraries: %s' % ' '.join(names)
+
+                for path in info['unhandled']:
+                    print 'Writing generic project for %s' % path
+                    m2 = self.get_dir_makefile(path)[0]
+
+                    proj, id, name = builder.build_project_for_generic(
+                        m2, version=version
+                    )
+                    handle_project(proj, id, name)
+
             else:
                 # fall back to generic case
-                print 'UNRECOGNIZED MAKEFILE PATTERN: %s' % dir
+                print 'Writing generic project for %s' % dir
                 proj, id, name = builder.build_project_for_generic(
                     m, version=version
                 )
@@ -387,6 +402,7 @@ class VisualStudioBuilder(object):
         This version is called when we don't know how to process the Makefile.
         It simply calls out to PyMake.
         '''
+
         return self.build_project(
             version=version,
             name=makefile.get_transformed_reldir(),
@@ -395,7 +411,7 @@ class VisualStudioBuilder(object):
             defines=makefile._get_variable_string('DEFINES'),
         )
 
-    def build_project(self, version='2008', name=None, dir=None,
+    def build_project(self, version=None, name=None, dir=None,
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
                       idl_sources=[],
@@ -433,6 +449,9 @@ class VisualStudioBuilder(object):
           defines  string
                    Preprocessor definitions
         '''
+
+        if not version:
+            raise Exception('version must be specified')
 
         if not name:
             raise Exception('name must be specified')
