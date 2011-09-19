@@ -130,11 +130,15 @@ class BuildParser(object):
         dirs = makefile.get_dirs()
         dirs.sort()
         for dir in dirs:
-            submake, subfull, subfile = self.get_dir_makefile(join(path, dir))
+            subpath = join(path, dir)
+            submake, subfull, subfile = self.get_dir_makefile(subpath)
 
             library = submake.get_library()
             if library is not None:
                 d['libraries'].append(submake.get_library_info())
+                continue
+
+            print 'UNHANDLED DIRECTORY: %s' % subpath
 
         return d
 
