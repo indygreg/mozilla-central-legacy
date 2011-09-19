@@ -325,12 +325,14 @@ class VisualStudioBuilder(object):
         root.append(platforms)
         root.append(Element('ToolFiles'))
 
+        configuration_type = '4' # static library
+
         configurations = Element('Configurations')
         configuration = Element('Configuration',
             Name='Build|Win32',
             OutputDirectory=library['dir'],
             IntermediateDirectory=library['dir'],
-            ConfigurationType='1',
+            ConfigurationType=configuration_type,
             CharacterSet='1'
         )
 
