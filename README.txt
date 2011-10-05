@@ -71,14 +71,15 @@ C++ library projects are created as such. Using a vanilla .mozconfig, it will
 recognize all the arguments for .cpp compilation and convert these to project
 options.
 
+Basic compilation of IDLs and some C++ works!
+
 What Doesn't Work
 =================
 
 A lot.
 
-Things don't compile inside Visual Studio. IDL's are completely broken. Some
-C++ files may compile, but more often than not they don't. If you want to try
-to build C++ files, you'll need to remove IDL files from the project.
+Things don't compile inside Visual Studio. Some C++ files may compile,
+but more often than not they don't.
 
 There are no defined dependencies inside the solution, so even if things
 did build, the order would be all wrong.
@@ -87,7 +88,9 @@ JavaScript files aren't included in projects.
 
 Shared libraries aren't defined in projects yet.
 
-There are countless known issues and limitations. We'll get there...
+There are countless known issues and limitations. There are also unknown
+unknowns which only the build team masters will be able to help with.
+We'll get there...
 
 Ramble on Build Metadata
 ========================

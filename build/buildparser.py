@@ -94,6 +94,7 @@ class BuildParser(object):
         makefile.finishparsing()
 
         self.topmakefile = BuildMakefile(makefile)
+        self.topsourcedir = self.topmakefile.get_top_source_dir()
 
     def get_tiers(self):
         return self.topmakefile._get_variable_split('TIERS')
@@ -281,11 +282,29 @@ class BuildParser(object):
             Version='8.00',
             Name='mozilla-build',
         )
+
         props.append(Element('UserMacro', Name='PYTHON', Value=python))
         props.append(Element('UserMacro', Name='PYMAKE', Value='$(PYTHON) %s' % pymake))
 
-        # object directory
+        props.append(Element('UserMacro', Name='MOZ_SOURCE_DIR', Value=self.topsourcedir))
         props.append(Element('UserMacro', Name='MOZ_OBJ_DIR', Value=self.dir))
+
+        # IDL generator
+        props.append(Element('UserMacro', Name='IDL_HEADER', Value='$(PYTHON) %s --cachedir=%s' % (
+            '$(MOZ_SOURCE_DIR)\\xpcom\\idl-parser\\header.py',
+            '$(MOZ_SOURCE_DIR)\\xpcom\\idl-parser'
+        )))
+
+        python_paths = [
+            '$(MOZ_SOURCE_DIR)\\other-licenses\\ply',
+            '$(MOZ_SOURCE_DIR)\\xpcom\\idl-parser',
+        ]
+
+        props.append(Element('UserMacro',
+            Name='PYTHONPATH',
+            Value=';'.join(python_paths),
+            PerformEnvironmentSet='true'
+        ))
 
         propspath = join(outdir, 'mozilla.vsprops')
         with open(propspath, 'w') as fh:
@@ -302,10 +321,10 @@ class BuildMakefile(object):
 
         self.module = self.get_module()
 
-        objtop = abspath(join(self.dir, self._get_variable_string('DEPTH')))
+        self.objtop = abspath(join(self.dir, self._get_variable_string('DEPTH')))
         absdir = abspath(self.dir)
 
-        self.reldir = absdir[len(objtop)+1:]
+        self.reldir = absdir[len(self.objtop)+1:]
 
     def _get_variable_string(self, name):
         v = self.makefile.variables.get(name, True)[2]
@@ -373,6 +392,7 @@ class BuildMakefile(object):
             'normalized_name': self.get_transformed_reldir(),
             'dir':             self.dir,
             'reldir':          self.reldir,
+            'objtop':          self.objtop,
             'defines':         self.get_defines(),
             'cppsrcs':         self.get_cpp_sources(),
             'xpidlsrcs':       self._get_variable_split('XPIDLSRCS'),
@@ -422,6 +442,8 @@ class VisualStudioBuilder(object):
             export_headers=library['exports'],
             internal_headers=library['mozillaexports'],
             idl_sources=library['xpidlsrcs'],
+            idl_out_dir=join(library['objtop'], 'dist', 'include'),
+            idl_includes=[ join(library['objtop'], 'dist', 'idl') ],
             defines=library['defines'],
             cxxflags=library['cxxflags'],
         )
@@ -445,7 +467,7 @@ class VisualStudioBuilder(object):
                       type='custom',
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
-                      idl_sources=[],
+                      idl_sources=[], idl_out_dir=None, idl_includes=[],
                       defines='', cxxflags=[]
                       ):
         '''Convert parameters into a Visual Studio Project File string.
@@ -482,6 +504,13 @@ class VisualStudioBuilder(object):
 
           idl_sources  list
                        IDL source files
+
+          idl_out_dir  string
+                       Where generated IDL files should be placed
+
+          idl_includes  list
+                        List of additional paths in which IDLs look for
+                        included files.
 
           defines  string
                    Preprocessor definitions
@@ -679,7 +708,6 @@ class VisualStudioBuilder(object):
 
             return '$(MOZ_OBJ_DIR)\%s\%s' % ( reldir, path )
 
-        # TODO sanitize the paths of includes and force includes
         if len(includes):
             tool_compiler.set('AdditionalIncludeDirectories',
                               ';'.join(map(sanitize_path, includes)))
@@ -692,7 +720,6 @@ class VisualStudioBuilder(object):
             tool_compiler.set('AdditionalOptions', ';'.join(additional))
 
         configuration.append(tool_compiler)
-
         configurations.append(configuration)
         root.append(configurations)
 
@@ -728,7 +755,34 @@ class VisualStudioBuilder(object):
                 UniqueIdentifier=str(uuid1())
             )
             for f in idl_sources:
-                filter_idl.append(Element('File', RelativePath=join(source_dir, f)))
+                file = Element('File', RelativePath=join(source_dir, f))
+
+                # The IDL builder in Visual Studio doesn't play nice with our
+                # IDL's. So, we call out to our custom Python IDL builder for
+                # all IDL files.
+                fc = Element('FileConfiguration', Name='Build|Win32')
+
+                includes = [ source_dir ]
+                includes.extend(idl_includes)
+
+                s = [ '-I%s' % p for p in includes ]
+                out_path = '%s\\$(InputName).h' % idl_out_dir
+
+                # TODO possibly consider AdditionalDependencies attribute, if
+                # we can compute that
+                tool = Element('Tool',
+                    Name='VCCustomBuildTool',
+                    CommandLine='$(IDL_HEADER) %s -o %s $(InputPath)' % (
+                        ' '.join(s), out_path
+                    ),
+                    Outputs='%s\\$(InputName).h' % idl_out_dir,
+                    Description='Converting IDL for $(InputName)'
+                )
+
+                fc.append(tool)
+                file.append(fc)
+                filter_idl.append(file)
+
             files.append(filter_idl)
 
         root.append(files)
