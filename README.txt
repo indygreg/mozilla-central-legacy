@@ -127,3 +127,8 @@ its dependency model only applies to directories. Or, maybe we could switch to
 something like GYP (https://code.google.com/p/gyp/), which I believe does a
 lot of what I'm describing. It's all possible when the declarative metadata
 is liberated from Makefiles.
+
+I don't think we are too far away from that vision today. Looking around, it
+seems that a lot of Makefiles follow the same conventions. There is, however,
+a long tail of one-offs and no formal tool to ensure compliance. But, I think
+we are closer than most would believe.
