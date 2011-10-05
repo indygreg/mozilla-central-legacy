@@ -283,6 +283,10 @@ class BuildParser(object):
         )
         props.append(Element('UserMacro', Name='PYTHON', Value=python))
         props.append(Element('UserMacro', Name='PYMAKE', Value='$(PYTHON) %s' % pymake))
+
+        # object directory
+        props.append(Element('UserMacro', Name='MOZ_OBJ_DIR', Value=self.dir))
+
         propspath = join(outdir, 'mozilla.vsprops')
         with open(propspath, 'w') as fh:
             fh.write(xml.etree.ElementTree.tostring(props, encoding='utf-8'))
@@ -368,6 +372,7 @@ class BuildMakefile(object):
             'name':            library,
             'normalized_name': self.get_transformed_reldir(),
             'dir':             self.dir,
+            'reldir':          self.reldir,
             'defines':         self.get_defines(),
             'cppsrcs':         self.get_cpp_sources(),
             'xpidlsrcs':       self._get_variable_split('XPIDLSRCS'),
@@ -402,6 +407,7 @@ class VisualStudioBuilder(object):
             name=library['normalized_name'],
             type=type,
             dir=library['dir'],
+            reldir=library['reldir'],
             source_dir=library['srcdir'],
             cpp_sources=library['cppsrcs'],
             export_headers=library['exports'],
@@ -426,7 +432,8 @@ class VisualStudioBuilder(object):
             defines=makefile._get_variable_string('DEFINES'),
         )
 
-    def build_project(self, version=None, name=None, dir=None, type='custom',
+    def build_project(self, version=None, name=None, dir=None, reldir=None,
+                      type='custom',
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
                       idl_sources=[],
@@ -445,6 +452,12 @@ class VisualStudioBuilder(object):
 
           dir  string
                Directory in tree this project corresponds to
+
+          reldir string
+                 Relative path in tree project is for
+
+          type string
+               Type of project to produce. Must be one of {custom, static}
 
           source_dir  string
                       Directory where source files can be found
@@ -502,14 +515,18 @@ class VisualStudioBuilder(object):
             use_make = True
         elif type == 'static':
             configuration_type = '4'
+            assert(reldir)
 
         configurations = Element('Configurations')
         configuration = Element('Configuration',
             Name='Build|Win32',
             ConfigurationType=configuration_type,
             CharacterSet='1',
-            InheritedPropertySheets='.\mozilla.vsprops'
+            InheritedPropertySheets='.\mozilla.vsprops',
         )
+
+        if reldir:
+            configuration.set('IntermediateDirectory', '$(MOZ_OBJ_DIR)\%s' % reldir)
 
         if use_make:
             pymake = '$(PYMAKE) -C %s' % dir
