@@ -77,7 +77,8 @@ What Doesn't Work
 A lot.
 
 Things don't compile inside Visual Studio. IDL's are completely broken. Some
-C++ files may compile, but more often than not they don't.
+C++ files may compile, but more often than not they don't. If you want to try
+to build C++ files, you'll need to remove IDL files from the project.
 
 There are no defined dependencies inside the solution, so even if things
 did build, the order would be all wrong.
