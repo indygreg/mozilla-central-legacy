@@ -379,7 +379,15 @@ class BuildMakefile(object):
             'exports':         self._get_variable_split('EXPORTS'),
             'mozillaexports':  self._get_variable_split('EXPORTS_mozilla'),
             'srcdir':          self._get_variable_string('srcdir'),
-            'cxxflags':        self._get_variable_split('CXXFLAGS'),
+
+            # This should arguably be CXXFLAGS and not the COMPILE_ variant
+            # which also pulls a lot of other definitions in. If we wanted to
+            # do things properly, we could probably pull in the variables
+            # separately and define in a property sheet. But that is more
+            # complex. This method is pretty safe. Although, it does produce
+            # a lot of redundancy in the individual project files.
+            'cxxflags':        self._get_variable_split('COMPILE_CXXFLAGS'),
+
             'static':          self._get_variable_string('FORCE_STATIC_LIB') == '1',
         }
 
@@ -393,6 +401,7 @@ class VisualStudioBuilder(object):
         self.RE_DISABLE_WARNINGS = re.compile('-wd(.*)$')
         self.RE_WARN_AS_ERROR = re.compile('-we(.*)$')
         self.RE_PROGRAM_DATABASE = re.compile('-Fd(.*)$')
+        self.RE_INCLUDE = re.compile('-I(.*)$')
 
     def build_project_for_library(self, library, module, version='2008'):
         '''Takes a library info dict and converts to a project file'''
@@ -509,11 +518,13 @@ class VisualStudioBuilder(object):
 
         configuration_type = None
         use_make = False
+        static = False
 
         if type == 'custom':
             configuration_type = '0'
             use_make = True
         elif type == 'static':
+            static = True
             configuration_type = '4'
             assert(reldir)
 
@@ -527,6 +538,10 @@ class VisualStudioBuilder(object):
 
         if reldir:
             configuration.set('IntermediateDirectory', '$(MOZ_OBJ_DIR)\%s' % reldir)
+            #configuration.set('BuildLogFile', '$(MOZ_OBJ_DIR)\%s\buildlog.html' % reldir)
+
+        if static:
+            configuration.set('OutputDirectory', '$(MOZ_OBJ_DIR)\dist\lib')
 
         if use_make:
             pymake = '$(PYMAKE) -C %s' % dir
@@ -547,7 +562,18 @@ class VisualStudioBuilder(object):
         undefines = []
         disabled_warnings = []
         warn_as_error = []
-        for flag in cxxflags:
+        includes = []
+        force_includes = []
+        additional = []
+
+        i = -1
+        while True:
+            i += 1
+
+            if i == len(cxxflags):
+                break
+
+            flag = cxxflags[i]
             lower = flag.lower()
             if lower == '-tc':
                 tool_compiler.set('CompileAs', '1')
@@ -564,6 +590,18 @@ class VisualStudioBuilder(object):
             elif lower == '-oy':
                 tool_compiler.set('OmitFramePointers', 'true')
                 continue
+            elif flag == '-MT':
+                tool_compiler.set('RuntimeLibrary', '0')
+                continue
+            elif flag == '-MTd':
+                tool_compiler.set('RuntimeLibrary', '1')
+                continue
+            elif flag == '-MD':
+                tool_compiler.set('RuntimeLibrary', '2')
+                continue
+            elif flag == '-MDd':
+                tool_compiler.set('RuntimeLibrary', '3')
+                continue
             elif lower == '-nologo':
                 tool_compiler.set('SuppressStartupBanner', 'true')
                 continue
@@ -572,6 +610,16 @@ class VisualStudioBuilder(object):
                 continue
             elif flag == '-ZI':
                 tool_compiler.set('DebugInformationFormat', '4')
+                continue
+            elif flag == '-FI':
+                assert(i < len(cxxflags))
+                force_includes.append(cxxflags[i+1])
+                i += 1
+                continue
+
+            match = self.RE_INCLUDE.match(flag)
+            if match:
+                includes.append(match.group(1))
                 continue
 
             match = self.RE_WARNING.match(flag)
@@ -616,7 +664,32 @@ class VisualStudioBuilder(object):
             tool_compiler.set('DisableSpecificWarnings', ';'.join(disabled_warnings))
 
         if len(warn_as_error):
-            tool_compiler.set('WarnAsError', ';'.join(warn_as_error))
+            # TODO is there an attribute for /we?
+            for s in warn_as_error:
+                additional.append('/we%s' % s)
+
+        def sanitize_path(path):
+            # TODO should discover path prefixes and normalize to absolute
+            # paths using variables inherited from property sheet
+            if path == '.':
+                return '$(MOZ_OBJ_DIR)\%s' % reldir
+
+            if isabs(path):
+                return path
+
+            return '$(MOZ_OBJ_DIR)\%s\%s' % ( reldir, path )
+
+        # TODO sanitize the paths of includes and force includes
+        if len(includes):
+            tool_compiler.set('AdditionalIncludeDirectories',
+                              ';'.join(map(sanitize_path, includes)))
+
+        if len(force_includes):
+            tool_compiler.set('ForcedIncludeFiles',
+                              ';'.join(map(sanitize_path, force_includes)))
+
+        if len(additional):
+            tool_compiler.set('AdditionalOptions', ';'.join(additional))
 
         configuration.append(tool_compiler)
 
