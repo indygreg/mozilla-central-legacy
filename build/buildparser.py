@@ -48,6 +48,7 @@ from shutil import rmtree
 from uuid import uuid1
 from xml.etree.ElementTree import ElementTree, Element
 
+import re
 import xml.etree.ElementTree
 
 # TODO validate mappings are correct. only 2008 confirmed so far
@@ -373,20 +374,33 @@ class BuildMakefile(object):
             'exports':         self._get_variable_split('EXPORTS'),
             'mozillaexports':  self._get_variable_split('EXPORTS_mozilla'),
             'srcdir':          self._get_variable_string('srcdir'),
+            'cxxflags':        self._get_variable_split('CXXFLAGS'),
+            'static':          self._get_variable_string('FORCE_STATIC_LIB') == '1',
         }
 
         return d
 
 class VisualStudioBuilder(object):
     def __init__(self):
-        pass
+        self.RE_WARNING = re.compile('-W(\d+)')
+        self.RE_DEFINE = re.compile('-D(.*)$')
+        self.RE_UNDEFINE = re.compile('-U(.*)$')
+        self.RE_DISABLE_WARNINGS = re.compile('-wd(.*)$')
+        self.RE_WARN_AS_ERROR = re.compile('-we(.*)$')
+        self.RE_PROGRAM_DATABASE = re.compile('-Fd(.*)$')
 
     def build_project_for_library(self, library, module, version='2008'):
         '''Takes a library info dict and converts to a project file'''
 
+        type = 'custom'
+
+        if library['static']:
+            type = 'static'
+
         return self.build_project(
             version=version,
             name=library['normalized_name'],
+            type=type,
             dir=library['dir'],
             source_dir=library['srcdir'],
             cpp_sources=library['cppsrcs'],
@@ -394,6 +408,7 @@ class VisualStudioBuilder(object):
             internal_headers=library['mozillaexports'],
             idl_sources=library['xpidlsrcs'],
             defines=library['defines'],
+            cxxflags=library['cxxflags'],
         )
 
     def build_project_for_generic(self, makefile, version='2008'):
@@ -411,11 +426,11 @@ class VisualStudioBuilder(object):
             defines=makefile._get_variable_string('DEFINES'),
         )
 
-    def build_project(self, version=None, name=None, dir=None,
+    def build_project(self, version=None, name=None, dir=None, type='custom',
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
                       idl_sources=[],
-                      defines=''
+                      defines='', cxxflags=[]
                       ):
         '''Convert parameters into a Visual Studio Project File string.
 
@@ -479,7 +494,14 @@ class VisualStudioBuilder(object):
         root.append(platforms)
         root.append(Element('ToolFiles'))
 
-        configuration_type = '0' # Makefile
+        configuration_type = None
+        use_make = False
+
+        if type == 'custom':
+            configuration_type = '0'
+            use_make = True
+        elif type == 'static':
+            configuration_type = '4'
 
         configurations = Element('Configurations')
         configuration = Element('Configuration',
@@ -489,18 +511,97 @@ class VisualStudioBuilder(object):
             InheritedPropertySheets='.\mozilla.vsprops'
         )
 
-        pymake = '$(PYMAKE) -C %s' % dir
+        if use_make:
+            pymake = '$(PYMAKE) -C %s' % dir
+            tool_make = Element('Tool', Name='VCNMakeTool',
+                BuildCommandLine=pymake,
+                # TODO RebuildCommandLine
+                CleanCommandLine='%s clean' % pymake,
+                PreprocessorDefinitions=defines,
+                IncludeSearchPath='',
+                AssemblySearchPath='',
+                # TODO Output
+            )
+            configuration.append(tool_make)
 
-        tool_make = Element('Tool', Name='VCNMakeTool',
-            BuildCommandLine=pymake,
-            # TODO RebuildCommandLine
-            CleanCommandLine='%s clean' % pymake,
-            PreprocessorDefinitions=defines,
-            IncludeSearchPath='',
-            AssemblySearchPath='',
-            # TODO Output
-        )
-        configuration.append(tool_make)
+        # assemble compiler options from explicit CXXFLAGS
+        tool_compiler = Element('Tool', Name='VCCLCompilerTool')
+        defines = []
+        undefines = []
+        disabled_warnings = []
+        warn_as_error = []
+        for flag in cxxflags:
+            lower = flag.lower()
+            if lower == '-tc':
+                tool_compiler.set('CompileAs', '1')
+                continue
+            elif lower == '-tp':
+                tool_compiler.set('CompileAs', '2')
+                continue
+            elif lower == '-gy':
+                tool_compiler.set('EnableFunctionLevelLinking', 'true')
+                continue
+            elif lower == '-o1':
+                tool_compiler.set('Optimization', '1')
+                continue
+            elif lower == '-oy':
+                tool_compiler.set('OmitFramePointers', 'true')
+                continue
+            elif lower == '-nologo':
+                tool_compiler.set('SuppressStartupBanner', 'true')
+                continue
+            elif flag == '-Zi':
+                tool_compiler.set('DebugInformationFormat', '3')
+                continue
+            elif flag == '-ZI':
+                tool_compiler.set('DebugInformationFormat', '4')
+                continue
+
+            match = self.RE_WARNING.match(flag)
+            if match:
+                tool_compiler.set('WarningLevel', match.group(1))
+                continue
+
+            match = self.RE_DEFINE.match(flag)
+            if match:
+                defines.append(match.group(1))
+                continue
+
+            match = self.RE_UNDEFINE.match(flag)
+            if match:
+                undefines.append(match.group(1))
+                continue
+
+            match = self.RE_DISABLE_WARNINGS.match(flag)
+            if match:
+                disabled_warnings.append(match.group(1))
+                continue
+
+            match = self.RE_WARN_AS_ERROR.match(flag)
+            if match:
+                warn_as_error.append(match.group(1))
+                continue
+
+            match = self.RE_PROGRAM_DATABASE.match(flag)
+            if match:
+                tool_compiler.set('ProgramDataBaseFileName', match.group(1))
+                continue
+
+            print 'Unknown CXXFLAG: %s' % flag
+
+        if len(defines):
+            tool_compiler.set('PreprocessorDefinitions', ';'.join(defines))
+
+        if len(undefines):
+            tool_compiler.set('UndefinePreprocessorDefinitions', ';'.join(undefines))
+
+        if len(disabled_warnings):
+            tool_compiler.set('DisableSpecificWarnings', ';'.join(disabled_warnings))
+
+        if len(warn_as_error):
+            tool_compiler.set('WarnAsError', ';'.join(warn_as_error))
+
+        configuration.append(tool_compiler)
 
         configurations.append(configuration)
         root.append(configurations)
