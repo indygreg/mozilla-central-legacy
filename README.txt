@@ -97,7 +97,7 @@ What I mean by this is having all the Makefiles have the same typical pattern
 of declaring the same variables. The metadata extraction process used here
 relies on this. If (by some miracle) I get this branch to the point where I
 can fully build in Visual Studio by extracting metadata from Makefiles, all
-it would take is once change to a Makefile somewhere which breaks the
+it would take is one change to a Makefile somewhere which breaks the
 convention and things would fall down.
 
 One solution to this is auditing. I would /love/ for us to have some kind of
