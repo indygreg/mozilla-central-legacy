@@ -188,6 +188,12 @@ class BuildParser(object):
         ]
 
         projects = {}
+
+        # maps files to be copied in the top project, which always gets built
+        top_copy = {
+            '$(MOZ_OBJ_DIR)\\mozilla-config.h': '$(MOZ_OBJ_DIR)\\dist\\include\\mozilla-config.h',
+        }
+
         strversion = visual_studio_product_to_internal_version(version, True)
 
         process_dirs = self.get_platform_dirs()
@@ -231,6 +237,10 @@ class BuildParser(object):
                     handle_project(proj, id, name)
                     names.append(name)
 
+                    for idl in library['xpidlsrcs']:
+                        source = join('$(MOZ_SOURCE_DIR)', library['reldir'], idl)
+                        top_copy[source] = join('$(MOZ_OBJ_DIR)', 'dist', 'idl', idl)
+
                 if len(names):
                     print 'Wrote projects for libraries: %s' % ' '.join(names)
 
@@ -250,6 +260,24 @@ class BuildParser(object):
                     m, version=version
                 )
                 handle_project(proj, id, name)
+
+        # create parent project that does initialization
+        # TODO we could probably do this more intelligently
+
+        proj, id, name = builder.build_project(
+            version=version,
+            name='top',
+            type='utility',
+            dir=self.topsourcedir,
+            source_dir=self.topsourcedir,
+            mkdir=[
+                '$(MOZ_OBJ_DIR)\\dist',
+                '$(MOZ_OBJ_DIR)\\dist\\idl',
+                '$(MOZ_OBJ_DIR)\\dist\\include'
+            ],
+            pre_copy=top_copy,
+        )
+        handle_project(proj, id, name)
 
         # now produce the Solution file
         slnpath = join(outdir, 'mozilla.sln')
@@ -286,8 +314,8 @@ class BuildParser(object):
         props.append(Element('UserMacro', Name='PYTHON', Value=python))
         props.append(Element('UserMacro', Name='PYMAKE', Value='$(PYTHON) %s' % pymake))
 
-        props.append(Element('UserMacro', Name='MOZ_SOURCE_DIR', Value=self.topsourcedir))
-        props.append(Element('UserMacro', Name='MOZ_OBJ_DIR', Value=self.dir))
+        props.append(Element('UserMacro', Name='MOZ_SOURCE_DIR', Value=self.topsourcedir.replace('/', '\\')))
+        props.append(Element('UserMacro', Name='MOZ_OBJ_DIR', Value=self.dir.replace('/', '\\')))
 
         # IDL generator
         props.append(Element('UserMacro', Name='IDL_HEADER', Value='$(PYTHON) %s --cachedir=%s' % (
@@ -409,6 +437,7 @@ class BuildMakefile(object):
             'cxxflags':        self._get_variable_split('COMPILE_CXXFLAGS'),
 
             'static':          self._get_variable_string('FORCE_STATIC_LIB') == '1',
+            'shared':          len(self._get_variable_split('SHARED_LIBRARY_LIBS')) > 0,
         }
 
         return d
@@ -468,7 +497,8 @@ class VisualStudioBuilder(object):
                       source_dir=None,
                       cpp_sources=[], export_headers=[], internal_headers=[],
                       idl_sources=[], idl_out_dir=None, idl_includes=[],
-                      defines='', cxxflags=[]
+                      defines='', cxxflags=[],
+                      pre_copy={}, mkdir=[]
                       ):
         '''Convert parameters into a Visual Studio Project File string.
 
@@ -514,6 +544,13 @@ class VisualStudioBuilder(object):
 
           defines  string
                    Preprocessor definitions
+
+          pre_copy  dictionary
+                    Set of files to copy before the build starts. Keys are
+                    source filenames. Values are destination filenames.
+
+          mkdir  list
+                 List of directories to create before build.
         '''
 
         if not version:
@@ -556,6 +593,8 @@ class VisualStudioBuilder(object):
             static = True
             configuration_type = '4'
             assert(reldir)
+        elif type == 'utility':
+            configuration_type = '10'
 
         configurations = Element('Configurations')
         configuration = Element('Configuration',
@@ -584,6 +623,8 @@ class VisualStudioBuilder(object):
                 # TODO Output
             )
             configuration.append(tool_make)
+
+        pre_build_commands = []
 
         # assemble compiler options from explicit CXXFLAGS
         tool_compiler = Element('Tool', Name='VCCLCompilerTool')
@@ -720,6 +761,21 @@ class VisualStudioBuilder(object):
             tool_compiler.set('AdditionalOptions', ';'.join(additional))
 
         configuration.append(tool_compiler)
+
+        if len(mkdir):
+            for dir in mkdir:
+                pre_build_commands.append('mkdir "%s"' % dir)
+
+        if len(pre_copy):
+            for source, dest in pre_copy.iteritems():
+                pre_build_commands.append('copy "%s" "%s"' % ( source, dest ))
+
+        if len(pre_build_commands):
+            tool_prebuild = Element('Tool', Name='VCPreBuildEventTool')
+            tool_prebuild.set('CommandLine', '\r\n'.join(pre_build_commands))
+
+            configuration.append(tool_prebuild)
+
         configurations.append(configuration)
         root.append(configurations)
 
