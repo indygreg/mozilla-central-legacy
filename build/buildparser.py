@@ -457,7 +457,7 @@ class VisualStudioBuilder(object):
 
         return self.build_project(
             version=version,
-            name=makefile.get_transformed_reldir(),
+            name='%s_DUMMY' % makefile.get_transformed_reldir(),
             dir=makefile.dir,
             source_dir=makefile.get_source_dir(),
             defines=makefile._get_variable_string('DEFINES'),
