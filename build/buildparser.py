@@ -214,13 +214,13 @@ class BuildParser(object):
 
         # Handle NSPR as a one-off, as it doesn't conform.
         def process_nspr():
-            child_names = []
-
             def handle_nspr_makefile(m):
+                local_children = []
+
                 # recurse immediately
                 for dir in m.get_dirs():
                     m2 = self.get_dir_makefile(join(m.dir, dir))[0]
-                    handle_nspr_makefile(m2)
+                    local_children.append(handle_nspr_makefile(m2))
 
                 # now handle the NSPR logic
 
@@ -256,26 +256,29 @@ class BuildParser(object):
                 if not len(sources):
                     type = 'utility'
 
-                xml, id, name = builder.build_project(
+                flags = m.get_variable_split('CFLAGS')
+                mkdir = []
+
+                xml, id, project_name = builder.build_project(
                     version=version,
                     name=name,
                     dir=m.dir,
                     source_dir=m.get_variable_string('srcdir'),
                     reldir=join('nsprpub', m.reldir),
                     type=type,
-                    internal_headers=headers,
+                    headers=headers,
                     c_sources=sources,
-                    mkdir=[header_dist_dir],
+                    cxxflags=flags,
+                    mkdir=mkdir,
                     pre_copy=pre_copy,
                 )
 
-                if not parent:
-                    child_names.append(name)
-                else:
-                    dependencies = child_names
+                dependencies = local_children
 
-                print 'Writing NSPR project for %s' % name
-                handle_project(xml, id, name, dependencies)
+                print 'Writing NSPR project for %s' % project_name
+                handle_project(xml, id, project_name, dependencies)
+
+                return project_name
 
             m = self.get_dir_makefile('nsprpub')[0]
             handle_nspr_makefile(m)
@@ -568,13 +571,13 @@ class VisualStudioBuilder(object):
 
         mkdir = []
         pre_copy = {}
-        export_headers=[]
+        headers=[]
         for namespace, exports in library['exports'].iteritems():
             mkdir.append(join('$(MOZ_OBJ_DIR)', 'dist', 'include', namespace))
             for export in exports:
                 dest = join('$(MOZ_OBJ_DIR)', 'dist', 'include', namespace, export)
                 pre_copy[join('$(MOZ_SOURCE_DIR)', library['reldir'], export)] = dest
-                export_headers.append(export)
+                headers.append(export)
 
         return self.build_project(
             version=version,
@@ -584,7 +587,7 @@ class VisualStudioBuilder(object):
             reldir=library['reldir'],
             source_dir=library['srcdir'],
             cpp_sources=library['cppsrcs'],
-            export_headers=export_headers,
+            headers=headers,
             idl_sources=library['xpidlsrcs'],
             idl_out_dir=join(library['objtop'], 'dist', 'include'),
             idl_includes=[ join(library['objtop'], 'dist', 'idl') ],
@@ -614,7 +617,7 @@ class VisualStudioBuilder(object):
                       source_dir=None,
                       cpp_sources=[],
                       c_sources=[],
-                      export_headers=[], internal_headers=[],
+                      headers=[],
                       idl_sources=[], idl_out_dir=None, idl_includes=[],
                       defines='', cxxflags=[],
                       pre_copy={}, mkdir=[]
@@ -648,11 +651,8 @@ class VisualStudioBuilder(object):
           c_sources  list
                      C source files for this project
 
-          export_headers  list
-                          header files exported as part of library
-
-          internal_headers list
-                           header files used internally
+          headers  list
+                   Header files. Should be relative paths to source_dir.
 
           idl_sources  list
                        IDL source files
@@ -666,6 +666,11 @@ class VisualStudioBuilder(object):
 
           defines  string
                    Preprocessor definitions
+
+          cxxflags  list
+                    Set of compiler flags. These will be parsed and converted
+                    to project parameters. If unknown, they will be preserved
+                    on the command line.
 
           pre_copy  dictionary
                     Set of files to copy before the build starts. Keys are
@@ -779,8 +784,14 @@ class VisualStudioBuilder(object):
             elif lower == '-o1':
                 tool_compiler.set('Optimization', '1')
                 continue
+            elif lower == '-o2':
+                tool_compiler.set('Optimization', '2')
+                continue
             elif lower == '-oy':
                 tool_compiler.set('OmitFramePointers', 'true')
+                continue
+            elif flag == '-GF':
+                tool_compiler.set('StringPooling', 'true')
                 continue
             elif flag == '-MT':
                 tool_compiler.set('RuntimeLibrary', '0')
@@ -916,16 +927,14 @@ class VisualStudioBuilder(object):
 
             files.append(filter_source)
 
-        all_headers = export_headers
-        all_headers.extend(internal_headers)
-        all_headers.sort()
-        if len(all_headers):
+        headers.sort()
+        if len(headers):
             filter_headers = Element('Filter',
                 Name='Header Files',
                 Filter='h;hpp;hxx',
                 UniqueIdentifier=str(uuid1())
             )
-            for f in all_headers:
+            for f in headers:
                 filter_headers.append(Element('File', RelativePath=join(source_dir, f)))
             files.append(filter_headers)
 
