@@ -415,6 +415,17 @@ class BuildMakefile(object):
         library = self.get_library()
         assert(library is not None)
 
+        exports = {}
+        for export in self._get_variable_split('EXPORTS'):
+            if '' not in exports:
+                exports[''] = []
+            exports[''].append(export)
+
+        for namespace in self._get_variable_split('EXPORTS_NAMESPACES'):
+            exports[namespace] = []
+            for s in self._get_variable_split('EXPORTS_%s' % namespace):
+                exports[namespace].append(s)
+
         d = {
             'name':            library,
             'normalized_name': self.get_transformed_reldir(),
@@ -424,8 +435,7 @@ class BuildMakefile(object):
             'defines':         self.get_defines(),
             'cppsrcs':         self.get_cpp_sources(),
             'xpidlsrcs':       self._get_variable_split('XPIDLSRCS'),
-            'exports':         self._get_variable_split('EXPORTS'),
-            'mozillaexports':  self._get_variable_split('EXPORTS_mozilla'),
+            'exports':         exports,
             'srcdir':          self._get_variable_string('srcdir'),
 
             # This should arguably be CXXFLAGS and not the COMPILE_ variant
@@ -460,6 +470,16 @@ class VisualStudioBuilder(object):
         if library['static']:
             type = 'static'
 
+        mkdir = []
+        pre_copy = {}
+        export_headers=[]
+        for namespace, exports in library['exports'].iteritems():
+            mkdir.append(join('$(MOZ_OBJ_DIR)', 'dist', 'include', namespace))
+            for export in exports:
+                dest = join('$(MOZ_OBJ_DIR)', 'dist', 'include', namespace, export)
+                pre_copy[join('$(MOZ_SOURCE_DIR)', library['reldir'], export)] = dest
+                export_headers.append(export)
+
         return self.build_project(
             version=version,
             name=library['normalized_name'],
@@ -468,13 +488,14 @@ class VisualStudioBuilder(object):
             reldir=library['reldir'],
             source_dir=library['srcdir'],
             cpp_sources=library['cppsrcs'],
-            export_headers=library['exports'],
-            internal_headers=library['mozillaexports'],
+            export_headers=export_headers,
             idl_sources=library['xpidlsrcs'],
             idl_out_dir=join(library['objtop'], 'dist', 'include'),
             idl_includes=[ join(library['objtop'], 'dist', 'idl') ],
             defines=library['defines'],
             cxxflags=library['cxxflags'],
+            mkdir=mkdir,
+            pre_copy=pre_copy,
         )
 
     def build_project_for_generic(self, makefile, version='2008'):
