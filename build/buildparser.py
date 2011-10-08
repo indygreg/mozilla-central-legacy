@@ -97,14 +97,14 @@ class BuildParser(object):
         self.topsourcedir = self.topmakefile.get_top_source_dir()
 
     def get_tiers(self):
-        return self.topmakefile._get_variable_split('TIERS')
+        return self.topmakefile.get_variable_split('TIERS')
 
     def get_platform_dirs(self):
-        return self.topmakefile._get_variable_split('tier_platform_dirs')
+        return self.topmakefile.get_variable_split('tier_platform_dirs')
 
     def get_base_dirs(self):
         '''Obtain a list of the configured base directories'''
-        return self.topmakefile._get_variable_split('tier_base_dirs')
+        return self.topmakefile.get_variable_split('tier_base_dirs')
 
     def get_dir_makefile(self, path):
         full = join(self.dir, path)
@@ -120,7 +120,7 @@ class BuildParser(object):
         return (BuildMakefile(m), full, file)
 
     def get_top_source_directory(self):
-        return self.topmakefile._get_variable_string('topsrcdir')
+        return self.topmakefile.get_variable_string('topsrcdir')
 
     def get_module_data(self, path):
         makefile, full, file = self.get_dir_makefile(path)
@@ -196,25 +196,91 @@ class BuildParser(object):
 
         strversion = visual_studio_product_to_internal_version(version, True)
 
-        process_dirs = self.get_platform_dirs()
-        process_dirs.extend(self.get_base_dirs())
-        process_dirs.sort()
-
-        def handle_project(project, id, name):
+        def handle_project(project, id, name, dependencies=[]):
             filename = '%s.vcproj' % name
             projfile = join(outdir, filename)
 
             with open(projfile, 'w') as fh:
-                #print 'Writing %s' % projfile
-                fh.write(proj)
+                fh.write(project)
 
             entry = {
-                'id':       id,
-                'name':     name,
-                'filename': filename,
+                'id':           id,
+                'name':         name,
+                'filename':     filename,
+                'dependencies': dependencies,
             }
 
             projects[id] = entry
+
+        # Handle NSPR as a one-off, as it doesn't conform.
+        def process_nspr():
+            child_names = []
+
+            def handle_nspr_makefile(m):
+                # recurse immediately
+                for dir in m.get_dirs():
+                    m2 = self.get_dir_makefile(join(m.dir, dir))[0]
+                    handle_nspr_makefile(m2)
+
+                # now handle the NSPR logic
+
+                headers = []
+                srcdir = m.get_variable_string('srcdir')
+                for header in m.get_variable_split('HEADERS'):
+                    if header.find(srcdir) == 0:
+                        headers.append(header[len(srcdir)+1:])
+                    else:
+                        headers.append(header)
+
+                sources = m.get_variable_split('CSRCS')
+
+                # RELEASE_HEADERS get copied to output directory
+                release_headers = m.get_variable_split('RELEASE_HEADERS')
+
+                header_dist_dir = m.get_variable_string('dist_includedir')
+
+                pre_copy = {}
+                for header in release_headers:
+                    pre_copy[join(m.dir, header)] = join(header_dist_dir, header)
+
+                name = 'nspr'
+                parent = True
+                dependencies = []
+
+                type = 'custom'
+                if m.reldir:
+                    type = 'static'
+                    name = 'nspr_%s' % m.reldir.replace('\\', '_')
+                    parent = False
+
+                xml, id, name = builder.build_project(
+                    version=version,
+                    name=name,
+                    dir=m.dir,
+                    source_dir=m.get_variable_string('srcdir'),
+                    reldir=join('nsprpub', m.reldir),
+                    type=type,
+                    internal_headers=headers,
+                    c_sources=sources,
+                    mkdir=[header_dist_dir],
+                )
+
+                if not parent:
+                    child_names.append(name)
+                else:
+                    dependencies = child_names
+
+                handle_project(xml, id, name, dependencies)
+
+            m = self.get_dir_makefile('nsprpub')[0]
+            handle_nspr_makefile(m)
+
+        process_nspr()
+
+        # collect the directories we need to scan
+        process_dirs = self.get_platform_dirs()
+        process_dirs.extend(self.get_base_dirs())
+        process_dirs.sort()
 
         for dir in process_dirs:
             if dir in ignore_dirs:
@@ -279,6 +345,20 @@ class BuildParser(object):
         )
         handle_project(proj, id, name)
 
+        # calculate dependencies
+        project_name_id_map = {}
+        project_dependencies = {}
+        for project in projects.itervalues():
+            project_name_id_map[project['name']] = project['id']
+
+        for project in projects.itervalues():
+            depends = []
+            for name in project['dependencies']:
+                depends.append(project_name_id_map[name])
+
+            if len(depends):
+                project_dependencies[project['id']] = depends
+
         # now produce the Solution file
         slnpath = join(outdir, 'mozilla.sln')
         configid = str(uuid1())
@@ -291,6 +371,13 @@ class BuildParser(object):
                 print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
                     project['id'], project['name'], project['filename'], configid
                 )
+
+                if project['id'] in project_dependencies:
+                    print >>fh, '\tProjectSection(ProjectDependencies) = postProject'
+                    for id in project_dependencies[project['id']]:
+                        print >>fh, '\t\t{%s} = {%s}' % ( id, id )
+                    print >>fh, '\tEndProjectSection'
+
                 print >>fh, 'EndProject'
 
             # the global section defines configurations
@@ -349,19 +436,23 @@ class BuildMakefile(object):
 
         self.module = self.get_module()
 
-        self.objtop = abspath(join(self.dir, self._get_variable_string('DEPTH')))
+        depth = self.get_variable_string('DEPTH')
+        if not depth:
+            depth = self.get_variable_string('MOD_DEPTH')
+
+        self.objtop = abspath(join(self.dir, depth))
         absdir = abspath(self.dir)
 
         self.reldir = absdir[len(self.objtop)+1:]
 
-    def _get_variable_string(self, name):
+    def get_variable_string(self, name):
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return None
 
         return v.resolvestr(self.makefile, self.makefile.variables)
 
-    def _get_variable_split(self, name):
+    def get_variable_split(self, name):
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return []
@@ -373,8 +464,8 @@ class BuildMakefile(object):
         return v is not None
 
     def get_dirs(self):
-        dirs = self._get_variable_split('DIRS')
-        dirs.extend(self._get_variable_split('PARALLEL_DIRS'))
+        dirs = self.get_variable_split('DIRS')
+        dirs.extend(self.get_variable_split('PARALLEL_DIRS'))
 
         return dirs
 
@@ -382,31 +473,31 @@ class BuildMakefile(object):
         return self._has_variable('MODULE')
 
     def get_module(self):
-        return self._get_variable_string('MODULE')
+        return self.get_variable_string('MODULE')
 
     def get_library(self):
-        return self._get_variable_string('LIBRARY')
+        return self.get_variable_string('LIBRARY')
 
     def is_xpidl_module(self):
         return self._has_variable('XPIDL_MODULE')
 
     def get_cpp_sources(self):
-        return self._get_variable_split('CPPSRCS')
+        return self.get_variable_split('CPPSRCS')
 
     def get_c_sources(self):
-        return self._get_variable_split('CSRCS')
+        return self.get_variable_split('CSRCS')
 
     def get_top_source_dir(self):
-        return self._get_variable_string('topsrcdir')
+        return self.get_variable_string('topsrcdir')
 
     def get_source_dir(self):
-        return self._get_variable_string('srcdir')
+        return self.get_variable_string('srcdir')
 
     def get_exports(self):
-        return self._get_variable_split('EXPORTS')
+        return self.get_variable_split('EXPORTS')
 
     def get_defines(self):
-        return self._get_variable_string('DEFINES')
+        return self.get_variable_string('DEFINES')
 
     def get_transformed_reldir(self):
         return self.reldir.replace('\\', '_').replace('/', '_')
@@ -416,14 +507,14 @@ class BuildMakefile(object):
         assert(library is not None)
 
         exports = {}
-        for export in self._get_variable_split('EXPORTS'):
+        for export in self.get_variable_split('EXPORTS'):
             if '' not in exports:
                 exports[''] = []
             exports[''].append(export)
 
-        for namespace in self._get_variable_split('EXPORTS_NAMESPACES'):
+        for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
             exports[namespace] = []
-            for s in self._get_variable_split('EXPORTS_%s' % namespace):
+            for s in self.get_variable_split('EXPORTS_%s' % namespace):
                 exports[namespace].append(s)
 
         d = {
@@ -434,9 +525,9 @@ class BuildMakefile(object):
             'objtop':          self.objtop,
             'defines':         self.get_defines(),
             'cppsrcs':         self.get_cpp_sources(),
-            'xpidlsrcs':       self._get_variable_split('XPIDLSRCS'),
+            'xpidlsrcs':       self.get_variable_split('XPIDLSRCS'),
             'exports':         exports,
-            'srcdir':          self._get_variable_string('srcdir'),
+            'srcdir':          self.get_variable_string('srcdir'),
 
             # This should arguably be CXXFLAGS and not the COMPILE_ variant
             # which also pulls a lot of other definitions in. If we wanted to
@@ -444,10 +535,10 @@ class BuildMakefile(object):
             # separately and define in a property sheet. But that is more
             # complex. This method is pretty safe. Although, it does produce
             # a lot of redundancy in the individual project files.
-            'cxxflags':        self._get_variable_split('COMPILE_CXXFLAGS'),
+            'cxxflags':        self.get_variable_split('COMPILE_CXXFLAGS'),
 
-            'static':          self._get_variable_string('FORCE_STATIC_LIB') == '1',
-            'shared':          len(self._get_variable_split('SHARED_LIBRARY_LIBS')) > 0,
+            'static':          self.get_variable_string('FORCE_STATIC_LIB') == '1',
+            'shared':          len(self.get_variable_split('SHARED_LIBRARY_LIBS')) > 0,
         }
 
         return d
@@ -510,13 +601,15 @@ class VisualStudioBuilder(object):
             name='%s_DUMMY' % makefile.get_transformed_reldir(),
             dir=makefile.dir,
             source_dir=makefile.get_source_dir(),
-            defines=makefile._get_variable_string('DEFINES'),
+            defines=makefile.get_variable_string('DEFINES'),
         )
 
     def build_project(self, version=None, name=None, dir=None, reldir=None,
                       type='custom',
                       source_dir=None,
-                      cpp_sources=[], export_headers=[], internal_headers=[],
+                      cpp_sources=[],
+                      c_sources=[],
+                      export_headers=[], internal_headers=[],
                       idl_sources=[], idl_out_dir=None, idl_includes=[],
                       defines='', cxxflags=[],
                       pre_copy={}, mkdir=[]
@@ -546,6 +639,9 @@ class VisualStudioBuilder(object):
 
           cpp_sources  list
                        C++ source files for this project
+
+          c_sources  list
+                     C source files for this project
 
           export_headers  list
                           header files exported as part of library
@@ -801,7 +897,7 @@ class VisualStudioBuilder(object):
         root.append(configurations)
 
         files = Element('Files')
-        if len(cpp_sources):
+        if len(cpp_sources) or len(c_sources):
             filter_source = Element('Filter',
                 Name='Source Files',
                 Filter='cpp;c;cc;cxx',
@@ -809,6 +905,10 @@ class VisualStudioBuilder(object):
             )
             for f in cpp_sources:
                 filter_source.append(Element('File', RelativePath=join(source_dir, f)))
+
+            for f in c_sources:
+                filter_source.append(Element('File', RelativePath=join(source_dir, f)))
+
             files.append(filter_source)
 
         all_headers = export_headers
