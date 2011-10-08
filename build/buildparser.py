@@ -220,10 +220,11 @@ class BuildParser(object):
                 # recurse immediately
                 for dir in m.get_dirs():
                     m2 = self.get_dir_makefile(join(m.dir, dir))[0]
-                    local_children.append(handle_nspr_makefile(m2))
+                    child_project = handle_nspr_makefile(m2)
+                    if child_project:
+                        local_children.append(child_project)
 
                 # now handle the NSPR logic
-
                 headers = []
                 srcdir = m.get_variable_string('srcdir')
                 for header in m.get_variable_split('HEADERS'):
@@ -241,7 +242,8 @@ class BuildParser(object):
 
                 pre_copy = {}
                 for header in release_headers:
-                    pre_copy[header] = join(header_dist_dir, basename(header))
+                    dest = join(header_dist_dir, basename(header)).replace('/', '\\')
+                    pre_copy[header.replace('/', '\\')] = dest
 
                 name = 'nspr'
                 parent = True
@@ -255,6 +257,14 @@ class BuildParser(object):
 
                 if not len(sources):
                     type = 'utility'
+
+                # ignore nspr/config b/c we don't need it (yet)
+                if name == 'nspr_config':
+                    return None
+                elif name == 'nspr_pr_src':
+                    # for some reason this Makefile pulls in sources compiled
+                    # elsewhere
+                    sources = []
 
                 flags = m.get_variable_split('CFLAGS')
                 mkdir = []
