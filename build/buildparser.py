@@ -42,7 +42,7 @@
 # Building doesn't work at all.
 
 from os import getpid, mkdir
-from os.path import abspath, exists, isabs, join, dirname
+from os.path import abspath, basename, exists, isabs, join, dirname
 from pymake.data import Makefile
 from shutil import rmtree
 from uuid import uuid1
@@ -241,7 +241,7 @@ class BuildParser(object):
 
                 pre_copy = {}
                 for header in release_headers:
-                    pre_copy[join(m.dir, header)] = join(header_dist_dir, header)
+                    pre_copy[header] = join(header_dist_dir, basename(header))
 
                 name = 'nspr'
                 parent = True
@@ -253,6 +253,9 @@ class BuildParser(object):
                     name = 'nspr_%s' % m.reldir.replace('\\', '_')
                     parent = False
 
+                if not len(sources):
+                    type = 'utility'
+
                 xml, id, name = builder.build_project(
                     version=version,
                     name=name,
@@ -263,6 +266,7 @@ class BuildParser(object):
                     internal_headers=headers,
                     c_sources=sources,
                     mkdir=[header_dist_dir],
+                    pre_copy=pre_copy,
                 )
 
                 if not parent:
@@ -270,6 +274,7 @@ class BuildParser(object):
                 else:
                     dependencies = child_names
 
+                print 'Writing NSPR project for %s' % name
                 handle_project(xml, id, name, dependencies)
 
             m = self.get_dir_makefile('nsprpub')[0]
