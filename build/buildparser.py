@@ -374,7 +374,7 @@ class BuildParser(object):
             # write out entries for each project
             for project in projects.itervalues():
                 print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
-                    project['id'], project['name'], project['filename'], configid
+                    configid, project['name'], project['filename'], project['id']
                 )
 
                 if project['id'] in project_dependencies:
