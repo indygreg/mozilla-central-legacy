@@ -45,6 +45,7 @@ from os import getpid, mkdir
 from os.path import abspath, basename, exists, isabs, join, dirname
 from pymake.data import Makefile
 from shutil import rmtree
+from time import localtime, time, strftime
 from uuid import uuid1
 from xml.etree.ElementTree import ElementTree, Element
 
@@ -247,7 +248,6 @@ class BuildParser(object):
 
                 name = 'nspr'
                 parent = True
-                dependencies = []
 
                 type = 'custom'
                 if m.reldir:
@@ -269,6 +269,10 @@ class BuildParser(object):
                 flags = m.get_variable_split('CFLAGS')
                 mkdir = []
 
+                # plvrsion.c looks for a header in the output directory
+                if 'plvrsion.c' in sources:
+                    flags.append('-I%s' % m.get_variable_string('OBJDIR'))
+
                 xml, id, project_name = builder.build_project(
                     version=version,
                     name=name,
@@ -284,6 +288,7 @@ class BuildParser(object):
                 )
 
                 dependencies = local_children
+                dependencies.append('nspr_bld_header')
 
                 print 'Writing NSPR project for %s' % project_name
                 handle_project(xml, id, project_name, dependencies)
@@ -292,6 +297,41 @@ class BuildParser(object):
 
             m = self.get_dir_makefile('nsprpub')[0]
             handle_nspr_makefile(m)
+
+            # NSPR produces a _pr_bld.h file during the build which records
+            # build metadata. We create a project that does this as a
+            # build event. All the NSPR projects have a dependency on this
+            # one.
+            # TODO we could probably put these commands on the projects they
+            # are closest to.
+            now = time()
+
+            # Y U not use GMT???
+            build_string = strftime('%Y-%m-%d %H:%M:%S', localtime(now))
+            t = int(int(now) * 1000000 + (now - int(now)) * 1000000)
+            build_time = '%si64' % t
+
+            out_paths = {
+                'pr\\src\\_pr_bld.h': 'nspr4.dll',
+                'lib\\libc\\src\\_pl_bld.h': 'plc4.dll',
+                'lib\\ds\\_pl_bld.h': 'plds4.dll',
+            }
+
+            commands = []
+            for path, name in out_paths.iteritems():
+                out_file = '$(MOZ_OBJ_DIR)\\nsprpub\\%s' % path
+                commands.append('echo #define _BUILD_STRING "%s" > %s' % ( build_string, out_file ))
+                commands.append('echo #define _BUILD_TIME %s >> %s' % ( build_time, out_file ))
+                commands.append('echo #define _PRODUCTION "%s" >> %s' % ( name, out_file ))
+
+            xml, id, project_name = builder.build_project(
+                version=version,
+                name='nspr_bld_header',
+                type='utility',
+                dir=m.dir,
+                pre_commands=commands
+            )
+            handle_project(xml, id, project_name)
 
         process_nspr()
 
@@ -630,6 +670,7 @@ class VisualStudioBuilder(object):
                       headers=[],
                       idl_sources=[], idl_out_dir=None, idl_includes=[],
                       defines='', cxxflags=[],
+                      pre_commands=[],
                       pre_copy={}, mkdir=[]
                       ):
         '''Convert parameters into a Visual Studio Project File string.
@@ -682,6 +723,9 @@ class VisualStudioBuilder(object):
                     to project parameters. If unknown, they will be preserved
                     on the command line.
 
+          pre_commands list
+                    List of commands to run before the build starts.
+
           pre_copy  dictionary
                     Set of files to copy before the build starts. Keys are
                     source filenames. Values are destination filenames.
@@ -698,9 +742,6 @@ class VisualStudioBuilder(object):
 
         if not dir:
             raise Exception('dir must be specified')
-
-        if not source_dir:
-            raise Exception('source_dir must be specified')
 
         id = str(uuid1())
         strversion = visual_studio_product_to_internal_version(version)
@@ -904,6 +945,9 @@ class VisualStudioBuilder(object):
             tool_compiler.set('AdditionalOptions', ';'.join(additional))
 
         configuration.append(tool_compiler)
+
+        if len(pre_commands):
+            pre_build_commands.extend(pre_commands)
 
         if len(mkdir):
             for dir in mkdir:
