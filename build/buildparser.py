@@ -247,8 +247,11 @@ class BuildParser(object):
 
                 header_dist_dir = m.get_variable_string('dist_includedir')
 
+                # bad code alert!
                 if m.reldir == 'pr\\include\\obsolete':
                     header_dist_dir = join(header_dist_dir, 'obsolete')
+                elif m.reldir == 'pr\\include\\private':
+                    header_dist_dir = join(header_dist_dir, 'private')
 
                 pre_copy = {}
                 for header in release_headers:
@@ -319,6 +322,14 @@ class BuildParser(object):
                 )
 
                 dependencies = local_children
+
+                # Ensure include files are copied before compilation.
+                if project_name.find('src') != -1:
+                    dependencies.append('nspr_pr_include')
+
+                if project_name.find('nspr_lib') == 0:
+                    dependencies.append('nspr_pr_src')
+
                 dependencies.append('nspr_bld_header')
 
                 print 'Writing NSPR project for %s' % project_name
@@ -381,7 +392,7 @@ class BuildParser(object):
                 pre_commands=commands,
                 pre_copy=copies,
             )
-            handle_project(xml, id, project_name)
+            handle_project(xml, id, project_name, ['top'])
 
         process_nspr()
 
@@ -454,6 +465,7 @@ class BuildParser(object):
                 '$(MOZ_OBJ_DIR)\\dist\\idl',
                 '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\md',
                 '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\obsolete',
+                '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\private',
                 '$(MOZ_OBJ_DIR)\\dist\\lib',
             ],
             pre_copy=top_copy,
