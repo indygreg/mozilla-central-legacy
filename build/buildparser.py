@@ -273,6 +273,23 @@ class BuildParser(object):
                 if 'plvrsion.c' in sources:
                     flags.append('-I%s' % m.get_variable_string('OBJDIR'))
 
+                shared_library = None
+                library_dependencies = []
+
+                # For shared libraries, the link command in the simple case is:
+                # $(LINK_DLL) -MAP $(DLLBASE) $(DLL_LIBS) $(EXTRA_LIBS) $(OBJS) $(RES)
+                # This comes from nsprpub's rules.mk when building the
+                # $(SHARED_LIBRARY) target.
+                if m.has_variable('LIBRARY_NAME'):
+                    type = 'shared'
+                    shared_library = '$(IntDir)\%s%s.dll' % ( m.get_variable_string('LIBRARY_NAME'),
+                                                              m.get_variable_string('LIBRARY_VERSION'))
+
+                    library_dependencies.extend(m.get_variable_split('EXTRA_LIBS'))
+
+                    #for v in ('LINK_DLL', 'DLLBASE', 'DLL_LIBS', 'RES'):
+                    #    print '%s: %s' % ( v, m.get_variable_split(v) )
+
                 xml, id, project_name = builder.build_project(
                     version=version,
                     name=name,
@@ -285,6 +302,11 @@ class BuildParser(object):
                     cxxflags=flags,
                     mkdir=mkdir,
                     pre_copy=pre_copy,
+
+                    shared_library=shared_library,
+                    link_dependencies=library_dependencies,
+                    linker_link_library_dependency_inputs=True,
+                    linker_generate_manifest=False, # TODO support this
                 )
 
                 dependencies = local_children
@@ -517,7 +539,7 @@ class BuildMakefile(object):
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
-    def _has_variable(self, name):
+    def has_variable(self, name):
         v = self.makefile.variables.get(name, True)[2]
         return v is not None
 
@@ -528,7 +550,7 @@ class BuildMakefile(object):
         return dirs
 
     def is_module(self):
-        return self._has_variable('MODULE')
+        return self.has_variable('MODULE')
 
     def get_module(self):
         return self.get_variable_string('MODULE')
@@ -537,7 +559,7 @@ class BuildMakefile(object):
         return self.get_variable_string('LIBRARY')
 
     def is_xpidl_module(self):
-        return self._has_variable('XPIDL_MODULE')
+        return self.has_variable('XPIDL_MODULE')
 
     def get_cpp_sources(self):
         return self.get_variable_split('CPPSRCS')
@@ -671,7 +693,14 @@ class VisualStudioBuilder(object):
                       idl_sources=[], idl_out_dir=None, idl_includes=[],
                       defines='', cxxflags=[],
                       pre_commands=[],
-                      pre_copy={}, mkdir=[]
+                      pre_copy={}, mkdir=[],
+
+                      # Linker params
+                      shared_library=None,
+                      link_library_dependencies=True,
+                      link_dependencies=[],
+                      linker_generate_manifest=True,
+                      linker_link_library_dependency_inputs=False,
                       ):
         '''Convert parameters into a Visual Studio Project File string.
 
@@ -732,6 +761,22 @@ class VisualStudioBuilder(object):
 
           mkdir  list
                  List of directories to create before build.
+
+          shared_library  string
+                          Filename of generated shared library file.
+
+          link_library_dependencies  bool
+                                     Whether to link library dependencies by default.
+
+          link_dependencies  list
+                             Additional filenames to link against.
+
+          linker_generate_manifest  bool
+                                    Whether to generate a library manifest
+
+          linker_link_dependency_inputs  bool
+                                         If true, links inputs to dependencies
+                                         instead of output
         '''
 
         if not version:
@@ -763,10 +808,16 @@ class VisualStudioBuilder(object):
         configuration_type = None
         use_make = False
         static = False
+        shared = False
 
         if type == 'custom':
             configuration_type = '0'
             use_make = True
+        elif type == 'shared':
+            shared = True
+            configuration_type = '2'
+            assert(reldir)
+            assert(shared_library)
         elif type == 'static':
             static = True
             configuration_type = '4'
@@ -945,6 +996,26 @@ class VisualStudioBuilder(object):
             tool_compiler.set('AdditionalOptions', ';'.join(additional))
 
         configuration.append(tool_compiler)
+
+        # Handle linker options.
+        if shared:
+            tool_linker = Element('Tool', Name='VCLinkerTool')
+            tool_linker.set('OutputFile', shared_library)
+
+            # library dependencies are linked by default
+            if not link_library_dependencies:
+                tool_linker.set('LinkLibraryDependencies', 'false')
+
+            if len(link_dependencies):
+                tool_linker.set('AdditionalDependencies', ' '.join(link_dependencies))
+
+            if linker_link_library_dependency_inputs:
+                tool_linker.set('UseLibraryDependencyInputs', 'true')
+
+            if not linker_generate_manifest:
+                tool_linker.set('GenerateManifest', 'false')
+
+            configuration.append(tool_linker)
 
         if len(pre_commands):
             pre_build_commands.extend(pre_commands)
