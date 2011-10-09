@@ -135,8 +135,14 @@ class BuildParser(object):
         dirs = makefile.get_dirs()
         dirs.sort()
         for dir in dirs:
+            submake, subfull, subfile = ( None, None, None )
+
             subpath = join(path, dir)
-            submake, subfull, subfile = self.get_dir_makefile(subpath)
+            try:
+                submake, subfull, subfile = self.get_dir_makefile(subpath)
+            except:
+                print 'Makefile for referenced directory does not exist: %s' % subpath
+                continue
 
             library = submake.get_library()
             if library is not None:
@@ -241,6 +247,9 @@ class BuildParser(object):
 
                 header_dist_dir = m.get_variable_string('dist_includedir')
 
+                if m.reldir == 'pr\\include\\obsolete':
+                    header_dist_dir = join(header_dist_dir, 'obsolete')
+
                 pre_copy = {}
                 for header in release_headers:
                     dest = join(header_dist_dir, basename(header)).replace('/', '\\')
@@ -320,10 +329,14 @@ class BuildParser(object):
             m = self.get_dir_makefile('nsprpub')[0]
             handle_nspr_makefile(m)
 
-            # NSPR produces a _pr_bld.h file during the build which records
-            # build metadata. We create a project that does this as a
-            # build event. All the NSPR projects have a dependency on this
-            # one.
+            # NSPR has some special build events to copy certain files, etc.
+            # We emulate this using a special project which does all this as
+            # pre-build events. In the ideal world, these actions would be as
+            # custom builders on files in the project. That's a little effort,
+            # so we go the easy route for now.
+            #
+            # NSPR produces a set of auto-generated .h files. We create these
+            # files as build events.
             # TODO we could probably put these commands on the projects they
             # are closest to.
             now = time()
@@ -346,12 +359,27 @@ class BuildParser(object):
                 commands.append('echo #define _BUILD_TIME %s >> %s' % ( build_time, out_file ))
                 commands.append('echo #define _PRODUCTION "%s" >> %s' % ( name, out_file ))
 
+            copies = {}
+
+            # NSPR also has a set of per-platform .cfg files. We copy these to
+            # the output directory.
+            md_makefile = self.get_dir_makefile('nsprpub\\pr\\include\\md')[0]
+            for config in md_makefile.get_variable_split('CONFIGS'):
+                source = config.replace('/', '\\')
+                dest = '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\md\\%s' % basename(config)
+                copies[source] = dest
+
+            # NSPR takes one of these config files and renames it to prcpucfg.h
+            source = '$(MOZ_SOURCE_DIR)\\nsprpub\\pr\\include\\md\\%s' % m.get_variable_string('MDCPUCFG_H')
+            copies[source] = '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\prcpucfg.h'
+
             xml, id, project_name = builder.build_project(
                 version=version,
                 name='nspr_bld_header',
                 type='utility',
                 dir=m.dir,
-                pre_commands=commands
+                pre_commands=commands,
+                pre_copy=copies,
             )
             handle_project(xml, id, project_name)
 
@@ -366,7 +394,12 @@ class BuildParser(object):
             if dir in ignore_dirs:
                 continue
 
-            m = self.get_dir_makefile(dir)[0]
+            m = None
+            try:
+                m = self.get_dir_makefile(dir)[0]
+            except:
+                print 'Makefile does not exist: %s' % dir
+                continue
 
             if m.is_module():
                 module = m.get_module()
@@ -417,9 +450,11 @@ class BuildParser(object):
             dir=self.topsourcedir,
             source_dir=self.topsourcedir,
             mkdir=[
-                '$(MOZ_OBJ_DIR)\\dist',
+                '$(MOZ_OBJ_DIR)\\dist\\bin',
                 '$(MOZ_OBJ_DIR)\\dist\\idl',
-                '$(MOZ_OBJ_DIR)\\dist\\include'
+                '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\md',
+                '$(MOZ_OBJ_DIR)\\dist\\include\\nspr\\obsolete',
+                '$(MOZ_OBJ_DIR)\\dist\\lib',
             ],
             pre_copy=top_copy,
         )
