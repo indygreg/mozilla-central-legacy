@@ -190,6 +190,7 @@ class BuildParser(object):
         # TODO fix directories causing us hurt
         ignore_dirs = [
             'js/src/xpconnect', # hangs
+            'js/xpconnect',     # somehow forks and calls itself recursively
             'modules/libbz2',   # somehow forks and calls itself recursively
             'security/manager', # hangs
         ]
