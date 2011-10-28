@@ -193,6 +193,7 @@ class MakefileCritic(object):
     like. Its job is to complain so Makefiles can be better.
     '''
     CRITIC_ERROR = ( 'CRITIC_ERROR', 3 )
+    UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', 2 )
 
     def __init__(self):
         pass
@@ -203,15 +204,13 @@ class MakefileCritic(object):
 
         statements = parsefile(filename)
 
-        criticisms = []
         state = {
             'filename':   filename,
             'statements': statements
         }
 
-        criticisms.extend(self.critique_statements(state))
-
-        return criticisms
+        for critique in self.critique_statements(state):
+            yield (filename, critique[0][0], critique[0][1], critique[1])
 
     def critique_statements(self, state):
         # Assemble the variables
@@ -223,8 +222,19 @@ class MakefileCritic(object):
                 if isinstance(vnameexp, StringExpansion):
                     variable_names.append(vnameexp.s)
                 else:
-                    yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
+                    #yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
+                    pass
             else:
-                yield (self.CRITIC_ERROR, 'Unhandled statement type: %s' % type(statement))
+                #yield (self.CRITIC_ERROR, 'Unhandled statement type: %s' % type(statement))
+                pass
 
         state['variable_names'] = variable_names
+        for critique in self.critique_variable_names(state):
+            yield critique
+
+    def critique_variable_names(self, state):
+        '''Critique variable names.'''
+        for name in state['variable_names']:
+            # UPPERCASE names cannot begin with an underscore
+            if name.isupper() and name[0] == '_':
+                yield (self.UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE, name)
