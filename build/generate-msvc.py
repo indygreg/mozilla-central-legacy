@@ -13,8 +13,7 @@
 #
 # The Original Code is Mozilla build system.
 #
-# The Initial Developer of the Original Code is
-# Mozilla Foundation.
+# The Initial Developer of the Original Code is Mozilla Foundation.
 # Portions created by the Initial Developer are Copyright (C) 2011
 # the Initial Developer. All Rights Reserved.
 #
@@ -43,7 +42,7 @@ import sys
 
 sys.path.append('build/pymake')
 
-from buildparser import BuildParser
+from buildparser.extractor import BuildParser
 from optparse import OptionParser
 from sys import argv, exit
 
