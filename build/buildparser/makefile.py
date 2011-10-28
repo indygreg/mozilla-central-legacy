@@ -34,14 +34,23 @@
 #
 # ***** END LICENSE BLOCK *****
 
-# This file contains classes for parsing/reading/analyzing Makefiles in the
-# Mozilla source tree.
+'''This file contains classes for parsing/reading/analyzing Makefiles in the
+Mozilla source tree.
+
+One set of related classes are the Critics. A critic is an entity that
+analyzes something and issues complaints, or critiques. Each complaint has
+a severity and metadata associated with it. In the ideal world, the critics
+are always happy and they don't complain, ever. In the real world, changes
+are made which upset the critics and they get angry.
+'''
 
 from os import walk
 from os.path import abspath, dirname, exists, join
 from pymake.data import Makefile, StringExpansion
 from pymake.parser import parsefile
-from pymake.parserdata import SetVariable
+from pymake.parserdata import Command, ConditionBlock, EmptyDirective, \
+                              ExportDirective, Include, Rule, SetVariable, \
+                              StaticPatternRule, VPathDirective
 
 class MozillaMakefile(object):
     '''A wrapper around a PyMake Makefile tailored to Mozilla's build system'''
@@ -213,20 +222,42 @@ class MakefileCritic(object):
             yield (filename, critique[0][0], critique[0][1], critique[1])
 
     def critique_statements(self, state):
-        # Assemble the variables
         variable_names = []
 
         for statement in state['statements']:
-            if isinstance(statement, SetVariable):
+            if isinstance(statement, Command):
+                # TODO do something
+                pass
+            elif isinstance(statement, ConditionBlock):
+                # TODO do anything?
+                pass
+            elif isinstance(statement, EmptyDirective):
+                # TODO do anything?
+                pass
+            elif isinstance(statement, ExportDirective):
+                # TODO do anything?
+                pass
+            elif isinstance(statement, Include):
+                # TODO do something
+                pass
+            elif isinstance(statement, Rule):
+                # TODO do something
+                pass
+            elif isinstance(statement, SetVariable):
                 vnameexp = statement.vnameexp
                 if isinstance(vnameexp, StringExpansion):
                     variable_names.append(vnameexp.s)
                 else:
-                    #yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
-                    pass
-            else:
-                #yield (self.CRITIC_ERROR, 'Unhandled statement type: %s' % type(statement))
+                    yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
+            elif isinstance(statement, StaticPatternRule):
+                # TODO do anything?
                 pass
+            elif isinstance(statement, VPathDirective):
+                # TODO do something
+                pass
+            else:
+                yield (self.CRITIC_ERROR, 'Unhandled statement type: %s' % type(statement))
+                #pass
 
         state['variable_names'] = variable_names
         for critique in self.critique_variable_names(state):
