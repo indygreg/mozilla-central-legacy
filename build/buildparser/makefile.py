@@ -170,7 +170,16 @@ class MozillaMakefile(object):
 
         return d
 
-class TreeCritic(object):
+class Critic(object):
+    '''The following are critique severity levels ordered from worse to
+    most tolerable.'''
+    SEVERE = 1
+    STERN  = 2
+    HARSH  = 3
+    CRUEL  = 4
+    BRUTAL = 5
+
+class TreeCritic(Critic):
     '''A critic for a build tree.
 
     The tree critic is the master critic. It scours a build directory looking
@@ -195,14 +204,14 @@ class TreeCritic(object):
             for critique in makefile_critic.critique(filename):
                 yield critique
 
-class MakefileCritic(object):
+class MakefileCritic(Critic):
     '''A critic for Makefiles.
 
     It performs analysis of Makefiles and gives criticisms on what it doesn't
     like. Its job is to complain so Makefiles can be better.
     '''
-    CRITIC_ERROR = ( 'CRITIC_ERROR', 3 )
-    UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', 2 )
+    CRITIC_ERROR = ( 'CRITIC_ERROR', Critic.HARSH )
+    UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', Critic.STERN )
 
     def __init__(self):
         pass
