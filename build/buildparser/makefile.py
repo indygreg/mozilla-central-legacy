@@ -37,6 +37,7 @@
 # This file contains classes for parsing/reading/analyzing Makefiles in the
 # Mozilla source tree.
 
+from os import walk
 from os.path import abspath, dirname, exists, join
 from pymake.data import Makefile, StringExpansion
 from pymake.parser import parsefile
@@ -158,39 +159,64 @@ class MozillaMakefile(object):
             'shared':          len(self.get_variable_split('SHARED_LIBRARY_LIBS')) > 0,
         }
 
-        return d    
+        return d
+
+class TreeCritic(object):
+    '''A critic for a build tree.
+
+    The tree critic is the master critic. It scours a build directory looking
+    for everything it and its fellow critics know about. You point it at a
+    directory and it goes.
+    '''
+
+    def __init__(self):
+        pass
+
+    def critique(self, dir):
+        makefile_filenames = []
+
+        for root, dirs, files in walk(dir):
+            for name in files:
+                if name == 'Makefile':
+                    makefile_filenames.append(join(root, name))
+
+        makefile_critic = MakefileCritic()
+
+        for filename in makefile_filenames:
+            for critique in makefile_critic.critique(filename):
+                yield critique
 
 class MakefileCritic(object):
     '''A critic for Makefiles.
-    
+
     It performs analysis of Makefiles and gives criticisms on what it doesn't
     like. Its job is to complain so Makefiles can be better.
     '''
     CRITIC_ERROR = ( 'CRITIC_ERROR', 3 )
-    
+
     def __init__(self):
         pass
-        
+
     def critique(self, filename):
         if not exists(filename):
             raise 'file does not exist: %s' % filename
-            
+
         statements = parsefile(filename)
-        
+
         criticisms = []
         state = {
             'filename':   filename,
             'statements': statements
         }
-        
+
         criticisms.extend(self.critique_statements(state))
-        
+
         return criticisms
 
     def critique_statements(self, state):
         # Assemble the variables
         variable_names = []
-        
+
         for statement in state['statements']:
             if isinstance(statement, SetVariable):
                 vnameexp = statement.vnameexp
@@ -200,5 +226,5 @@ class MakefileCritic(object):
                     yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
             else:
                 yield (self.CRITIC_ERROR, 'Unhandled statement type: %s' % type(statement))
-                    
+
         state['variable_names'] = variable_names

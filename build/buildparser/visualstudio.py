@@ -67,7 +67,7 @@ def visual_studio_product_to_internal_version(version, solution=False):
             return '11.00'
         else:
             raise Exception('Unknown version seen: %s' % version)
-            
+
 class VisualStudioBuilder(object):
     def __init__(self):
         self.RE_WARNING = re.compile('-W(\d+)')
