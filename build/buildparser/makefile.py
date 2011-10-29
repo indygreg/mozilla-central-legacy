@@ -205,7 +205,7 @@ class MozillaMakefile(Makefile):
     def get_reldir(self):
         absdir = os.path.abspath(self.dir)
 
-        return absdir[len(self.objtop)+1:]
+        return absdir[len(self.get_objtop())+1:]
 
     def get_objtop(self):
         depth = self.get_variable_string('DEPTH')

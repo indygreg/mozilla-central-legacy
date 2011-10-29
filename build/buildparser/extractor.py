@@ -214,9 +214,9 @@ class BuildParser(object):
                 header_dist_dir = m.get_variable_string('dist_includedir')
 
                 # bad code alert!
-                if m.reldir == 'pr\\include\\obsolete':
+                if m.get_reldir() == 'pr\\include\\obsolete':
                     header_dist_dir = join(header_dist_dir, 'obsolete')
-                elif m.reldir == 'pr\\include\\private':
+                elif m.get_reldir() == 'pr\\include\\private':
                     header_dist_dir = join(header_dist_dir, 'private')
 
                 pre_copy = {}
@@ -228,9 +228,9 @@ class BuildParser(object):
                 parent = True
 
                 type = 'custom'
-                if m.reldir:
+                if m.get_reldir():
                     type = 'static'
-                    name = 'nspr_%s' % m.reldir.replace('\\', '_')
+                    name = 'nspr_%s' % m.get_reldir().replace('\\', '_')
                     parent = False
 
                 if not len(sources):
@@ -273,7 +273,7 @@ class BuildParser(object):
                     name=name,
                     dir=m.dir,
                     source_dir=m.get_variable_string('srcdir'),
-                    reldir=join('nsprpub', m.reldir),
+                    reldir=join('nsprpub', m.get_reldir()),
                     type=type,
                     headers=headers,
                     c_sources=sources,
