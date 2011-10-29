@@ -44,14 +44,11 @@ are always happy and they don't complain, ever. In the real world, changes
 are made which upset the critics and they get angry.
 '''
 
-from os import walk
-from pymake.parser import parsefile
-from pymake.parserdata import Command, ConditionBlock, EmptyDirective, \
-                              ExportDirective, Include, Rule, SetVariable, \
-                              StaticPatternRule, VPathDirective
-
+import os
 import os.path
 import pymake.data
+import pymake.parser
+import pymake.parserdata
 
 class Makefile(object):
     '''A generic wrapper around a PyMake Makefile.
@@ -213,7 +210,7 @@ class TreeCritic(Critic):
     def critique(self, dir):
         makefile_filenames = []
 
-        for root, dirs, files in walk(dir):
+        for root, dirs, files in os.walk(dir):
             for name in files:
                 if name == 'Makefile':
                     makefile_filenames.append(os.path.join(root, name))
@@ -240,7 +237,7 @@ class MakefileCritic(Critic):
         if not os.path.exists(filename):
             raise 'file does not exist: %s' % filename
 
-        statements = parsefile(filename)
+        statements = pymake.parser.parsefile(filename)
 
         state = {
             'filename':   filename,
@@ -254,34 +251,34 @@ class MakefileCritic(Critic):
         variable_names = []
 
         for statement in state['statements']:
-            if isinstance(statement, Command):
+            if isinstance(statement, pymake.parserdata.Command):
                 # TODO do something
                 pass
-            elif isinstance(statement, ConditionBlock):
+            elif isinstance(statement, pymake.parserdata.ConditionBlock):
                 # TODO do anything?
                 pass
-            elif isinstance(statement, EmptyDirective):
+            elif isinstance(statement, pymake.parserdata.EmptyDirective):
                 # TODO do anything?
                 pass
-            elif isinstance(statement, ExportDirective):
+            elif isinstance(statement, pymake.parserdata.ExportDirective):
                 # TODO do anything?
                 pass
-            elif isinstance(statement, Include):
+            elif isinstance(statement, pymake.parserdata.Include):
                 # TODO do something
                 pass
-            elif isinstance(statement, Rule):
+            elif isinstance(statement, pymake.parserdata.Rule):
                 # TODO do something
                 pass
-            elif isinstance(statement, SetVariable):
+            elif isinstance(statement, pymake.parserdata.SetVariable):
                 vnameexp = statement.vnameexp
                 if isinstance(vnameexp, pymake.data.StringExpansion):
                     variable_names.append(vnameexp.s)
                 else:
                     yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
-            elif isinstance(statement, StaticPatternRule):
+            elif isinstance(statement, pymake.parserdata.StaticPatternRule):
                 # TODO do anything?
                 pass
-            elif isinstance(statement, VPathDirective):
+            elif isinstance(statement, pymake.parserdata.VPathDirective):
                 # TODO do something
                 pass
             else:
