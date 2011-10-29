@@ -45,37 +45,39 @@ are made which upset the critics and they get angry.
 '''
 
 from os import walk
-from os.path import abspath, dirname, exists, join
-from pymake.data import Makefile, StringExpansion
 from pymake.parser import parsefile
 from pymake.parserdata import Command, ConditionBlock, EmptyDirective, \
                               ExportDirective, Include, Rule, SetVariable, \
                               StaticPatternRule, VPathDirective
 
-class MozillaMakefile(object):
-    '''A wrapper around a PyMake Makefile tailored to Mozilla's build system'''
+import os.path
+import pymake.data
 
+class Makefile(object):
+    '''A generic wrapper around a PyMake Makefile.
+
+    This provides a convenient API that is missing from PyMake. Perhaps it will
+    be merged in some day.
+    '''
     def __init__(self, filename):
-        '''Construct a Mozilla Makefile'''
+        '''Construct a Makefile from a file'''
+        if not os.path.exists(filename):
+            raise Exception('Path does not exist: %s' % filename)
+
         self.filename = filename
-        self.dir      = dirname(filename)
-        self.makefile = Makefile(workdir=self.dir)
+        self.dir      = os.path.dirname(filename)
+        self.makefile = pymake.data.Makefile(workdir=self.dir)
 
         self.makefile.include(filename)
         self.makefile.finishparsing()
 
-        self.module = self.get_module()
-
-        depth = self.get_variable_string('DEPTH')
-        if not depth:
-            depth = self.get_variable_string('MOD_DEPTH')
-
-        self.objtop = abspath(join(self.dir, depth))
-        absdir = abspath(self.dir)
-
-        self.reldir = absdir[len(self.objtop)+1:]
+    def has_variable(self, name):
+        '''Determines whether a named variable is defined.'''
+        v = self.makefile.variables.get(name, True)[2]
+        return v is not None
 
     def get_variable_string(self, name):
+        '''Obtain a named variable as a string.'''
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return None
@@ -83,15 +85,30 @@ class MozillaMakefile(object):
         return v.resolvestr(self.makefile, self.makefile.variables)
 
     def get_variable_split(self, name):
+        '''Obtain a named variable as a list.'''
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return []
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
-    def has_variable(self, name):
-        v = self.makefile.variables.get(name, True)[2]
-        return v is not None
+
+class MozillaMakefile(Makefile):
+    '''A Makefile with knowledge of Mozilla's build system.'''
+
+    def __init__(self, filename):
+        Makefile.__init__(self, filename)
+
+        self.module = self.get_module()
+
+        depth = self.get_variable_string('DEPTH')
+        if not depth:
+            depth = self.get_variable_string('MOD_DEPTH')
+
+        self.objtop = os.path.abspath(os.path.join(self.dir, depth))
+        absdir = os.path.abspath(self.dir)
+
+        self.reldir = absdir[len(self.objtop)+1:]
 
     def get_dirs(self):
         dirs = self.get_variable_split('DIRS')
@@ -199,7 +216,7 @@ class TreeCritic(Critic):
         for root, dirs, files in walk(dir):
             for name in files:
                 if name == 'Makefile':
-                    makefile_filenames.append(join(root, name))
+                    makefile_filenames.append(os.path.join(root, name))
 
         makefile_critic = MakefileCritic()
 
@@ -220,7 +237,7 @@ class MakefileCritic(Critic):
         pass
 
     def critique(self, filename):
-        if not exists(filename):
+        if not os.path.exists(filename):
             raise 'file does not exist: %s' % filename
 
         statements = parsefile(filename)
@@ -257,7 +274,7 @@ class MakefileCritic(Critic):
                 pass
             elif isinstance(statement, SetVariable):
                 vnameexp = statement.vnameexp
-                if isinstance(vnameexp, StringExpansion):
+                if isinstance(vnameexp, pymake.data.StringExpansion):
                     variable_names.append(vnameexp.s)
                 else:
                     yield (self.CRITIC_ERROR, 'Unhandled vnamexp type: %s' % type(vnameexp))
