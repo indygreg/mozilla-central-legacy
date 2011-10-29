@@ -63,11 +63,7 @@ class BuildParser(object):
         if not exists(path):
             raise Exception('Makefile does not exist: %s' % path)
 
-        makefile = Makefile(workdir=self.dir)
-        makefile.include(path)
-        makefile.finishparsing()
-
-        self.topmakefile = MozillaMakefile(makefile)
+        self.topmakefile = MozillaMakefile(path)
         self.topsourcedir = self.topmakefile.get_top_source_dir()
 
     def get_tiers(self):
@@ -87,11 +83,7 @@ class BuildParser(object):
         if not exists(file):
             raise Exception('path does not exist: %s' % file)
 
-        m = Makefile(workdir=full)
-        m.include(file)
-        m.finishparsing()
-
-        return (MozillaMakefile(m), full, file)
+        return (MozillaMakefile(file), full, file)
 
     def get_top_source_directory(self):
         return self.topmakefile.get_variable_string('topsrcdir')

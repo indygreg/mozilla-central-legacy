@@ -55,11 +55,14 @@ from pymake.parserdata import Command, ConditionBlock, EmptyDirective, \
 class MozillaMakefile(object):
     '''A wrapper around a PyMake Makefile tailored to Mozilla's build system'''
 
-    def __init__(self, makefile):
-        '''Construct from an existing PyMake Makefile instance'''
-        self.makefile = makefile
-        self.filename = makefile.included[0][0]
-        self.dir      = dirname(self.filename)
+    def __init__(self, filename):
+        '''Construct a Mozilla Makefile'''
+        self.filename = filename
+        self.dir      = dirname(filename)
+        self.makefile = Makefile(workdir=self.dir)
+
+        self.makefile.include(filename)
+        self.makefile.finishparsing()
 
         self.module = self.get_module()
 
