@@ -298,6 +298,10 @@ class MozillaMakefile(Makefile):
             else:
                 l.defines.add(define)
 
+        l.add_used_variable('CFLAGS')
+        for f in self.get_variable_split('CFLAGS'):
+            l.c_flags.add(f)
+
         l.add_used_variable('CXXFLAGS')
         for f in self.get_variable_split('CXXFLAGS'):
             l.cxx_flags.add(f)
@@ -350,6 +354,12 @@ class MozillaMakefile(Makefile):
 
         This is the main function that extracts metadata from individual
         Makefiles and turns them into Python data structures.
+
+        This method emits a set of MakefileDerivedObjects which describe the
+        Makefile. These objects each describe an individual part of the
+        build system, e.g. libraries, IDL files, tests, etc. These emitted
+        objects can be fed into another system for conversion to another
+        build system, fed into a monolithic data structure, etc.
         '''
         misc = data.MiscInfo()
         tracker = data.UsedVariableInfo()
