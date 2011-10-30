@@ -162,6 +162,24 @@ class XPIDLInfo(MakefileDerivedObject):
         self.module  = None
         self.sources = set()
 
+class TestInfo(MakefileDerivedObject):
+    '''Represents info relevant to testing.'''
+
+    __slots__ = (
+        'browser_test_files',   # Set of files used for browser tests
+        'chrome_test_files',    # Set of files used for chrome tests
+        'test_files',           # Set of regular test files
+        'xpcshell_test_dirs',   # Set of directories holding xpcshell tests
+    )
+
+    def __init__(self):
+        MakefileDerivedObject.__init__(self)
+
+        self.browser_test_files = set()
+        self.chrome_test_files  = set()
+        self.test_files         = set()
+        self.xpcshell_test_dirs = set()
+
 class UsedVariableInfo(MakefileDerivedObject):
     '''Non-abstract version of MakefileDerivedObject.
 
@@ -175,10 +193,15 @@ class MiscInfo(MakefileDerivedObject):
     '''Used to track misc info that isn't captured well anywhere else.'''
 
     __slots__ = (
-        'is_gre_module'   # Whether the Makefile is a GRE module and has prefs
+        'chrome_dependencies', # Set of extra dependencies for the chrome target
+        'is_gre_module',       # Whether the Makefile is a GRE module and has prefs
+        'platform_dirs',       # Set of directories only compiled on the current
+                               # platform.
     )
 
     def __init__(self):
         MakefileDerivedObject.__init__(self)
 
-        self.is_gre_module = None
+        self.chrome_dependencies = set()
+        self.is_gre_module       = None
+        self.platform_dirs       = set()

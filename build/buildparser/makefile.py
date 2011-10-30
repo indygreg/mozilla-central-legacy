@@ -200,6 +200,7 @@ class MozillaMakefile(Makefile):
     DIRS         = 3
     XPIDL_MODULE = 4
     EXPORTS      = 5
+    TEST         = 6
 
     '''Variables common in most Makefiles that aren't really that special.
 
@@ -241,6 +242,8 @@ class MozillaMakefile(Makefile):
                 self.traits.add(self.XPIDL_MODULE)
             elif name == 'EXPORTS':
                 self.traits.add(self.EXPORTS)
+            elif name in ('_TEST_FILES', 'XPCSHELL_TESTS', '_BROWSER_TEST_FILES', '_CHROME_TEST_FILES'):
+                self.traits.add(self.TEST)
 
         return self.traits
 
@@ -377,13 +380,6 @@ class MozillaMakefile(Makefile):
             li = self.get_library_info()
             yield li
 
-        # Identifies directories holding xpcshell test files
-        # TODO do something with this
-        tracker.add_used_variable('XPCSHELL_TESTS')
-        if self.has_own_variable('XPCSHELL_TESTS'):
-            for dir in self.get_variable_split('XPCSHELL_TESTS'):
-                pass
-
         # MODULE_NAME is only used for error checking, it appears.
         tracker.add_used_variable('MODULE_NAME')
 
@@ -416,9 +412,47 @@ class MozillaMakefile(Makefile):
 
             yield idl
 
+        # Test definitions
+        if self.TEST in traits:
+            ti = data.TestInfo()
+
+            # Regular test files
+            ti.add_used_variable('_TEST_FILES')
+            if self.has_own_variable('_TEST_FILES'):
+                for f in self.get_variable_split('_TEST_FILES'):
+                    ti.test_files.add(f)
+
+            # Identifies directories holding xpcshell test files
+            ti.add_used_variable('XPCSHELL_TESTS')
+            if self.has_own_variable('XPCSHELL_TESTS'):
+                for dir in self.get_variable_split('XPCSHELL_TESTS'):
+                    ti.xpcshell_test_dirs.add(dir)
+
+            # Files for browser tests
+            ti.add_used_variable('_BROWSER_TEST_FILES')
+            if self.has_own_variable('_BROWSER_TEST_FILES'):
+                for f in self.get_variable_split('_BROWSER_TEST_FILES'):
+                    ti.browser_test_files.add(f)
+
+            # Files for chrome tests
+            ti.add_used_variable('_CHROME_TEST_FILES')
+            if self.has_own_variable('_CHROME_TEST_FILES'):
+                for f in self.get_variable_split('_CHROME_TEST_FILES'):
+                    ti.chrome_test_files.add(f)
+
+            yield ti
+
         misc.add_used_variable('GRE_MODULE')
         if self.has_own_variable('GRE_MODULE'):
             misc.is_gre_module = True
+
+        #misc.add_used_variable('PLATFORM_DIR')
+        #for d in self.get_variable_split('PLATFORM_DIR'):
+        #    misc.platform_dirs.add(d)
+
+        #misc.add_used_variable('CHROME_DEPS')
+        #for d in self.get_variable_split('CHROME_DEPS'):
+        #    misc.chrome_dependencies.add(d)
 
         yield tracker
         yield misc
