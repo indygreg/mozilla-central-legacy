@@ -43,11 +43,19 @@ class MakefileDerivedObject(object):
     '''Abstract class for something that was derived from a Makefile.'''
 
     __slots__ = (
+        'top_source_dir',   # The top source code directory
         'used_variables'    # Keeps track of variables consulted to build this object
     )
 
-    def __init__(self):
+    def __init__(self, makefile):
+        assert(makefile is not None)
+
+        self.top_source_dir = None
         self.used_variables = set()
+
+        # TODO this causes some Makefiles to crash
+        #if makefile.has_own_variable('topsrcdir'):
+        #    self.top_source_dir = makefile.get_variable_string('topsrcdir')
 
     def add_used_variable(self, name):
         '''Register a variable as used to create the object.
@@ -109,9 +117,9 @@ class LibraryInfo(MakefileDerivedObject):
         'use_static_libs',     # Compile against static libraries
     )
 
-    def __init__(self):
+    def __init__(self, makefile):
         '''Create a new library instance.'''
-        MakefileDerivedObject.__init__(self)
+        MakefileDerivedObject.__init__(self, makefile)
 
         self.c_flags             = set()
         self.cpp_sources         = set()
@@ -136,8 +144,8 @@ class ExportsInfo(MakefileDerivedObject):
         'exports', # dict of str -> set of namespace to filenames
     )
 
-    def __init__(self):
-        MakefileDerivedObject.__init__(self)
+    def __init__(self, makefile):
+        MakefileDerivedObject.__init__(self, makefile)
 
         self.exports = {}
 
@@ -163,8 +171,8 @@ class XPIDLInfo(MakefileDerivedObject):
         'sources',     # Set of source IDL filenames
     )
 
-    def __init__(self):
-        MakefileDerivedObject.__init__(self)
+    def __init__(self, makefile):
+        MakefileDerivedObject.__init__(self, makefile)
 
         self.module  = None
         self.sources = set()
@@ -179,8 +187,8 @@ class TestInfo(MakefileDerivedObject):
         'xpcshell_test_dirs',   # Set of directories holding xpcshell tests
     )
 
-    def __init__(self):
-        MakefileDerivedObject.__init__(self)
+    def __init__(self, makefile):
+        MakefileDerivedObject.__init__(self, makefile)
 
         self.browser_test_files = set()
         self.chrome_test_files  = set()
@@ -193,8 +201,8 @@ class UsedVariableInfo(MakefileDerivedObject):
     This is used simply for variable tracking purposes.
     '''
 
-    def __init__(self):
-        MakefileDerivedObject.__init__(self)
+    def __init__(self, makefile):
+        MakefileDerivedObject.__init__(self, makefile)
 
 class MiscInfo(MakefileDerivedObject):
     '''Used to track misc info that isn't captured well anywhere else.'''
@@ -210,8 +218,8 @@ class MiscInfo(MakefileDerivedObject):
                                # platform.
     )
 
-    def __init__(self):
-        MakefileDerivedObject.__init__(self)
+    def __init__(self, makefile):
+        MakefileDerivedObject.__init__(self, makefile)
 
         self.chrome_dependencies = set()
         self.defines             = set()

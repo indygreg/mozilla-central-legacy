@@ -58,6 +58,14 @@ class Makefile(object):
     This provides a convenient API that is missing from PyMake. Perhaps it will
     be merged in some day.
     '''
+    __slots__ = (
+        'filename',      # Filename of the Makefile
+        'dir',           # Directory holding the Makefile
+        'makefile',      # PyMake Makefile instance
+        'statements',    # List of PyMake-parsed statements in the main file
+        'own_variables', # Dict of variables defined in the main file
+    )
+
     def __init__(self, filename):
         '''Construct a Makefile from a file'''
         if not os.path.exists(filename):
@@ -293,7 +301,7 @@ class MozillaMakefile(Makefile):
         '''Obtain information for the library defined by this Makefile.
 
         Returns a data.LibraryInfo instance'''
-        l = data.LibraryInfo()
+        l = data.LibraryInfo(self)
 
         # It is possible for the name to be not defined if the trait was
         # in a conditional that wasn't true.
@@ -386,8 +394,8 @@ class MozillaMakefile(Makefile):
         objects can be fed into another system for conversion to another
         build system, fed into a monolithic data structure, etc.
         '''
-        misc = data.MiscInfo()
-        tracker = data.UsedVariableInfo()
+        misc = data.MiscInfo(self)
+        tracker = data.UsedVariableInfo(self)
         for v in self.COMMON_VARIABLES:
             tracker.add_used_variable(v)
 
@@ -411,7 +419,7 @@ class MozillaMakefile(Makefile):
         # EXPORTS and friends holds information on what files to copy
         # to an output directory.
         if self.EXPORTS in traits:
-            exports = data.ExportsInfo()
+            exports = data.ExportsInfo(self)
             exports.add_used_variable('EXPORTS')
             for export in self.get_variable_split('EXPORTS'):
                 exports.add_export(export, namespace=None)
@@ -427,7 +435,7 @@ class MozillaMakefile(Makefile):
 
         # XP IDL file generation
         if self.XPIDL in traits:
-            idl = data.XPIDLInfo()
+            idl = data.XPIDLInfo(self)
             idl.add_used_variable('XPIDL_MODULE')
             if self.has_own_variable('XPIDL_MODULE'):
                 idl.module = self.get_variable_string('XPIDL_MODULE')
@@ -446,7 +454,7 @@ class MozillaMakefile(Makefile):
 
         # Test definitions
         if self.TEST in traits:
-            ti = data.TestInfo()
+            ti = data.TestInfo(self)
 
             # Regular test files
             ti.add_used_variable('_TEST_FILES')
