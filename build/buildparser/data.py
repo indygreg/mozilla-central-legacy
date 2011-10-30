@@ -94,15 +94,19 @@ class LibraryInfo(MakefileDerivedObject):
         'cxx_flags',           # C++ compiler flags
         'defines',             # set of #define strings to use when compiling this library
         'export_library',      # Whether to export the library
+        'includes',            # Set of extra paths for included files
+                               # TODO is includes the same as local_includes?
         'local_includes',      # Set of extra paths to search for included files in
         'name',                # The name of the library
         'pic',                 # Whether to generate position-independent code
         'is_component',        # Whether the library is a component, whatever that means
+        'is_shared',           # Whether the library is shared
         'is_static',           # Whether the library is static
         'shared_library_libs', # Set of static libraries to link in when building
                                # a shared library
         'short_libname',       # This doesn't appear to be used anywhere
                                # significant, but we capture it anyway.
+        'use_static_libs',     # Compile against static libraries
     )
 
     def __init__(self):
@@ -114,12 +118,15 @@ class LibraryInfo(MakefileDerivedObject):
         self.cxx_flags           = set()
         self.defines             = set()
         self.export_library      = None
+        self.includes            = set()
         self.local_includes      = set()
         self.pic                 = None
         self.is_component        = None
+        self.is_shared           = None
         self.is_static           = None
         self.shared_library_libs = set()
         self.short_libname       = None
+        self.use_static_libs     = None
 
 
 class ExportsInfo(MakefileDerivedObject):
@@ -194,6 +201,10 @@ class MiscInfo(MakefileDerivedObject):
 
     __slots__ = (
         'chrome_dependencies', # Set of extra dependencies for the chrome target
+        'defines',             # Set of DEFINES for JarMaker and other things
+        'extra_components',    # Set of extra components, whatever they are
+        'extra_js_module',     # Set of extra JavaScript modules
+        'garbage',             # Set of extra things to clean up
         'is_gre_module',       # Whether the Makefile is a GRE module and has prefs
         'platform_dirs',       # Set of directories only compiled on the current
                                # platform.
@@ -203,5 +214,9 @@ class MiscInfo(MakefileDerivedObject):
         MakefileDerivedObject.__init__(self)
 
         self.chrome_dependencies = set()
+        self.defines             = set()
+        self.extra_components    = set()
+        self.extra_js_module     = set()
+        self.garbage             = set()
         self.is_gre_module       = None
         self.platform_dirs       = set()
