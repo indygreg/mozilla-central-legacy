@@ -168,6 +168,13 @@ class ObjectDirectoryParser(object):
             return
 
         own_variables = set(makefile.get_own_variable_names(include_conditionals=True))
+
+        # prune out lowercase variables, which are defined as local
+        lowercase_variables = set()
+        for v in own_variables:
+            if v.islower():
+                lowercase_variables.add(v)
+
         used_variables = set()
         # We now register this Makefile with the main tree
         for obj in makefile.get_data_objects():
@@ -175,7 +182,7 @@ class ObjectDirectoryParser(object):
 
             used_variables |= obj.used_variables
 
-        unused_variables = own_variables - used_variables
+        unused_variables = own_variables - used_variables - lowercase_variables
         if len(unused_variables):
             print makefile.filename
             print unused_variables
