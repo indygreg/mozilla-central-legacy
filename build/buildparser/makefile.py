@@ -209,6 +209,7 @@ class MozillaMakefile(Makefile):
     XPIDL        = 4
     EXPORTS      = 5
     TEST         = 6
+    PROGRAM      = 7
 
     '''Variables common in most Makefiles that aren't really that special.
 
@@ -258,6 +259,8 @@ class MozillaMakefile(Makefile):
                 self.traits.add(self.EXPORTS)
             elif name in ('_TEST_FILES', 'XPCSHELL_TESTS', '_BROWSER_TEST_FILES', '_CHROME_TEST_FILES'):
                 self.traits.add(self.TEST)
+            elif name in ('PROGRAM'):
+                self.traits.add(self.PROGRAM)
 
         return self.traits
 
@@ -412,6 +415,11 @@ class MozillaMakefile(Makefile):
         if self.LIBRARY in traits:
             li = self.get_library_info()
             yield li
+
+        if self.PROGRAM in traits:
+            # TODO capture programs. Executables and libraries are two sides of
+            # the same coin. How should this be captured?
+            pass
 
         # MODULE_NAME is only used for error checking, it appears.
         tracker.add_used_variable('MODULE_NAME')
