@@ -889,3 +889,39 @@ class VisualStudioBuilder(object):
         propspath = join(outdir, 'mozilla.vsprops')
         with open(propspath, 'w') as fh:
             fh.write(xml.etree.ElementTree.tostring(props, encoding='utf-8'))
+
+
+
+        # The following was left over from the old single file extractor
+        #info = self.get_module_data(dir)
+        #names = []
+        #for library in info['libraries']:
+        #    proj, id, name = builder.build_project_for_library(
+        #        library, name, version=version
+        #    )
+        #
+        #    handle_project(proj, id, name)
+        #    names.append(name)
+        #
+        #    for idl in library['xpidlsrcs']:
+        #        source = join('$(MOZ_SOURCE_DIR)', library['reldir'], idl)
+        #        top_copy[source] = join('$(MOZ_OBJ_DIR)', 'dist', 'idl', idl)
+        #
+        #if len(names):
+        #    print 'Wrote projects for libraries: %s' % ' '.join(names)
+        #
+        #for path in info['unhandled']:
+        #    print 'Writing generic project for %s' % path
+        #    m2 = self.get_dir_makefile(path)[0]
+        #
+        #    proj, id, name = builder.build_project_for_generic(
+        #        m2, version=version
+        #    )
+        #    handle_project(proj, id, name)
+
+        # fall back to generic case
+        #print 'Writing generic project for %s' % directory
+        #proj, id, name = builder.build_project_for_generic(
+        #  m, version=version
+        #)
+        #handle_project(proj, id, name)
