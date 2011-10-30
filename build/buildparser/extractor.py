@@ -65,7 +65,6 @@ class ObjectDirectoryParser(object):
         'modules/libbz2',   # somehow forks and calls itself recursively
         'nsprpub',
         'security/manager', # hangs
-        'toolkit/components/feeds',
         'toolkit/content',
         'toolkit/xre',
         'widget',
