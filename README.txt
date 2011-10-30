@@ -1,12 +1,52 @@
-This is a branch adding experimental Visual Studio project generation to
-mozilla-central.
+This is a branch adding experimental build system parsing and conversions to
+the tree.
 
-The crux of the code is in build/buildparser.py and build/generate-msvc.py.
+Nearly all the new code lives in build/buildparser/*.
 
-This documentation may be spotty at times. I apologize.
+VISUAL STUDIO OUTPUT IS CURRENTLY TOTALLY BUSTED. DON'T ATTEMPT TO USE!
 
-Things are in a very hacky state and are very fragile. It is a work in
-progress. You have beer warned.
+Architecture
+============
+
+The code is conceptualized in 3 components: parsing/extraction,
+representation, and transformation.
+
+In the parsing/extraction component, data from our existing build system
+is read or inferred from existing files, mainly Makefiles. This component
+contains all the logic for inferring how our build system works today. It
+looks at a Makefile and says "it is producing a static library from input
+files X and Y," "it is exporting an IDL I," "it defines some JavaScript
+modules J," etc.
+
+The parsing/extraction component converts existing data into unified and
+rather generic data structures. These data structures can be thought of as
+the data-centric components of the Makefiles. In other words, they are
+Makefiles without targets and rules.
+
+The third component is transformation. Transformation components take the
+data representations from the previous component and transform them into
+something. For example, it could take all the libraries and produce Visual
+Studio projects for them. Or, you could produce a derecursified Makefile.
+
+To visualize, data moves through the system thus:
+
+  |------------|           |---------------|           |----------------|
+  |            |           |               |           |                |
+  | Extraction | -->-->--> |Representation | -->-->--> | Transformation |
+  |            |           |               |           |                |
+  |------------|           |---------------|           |----------------|
+                                                               |
+                                            |--------|         |
+                                            |        |         |
+                                            | Output | <---<---|
+                                            |        |
+                                            |--------|
+
+Currently, the only Transformation stage implemented in the branch is Visual
+Studio.
+
+Visual Studio Generation
+========================
 
 To build Visual Studio projects and a solution, assuming you have a clean
 checkout, first launch your Windows compilation environment by starting
@@ -27,111 +67,123 @@ it supports 2005 and 2010 file formats. But, I haven't fully tested with these
 yet. The formats are mostly compatible, I just need to do the leg work. So,
 stick with MSVC 2008, please.
 
-How it Works
-============
+Extraction in Detail
+====================
 
-As stated previously, project generation works by extracting metadata from
-Makefiles. This is worth expanding on. Many of the Makefiles in the source
-tree are similar by convention: they contain variables like "CPPSRCS" and
-"XPIDLSRCS" that identify sets of files to operate on. Makefile magic in
-config/rules.mk expands these variables to rules that perform the build steps.
-For the Makefiles that follow this convention, we need to emulate behavior of
-rules.mk in Visual Studio projects. This is easier said than done, as rules.mk
-is quite complex. But, it should be possible.
+As stated previously, the first step is data extraction from the existing
+build system. This is worth expanding on.
 
-MSVC generation effectively works in two passes:
+Many of the Makefiles in the Mozilla source tree are data-driven and mostly
+declarative. You define a variable of a certain name, say "CPPSRCS," and
+an inherited makefile converts that to a target and applies a known rule
+for doing something with it. In our example, it knows that every item inside
+"CPPSRCS" is a C++ source file and should be compiled with the C++ compiler.
 
-  1) Extract metadata from Makefiles
-  2) Convert metadata into Visual Studio projects
+The code in buildparser/makefile.py extracts the data-side of this convention
+using the PyMake API to access Makefile variables.
 
-Theoretically, step #2 could be any build system target. I have just focused
-on MSVC for this branch.
+MozillaMakefile.get_data_objects() is a generator function which emits a set of
+data.MakefileDerivedObject's which describe what the Makefile is defining. For
+example, it may emit a LibraryInfo, XPIDLInfo, and TestInfo, each describing a
+specific aspect of the Makefile. These items are all related in that they are
+defined by the same Makefile. However, in terms of a build system, they are
+mostly independent.
 
-Currently, the extraction process is limited to Makefiles defining C++
-libraries and modules. For all other Makefiles, it falls back to just saying
-"hey, this thing exists."
+The code in extractor.py merely iterates over all Makefiles in the build tree
+and emits a stream of these MakefileDerivedObject's.
 
-The process of converting the metadata into Visual Studio projects is
-cumbersome. The VisualStudioBuilder class encapsulates this logic. The
-build_project method is what does all the magic. It takes a bunch of
-arguments and tries to do the right thing. For C++ projects, it is able
-to convert the compiler arguments to Visual Studio project native options.
-The coverage is far from complete, however. Currently, it just prints on
-unknown flags and these are dropped. With enough time, we should get 100%
-coverage.
+The set of emitted representations of build system entities is aggregated in
+a unified Python object, TreeInfo. This object is effectively a giant data
+structure defining our build system. Of course, there are convenient APIs on
+this data structure.
 
-What Works
-==========
+Transformation
+==============
 
-Basic Visual Studio project generation works. Files from the directories are
-included in the projects. It also produces a solution which includes all the
-projects. When you open a file for editing, IntelliSense seems to work!
+Once you have the build system defining as a data structure, the sky is the
+limit in terms of what you can do. Here are some ideas:
 
-C++ library projects are created as such. Using a vanilla .mozconfig, it will
-recognize all the arguments for .cpp compilation and convert these to project
-options.
+* Produce Visual Studio projects
+* Produce XCode projects
+* Produce a derecursified Makefile
+* Produce GYP files and then arrive at above
+* Produce an SVG depicting dependencies between entities
+* Write a custom build tool which efficiently performs work on the in-memory
+  dependency graph
 
-Basic compilation of IDLs and some C++ works!
+Effort is currently being spent on Visual Studio output because Windows
+development is the most lacking of all the platforms, IMO. However,
+transformations to a derecursified Makefile are very interesting and will
+likely lead to significant performance wins.
 
-What Doesn't Work
-=================
+In a build utopia, it would be possible to build the entire tree without having
+to fork() or create a new thread (except for parallelism, which we'd obviously
+want). This could be done by coding all the build steps in Python (or any
+language - Python is the obvious choice since a lot of our support tools used
+during the build process are written in Python today) and then performing a
+function call into LLVM/Clang to do the compiling (LLVM/Clang, unlike GCC, is
+designed as a library, so you can do crazy stuff like this).
 
-A lot.
+Visual Studio Support
+=====================
 
-Things don't compile inside Visual Studio. Some C++ files may compile,
-but more often than not they don't.
+We can generate the following in Visual Studio:
 
-There are no defined dependencies inside the solution, so even if things
-did build, the order would be all wrong.
+* Projects from all Makefiles
+* A solution incorporating all projects
+* C++ static libraries
+* IDL generation
+* Basic dependencies
 
-JavaScript files aren't included in projects.
+The following doesn't work yet:
 
-Shared libraries aren't defined in projects yet.
+* JavaScript integration
+* Test integration
+* .exe generation
+* DLL generation
+* Proper dependencies
 
-There are countless known issues and limitations. There are also unknown
-unknowns which only the build team masters will be able to help with.
-We'll get there...
+Ramble on Data Driven Building
+==============================
 
-Ramble on Build Metadata
-========================
+This experiment relies on data-driven and declarative build data. What I mean
+by that is that the entities describing what is built should be declarative
+and be focused on the data itself, not how to build it. This is the approach
+Google takes with their GYP system. GYP uses Python-syntax files to define the
+build system (see https://code.google.com/p/gyp/wiki/GypLanguageSpecification).
 
-I want to emphasize the importance of having a Makefile "style" convention.
-What I mean by this is having all the Makefiles have the same typical pattern
-of declaring the same variables. The metadata extraction process used here
-relies on this. If (by some miracle) I get this branch to the point where I
-can fully build in Visual Studio by extracting metadata from Makefiles, all
-it would take is one change to a Makefile somewhere which breaks the
-convention and things would fall down.
+By doing this, you loosely couple the *what* from the *how*. This means that
+instead of having one system (Make) define both (oftentimes intermixed in the
+same file), you have the option of selecting the system you use to perform the
+*how* (the actual building). This could certainly be Make. It could (almost as
+easily) be Visual Studio.
 
-One solution to this is auditing. I would /love/ for us to have some kind of
-build system auditing tool (preferably executed as part of the test suite so
-checkins that fail audit are treated as a failed build and should be backed
-out). This auditing tool would ensure that all Makefiles follow our defined
-sets of conventions. For example, we could easily check that:
+My wording may sound foreign to you, but it is the direction we have trended
+in with the build system. Look at
+https://hg.mozilla.org/mozilla-central/file/1c7e1db3645b/netwerk/cookie/Makefile.in
+Nearly every line in that file is a static variable assignment. At the bottom,
+we have a couple of includes. Deep in the bowels of rules.mk are a bunch of
+rules that say "oh, you defined XPIDLSRCS: those are IDL files. I'll need to
+produce header files by running an IDL conversion script and then I should copy
+those files somewhere" or "I need to compile every file in CPPSRCS with the
+extra DEFINE's you added." All this complicated logic is (rightfully)
+abstracted away from the Makefile and the end-developer, meaning only a handful
+of people need punish themselves with the horid details of how rules.mk works.
 
-* All .h, .cpp, .idl, etc files in a directory are defined in Makefiles (this
-  will help prevent orphans)
-* All Makefiles producing libraries define all required variables
-* No one-off styles exist in Makefiles
+It's a pretty good system. But it isn't perfect. The main problem is there are
+a lot of one-offs throughout the Makefiles. But, it's not the length of the
+tail that is bothersome, it is the unpredictability of it.
 
-Once the auditing is in place and the tree complies, the job of extracting
-metadata from the Makefiles is much simpler since the number of patterns that
-need detected and dealt with should be much smaller than it is today.
+By storing declarative data in Makefiles, we leave the proverbial door open
+for someone to do something unaccounted for. What happens when a new target
+is added to an individual Makefile? Does our extraction tool recognize this?
 
-Once we have confidence in an extractor that works reliably, it should be
-possible to do crazy things like assembling all this metadata, writing it in
-a sane, declarative format (YAML?), then deleting the source Makefiles. We can
-then transform this simpler declarative format into files that our favorite
-build system can read (GNU Make, MSVC, XCode, etc). If we wanted to be even
-more clever, we could take the dependency information from this metadata
-(because we captured that during the transition, of course), build a directed
-graph, and make our own intelligent build tool that is never stalled because
-its dependency model only applies to directories. Or, maybe we could switch to
-something like GYP (https://code.google.com/p/gyp/), which I believe does a
-lot of what I'm describing. It's all possible when the declarative metadata
-is liberated from Makefiles.
-
-I don't think we are too far away from that vision today. Looking around, it
-seems that a lot of Makefiles follow the same conventions. There is, however,
-a long tail of one-offs and no formal tool to ensure compliance. But, I think
-we are closer than most would believe.
+For the extraction and translation tools to be reliable and less prone to
+breaking, we need enforcement of coding practices. We essentially want to
+make everything static (i.e. variable assignment only in Makefiles outside
+of config/) to minimize the risk and variance. At the point we achieve this,
+there is really no point to storing the data in Makefiles at all! As parsing
+Makefiles is a fool's errand (if you know how Makefiles work, you will
+recognize that "parse" and "Makefile" don't go together), we should
+probably store data in something else, like YAML. It will be much, much easier
+to enforce standard practices on this type of a data structure than Makefiles.
