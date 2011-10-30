@@ -43,6 +43,7 @@ import buildparser.data
 import buildparser.makefile
 import os
 import os.path
+import sys
 
 class ObjectDirectoryParser(object):
     '''A parser for an object directory.
@@ -96,6 +97,7 @@ class ObjectDirectoryParser(object):
         self.relevant_makefile_paths = None
         self.ignored_makefile_paths = None
         self.handled_makefile_paths = None
+        self.unhandled_variables = {}
 
     def load_tree(self):
         '''Loads data from the entire build tree into the instance.'''
@@ -131,6 +133,9 @@ class ObjectDirectoryParser(object):
         self.tree = buildparser.data.BuildTreeInfo()
 
         self.load_directory(self.dir)
+
+        for k,v in sorted(self.unhandled_variables.iteritems(), key=lambda(k, v): (len(v), k)):
+            print '%s\t%s' % ( len(v), k)
 
     def get_tiers(self):
         '''Returns all the tiers in the build system.'''
@@ -176,6 +181,7 @@ class ObjectDirectoryParser(object):
                 lowercase_variables.add(v)
 
         used_variables = set()
+
         # We now register this Makefile with the main tree
         for obj in makefile.get_data_objects():
             # TODO register with tree
@@ -183,6 +189,11 @@ class ObjectDirectoryParser(object):
             used_variables |= obj.used_variables
 
         unused_variables = own_variables - used_variables - lowercase_variables
+        for var in unused_variables:
+            entry = self.unhandled_variables.get(var, set())
+            entry.add(makefile_path)
+            self.unhandled_variables[var] = entry
+
         if len(unused_variables):
             print makefile.filename
             print unused_variables
