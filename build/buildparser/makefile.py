@@ -44,6 +44,8 @@ are always happy and they don't complain, ever. In the real world, changes
 are made which upset the critics and they get angry.
 '''
 
+from . import data
+
 import os
 import os.path
 import pymake.data
@@ -117,13 +119,13 @@ class Makefile(object):
 
         return self.statements
 
-    def get_own_variable_names(self, ignore_conditional=False):
+    def get_own_variable_names(self, include_conditionals=True):
         '''Returns a list of variables defined by the Makefile itself.
 
         This looks at the low-level parsed Makefile, before including other
         files, and determines which variables are defined.
 
-        ignore_conditional can be used to filter out variables defined inside
+        include_conditionals can be used to filter out variables defined inside
         a conditional (e.g. #ifdef). By default, all variables are returned,
         even the ones inside conditionals that may not be evaluated.
         '''
@@ -132,10 +134,18 @@ class Makefile(object):
         if self.own_variables is None:
             self._load_own_variables()
 
-        if ignore_conditional:
+        if include_conditionals:
             return [n for n in self.own_variables.keys()]
         else:
             return [k for k, v in self.own_variables.iteritems() if not v[1]]
+
+    def has_own_variable(self, name, include_conditionals=True):
+        '''Returns whether the specified variable is defined in the Makefile
+        itself (as opposed to being defined in an included file.'''
+        if self.own_variables is None:
+            self._load_own_variables()
+
+        return name in self.own_variables.keys()
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
@@ -184,8 +194,55 @@ class Makefile(object):
 class MozillaMakefile(Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''
 
+    '''Traits that can identify a Makefile'''
+    MODULE       = 1
+    LIBRARY      = 2
+    DIRS         = 3
+    XPIDL_MODULE = 4
+    EXPORTS      = 5
+
+    '''Variables common in most Makefiles that aren't really that special.
+
+    This list is used to help identify variables we don't do anything with.'''
+    COMMON_VARIABLES = [
+        'DEPTH',            # Defined at top of file
+        'topsrcdir',        # Defined at top of file
+        'srcdir',           # Defined at top of file
+        'VPATH',            # Defined at top of file
+        'relativesrcdir',   # Defined at top of file. # TODO is this used by anything?
+        'DIRS',             # Path traversal
+        'PARALLEL_DIRS',    # Path traversal
+    ]
+
     def __init__(self, filename):
         Makefile.__init__(self, filename)
+
+        self.traits = None
+
+    def get_traits(self):
+        '''Obtain traits of the Makefile.
+
+        Traits are recognized patterns that invoke special functionality in
+        Mozilla's Makefiles. Traits are identified by the presence of specific
+        named variables.'''
+        if self.traits is not None:
+            return self.traits
+
+        self.traits = set()
+        variable_names = self.get_own_variable_names(include_conditionals=True)
+        for name in variable_names:
+            if name == 'MODULE':
+                self.traits.add(self.MODULE)
+            elif name == 'LIBRARY_NAME':
+                self.traits.add(self.LIBRARY)
+            elif name == 'DIRS' or name == 'PARALLEL_DIRS':
+                self.traits.add(self.DIRS)
+            elif name == 'XPIDL_MODULE':
+                self.traits.add(self.XPIDL_MODULE)
+            elif name == 'EXPORTS':
+                self.traits.add(self.EXPORTS)
+
+        return self.traits
 
     def get_dirs(self):
         dirs = self.get_variable_split('DIRS')
@@ -194,13 +251,13 @@ class MozillaMakefile(Makefile):
         return dirs
 
     def is_module(self):
-        return self.has_variable('MODULE')
+        return self.MODULE in self.get_traits()
+
+    def is_xpidl_module(self):
+        return self.XPIDL_MODULE in self.get_traits()
 
     def get_module(self):
         return self.get_variable_string('MODULE')
-
-    def get_library(self):
-        return self.get_variable_string('LIBRARY')
 
     def get_reldir(self):
         absdir = os.path.abspath(self.dir)
@@ -214,70 +271,180 @@ class MozillaMakefile(Makefile):
 
         return os.path.abspath(os.path.join(self.dir, depth))
 
-    def is_xpidl_module(self):
-        return self.has_variable('XPIDL_MODULE')
-
-    def get_cpp_sources(self):
-        return self.get_variable_split('CPPSRCS')
-
-    def get_c_sources(self):
-        return self.get_variable_split('CSRCS')
-
     def get_top_source_dir(self):
         return self.get_variable_string('topsrcdir')
 
     def get_source_dir(self):
         return self.get_variable_string('srcdir')
 
-    def get_exports(self):
-        return self.get_variable_split('EXPORTS')
-
-    def get_defines(self):
-        return self.get_variable_string('DEFINES')
-
     def get_transformed_reldir(self):
         return self.get_reldir().replace('\\', '_').replace('/', '_')
 
     def get_library_info(self):
-        library = self.get_library()
-        assert(library is not None)
+        '''Obtain information for the library defined by this Makefile.
 
-        exports = {}
-        for export in self.get_variable_split('EXPORTS'):
-            if '' not in exports:
-                exports[''] = []
-            exports[''].append(export)
+        Returns a data.LibraryInfo instance'''
+        l = data.LibraryInfo()
 
-        for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
-            exports[namespace] = []
-            for s in self.get_variable_split('EXPORTS_%s' % namespace):
-                exports[namespace].append(s)
+        l.add_used_variable('LIBRARY_NAME')
+        name = self.get_variable_string('LIBRARY_NAME')
+        assert(name is not None)
+        l.name = name
 
-        d = {
-            'name':            library,
-            'normalized_name': self.get_transformed_reldir(),
-            'dir':             self.dir,
-            'reldir':          self.get_reldir(),
-            'objtop':          self.get_objtop(),
-            'defines':         self.get_defines(),
-            'cppsrcs':         self.get_cpp_sources(),
-            'xpidlsrcs':       self.get_variable_split('XPIDLSRCS'),
-            'exports':         exports,
-            'srcdir':          self.get_variable_string('srcdir'),
+        l.add_used_variable('DEFINES')
+        for define in self.get_variable_split('DEFINES'):
+            if define[0:2] == '-D':
+                l.defines.add(define[2:])
+            else:
+                l.defines.add(define)
 
-            # This should arguably be CXXFLAGS and not the COMPILE_ variant
-            # which also pulls a lot of other definitions in. If we wanted to
-            # do things properly, we could probably pull in the variables
-            # separately and define in a property sheet. But that is more
-            # complex. This method is pretty safe. Although, it does produce
-            # a lot of redundancy in the individual project files.
-            'cxxflags':        self.get_variable_split('COMPILE_CXXFLAGS'),
+        l.add_used_variable('CXXFLAGS')
+        for f in self.get_variable_split('CXXFLAGS'):
+            l.cxx_flags.add(f)
 
-            'static':          self.get_variable_string('FORCE_STATIC_LIB') == '1',
-            'shared':          len(self.get_variable_split('SHARED_LIBRARY_LIBS')) > 0,
-        }
+        l.add_used_variable('CPPSRCS')
+        for f in self.get_variable_split('CPPSRCS'):
+            l.cpp_sources.add(f)
 
-        return d
+        # LIBXUL_LIBRARY implies static library generation and presence in
+        # libxul.
+        l.add_used_variable('LIBXUL_LIBRARY')
+        if self.has_own_variable('LIBXUL_LIBRARY'):
+            l.is_static = True
+
+        # FORCE_STATIC_LIB forces generation of a static library
+        l.add_used_variable('FORCE_STATIC_LIB')
+        if self.has_own_variable('FORCE_STATIC_LIB'):
+            l.is_static = True
+
+        # IS_COMPONENT is used for verification. It also has side effects for
+        # linking flags.
+        l.add_used_variable('IS_COMPONENT')
+        if self.has_own_variable('IS_COMPONENT'):
+            l.is_component = self.get_variable_string('IS_COMPONENT') == '1'
+
+        l.add_used_variable('EXPORT_LIBRARY')
+        if self.has_own_variable('EXPORT_LIBRARY'):
+            l.export_library = self.get_variable_string('EXPORT_LIBRARY') == '1'
+
+        l.add_used_variable('LOCAL_INCLUDES')
+        for s in self.get_variable_split('LOCAL_INCLUDES'):
+            if s[0:2] == '-I':
+                l.local_includes.add(s[2:])
+            else:
+                l.local_includes.add(s)
+
+        # SHORT_LIBNAME doesn't appears to be used, but we preserve it anyway.
+        l.add_used_variable('SHORT_LIBNAME')
+        if self.has_own_variable('SHORT_LIBNAME'):
+            l.short_libname = self.get_variable_string('SHORT_LIBNAME')
+
+        l.add_used_variable('SHARED_LIBRARY_LIBS')
+        for lib in self.get_variable_split('SHARED_LIBRARY_LIBS'):
+            l.shared_library_libs.add(lib)
+
+        return l
+
+    def get_data_objects(self):
+        '''Retrieve data objects derived from the Makefile.
+
+        This is the main function that extracts metadata from individual
+        Makefiles and turns them into Python data structures.
+        '''
+        misc = data.MiscInfo()
+        tracker = data.UsedVariableInfo()
+        for v in self.COMMON_VARIABLES:
+            tracker.add_used_variable(v)
+
+        traits = self.get_traits()
+
+        if self.MODULE in traits:
+            tracker.add_used_variable('MODULE')
+            # TODO emit MakefileDerivedObject instance
+            #tree.register_module(self.get_module(), self.dir)
+
+        if self.LIBRARY in traits:
+            li = self.get_library_info()
+            yield li
+
+        # Identifies directories holding xpcshell test files
+        # TODO do something with this
+        tracker.add_used_variable('XPCSHELL_TESTS')
+        if self.has_own_variable('XPCSHELL_TESTS'):
+            for dir in self.get_variable_split('XPCSHELL_TESTS'):
+                pass
+
+        # MODULE_NAME is only used for error checking, it appears.
+        tracker.add_used_variable('MODULE_NAME')
+
+        # EXPORTS and friends holds information on what files to copy
+        # to an output directory.
+        if self.EXPORTS in traits:
+            exports = data.ExportsInfo()
+            exports.add_used_variable('EXPORTS')
+            for export in self.get_variable_split('EXPORTS'):
+                exports.add_export(export, namespace=None)
+
+            exports.add_used_variable('EXPORTS_NAMESPACES')
+            for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
+                varname = 'EXPORTS_%s' % namespace
+                exports.add_used_variable(varname)
+                for s in self.get_variable_split(varname):
+                    exports.add_export(s, namespace=namespace)
+
+            yield exports
+
+        # XP IDL file generation
+        if self.XPIDL_MODULE in traits:
+            idl = data.XPIDLInfo()
+            idl.add_used_variable('XPIDL_MODULE')
+            idl.module = self.get_variable_string('XPIDL_MODULE')
+
+            idl.add_used_variable('XPIDLSRCS')
+            for f in self.get_variable_split('XPIDLSRCS'):
+                idl.sources.add(f)
+
+            yield idl
+
+        misc.add_used_variable('GRE_MODULE')
+        if self.has_own_variable('GRE_MODULE'):
+            misc.is_gre_module = True
+
+        yield tracker
+        yield misc
+
+        #info = self.get_module_data(dir)
+        #names = []
+        #for library in info['libraries']:
+        #    proj, id, name = builder.build_project_for_library(
+        #        library, name, version=version
+        #    )
+        #
+        #    handle_project(proj, id, name)
+        #    names.append(name)
+        #
+        #    for idl in library['xpidlsrcs']:
+        #        source = join('$(MOZ_SOURCE_DIR)', library['reldir'], idl)
+        #        top_copy[source] = join('$(MOZ_OBJ_DIR)', 'dist', 'idl', idl)
+        #
+        #if len(names):
+        #    print 'Wrote projects for libraries: %s' % ' '.join(names)
+        #
+        #for path in info['unhandled']:
+        #    print 'Writing generic project for %s' % path
+        #    m2 = self.get_dir_makefile(path)[0]
+        #
+        #    proj, id, name = builder.build_project_for_generic(
+        #        m2, version=version
+        #    )
+        #    handle_project(proj, id, name)
+
+        # fall back to generic case
+        #print 'Writing generic project for %s' % directory
+        #proj, id, name = builder.build_project_for_generic(
+        #  m, version=version
+        #)
+        #handle_project(proj, id, name)
 
 class Critic(object):
     '''The following are critique severity levels ordered from worse to
@@ -318,6 +485,9 @@ class MakefileCritic(Critic):
 
     It performs analysis of Makefiles and gives criticisms on what it doesn't
     like. Its job is to complain so Makefiles can be better.
+
+    TODO ensure the various flag variables are either '1' or not defined
+    (FORCE_SHARED_LIB, GRE_MODULE, etc)
     '''
     CRITIC_ERROR = ( 'CRITIC_ERROR', Critic.HARSH )
     UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', Critic.STERN )

@@ -42,7 +42,8 @@ import sys
 
 sys.path.append('build/pymake')
 
-from buildparser.extractor import BuildParser
+import buildparser.extractor
+
 from optparse import OptionParser
 from sys import argv, exit
 
@@ -61,5 +62,8 @@ if len(args) != 1:
 
 path = args[0]
 
-parser = BuildParser(path)
-parser.build_visual_studio_files(version=options.version, python=options.python)
+parser = buildparser.extractor.ObjectDirectoryParser(path)
+parser.load_tree()
+
+#parser = BuildParser(path)
+#parser.build_visual_studio_files(version=options.version, python=options.python)
