@@ -36,8 +36,6 @@
 
 # This file contains classes and methods used to extract metadata from the
 # Mozilla build system.
-#
-# TODO the Visual Studio foo needs to be purged and loosely coupled
 
 import buildparser.data
 import buildparser.makefile
@@ -57,18 +55,8 @@ class ObjectDirectoryParser(object):
     # skip over these.
     # TODO support all directories.
     IGNORE_DIRECTORIES = [os.path.normpath(f) for f in [
-        'browser/app',
-        'browser/installer',
-        'js/src',
-        'js/xpconnect',     # somehow forks and calls itself recursively
-        'modules',
-        'modules/libbz2',   # somehow forks and calls itself recursively
+        'js',
         'nsprpub',
-        'security/manager', # hangs
-        'toolkit/content',
-        'toolkit/xre',
-        'widget',
-        'xpcom/reflect/xptcall'
     ]]
 
     def __init__(self, directory):
@@ -133,9 +121,6 @@ class ObjectDirectoryParser(object):
 
         self.load_directory(self.dir)
 
-        for k,v in sorted(self.unhandled_variables.iteritems(), key=lambda(k, v): (len(v), k)):
-            print '%s\t%s' % ( len(v), k)
-
     def get_tiers(self):
         '''Returns all the tiers in the build system.'''
         return self.top_makefile.get_variable_split('TIERS')
@@ -192,10 +177,6 @@ class ObjectDirectoryParser(object):
             entry = self.unhandled_variables.get(var, set())
             entry.add(makefile_path)
             self.unhandled_variables[var] = entry
-
-        if len(unused_variables):
-            print makefile.filename
-            print unused_variables
 
         # Collect child directories from the relevant list only.
         subdirs = []
