@@ -40,9 +40,13 @@
 
 import sys
 
+# TODO these should magically come from the environment
 sys.path.append('build/pymake')
+sys.path.append('other-licenses/ply')
+sys.path.append('xpcom/idl-parser')
 
 import buildparser.extractor
+import buildparser.makefile_generator
 
 from optparse import OptionParser
 from sys import argv, exit
@@ -52,7 +56,8 @@ op.add_option('-v', '--version', dest='version', default='2008',
               help='Visual Studio version. One of 2005, 2008, 2010, or 2011')
 op.add_option('-p', '--python', dest='python', default=None,
               help='Python executable runnable from Windows shell')
-
+op.add_option('-m', '--makefile', dest='makefile', default=None,
+              help='Makefile to output to')
 
 (options, args) = op.parse_args()
 
@@ -63,7 +68,14 @@ if len(args) != 1:
 path = args[0]
 
 parser = buildparser.extractor.ObjectDirectoryParser(path)
+print 'Parsing build tree...'
 parser.load_tree()
+
+if options.makefile:
+    print 'Generating Makefile...'
+    generator = buildparser.makefile_generator.MakefileGenerator(parser.tree)
+    with open(options.makefile, 'w') as fh:
+        generator.generate_makefile(fh)
 
 #parser = BuildParser(path)
 #parser.build_visual_studio_files(version=options.version, python=options.python)
