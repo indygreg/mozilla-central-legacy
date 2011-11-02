@@ -37,26 +37,51 @@
 # This file contains classes and methods used to extract metadata from the
 # Mozilla build system.
 
-import buildparser.data
-import buildparser.makefile
+from . import data
+from . import makefile
+
 import os
 import os.path
 import sys
+import xpidl
 
 class ObjectDirectoryParser(object):
     '''A parser for an object directory.
 
-    Currently, this contains all the logic for extracting build data from
-    Makefiles.
+    This holds state for a specific build instance. It is constructed from an
+    object directory and gathers information from the files it sees.
     '''
+
+    __slots__ = (
+        'dir',
+        'parsed',
+        'top_makefile',
+        'top_source_dir',
+        'all_makefile_paths',
+        'relevant_makefile_paths',
+        'ignored_makefile_paths',
+        'handled_makefile_paths',
+        'unhandled_variables',
+
+        'tree', # The parsed build tree
+    )
 
     # Some directories cause PyMake to lose its mind when parsing. This is
     # likely due to a poorly configured PyMake environment. For now, we just
     # skip over these.
     # TODO support all directories.
     IGNORE_DIRECTORIES = [os.path.normpath(f) for f in [
+        'browser/app',
+        'browser/installer',
+        'browser/locales',   # $(shell) in global scope
         'js',
+        'modules',
         'nsprpub',
+        'security/manager',
+        'toolkit/content',
+        'toolkit/xre',
+        'widget',
+        'xpcom/reflect/xptcall',
     ]]
 
     def __init__(self, directory):
@@ -75,11 +100,10 @@ class ObjectDirectoryParser(object):
 
         top_makefile_path = os.path.join(directory, 'Makefile')
 
-        self.top_makefile = buildparser.makefile.MozillaMakefile(top_makefile_path)
+        self.top_makefile = makefile.MozillaMakefile(top_makefile_path)
         self.top_source_dir = self.top_makefile.get_top_source_dir()
 
         # The following hold data once we are parsed.
-        self.tree = None
         self.all_makefile_paths = None
         self.relevant_makefile_paths = None
         self.ignored_makefile_paths = None
@@ -117,46 +141,44 @@ class ObjectDirectoryParser(object):
 
         self.handled_makefile_paths = set()
 
-        self.tree = buildparser.data.BuildTreeInfo()
+        self.tree = data.TreeInfo()
+        self.tree.object_directory = self.dir
 
-        self.load_directory(self.dir)
+        # Traverse over all relevant Makefiles
+        for path in self.relevant_makefile_paths:
+            try:
+                self.load_makefile(path)
+            except Exception, e:
+                print 'Exception loading Makefile: %s' % path
+                print e
 
-    def get_tiers(self):
-        '''Returns all the tiers in the build system.'''
-        return self.top_makefile.get_variable_split('TIERS')
+        # Look for JAR Manifests in source directories and extract data from
+        # them.
+        for d in self.tree.source_directories:
+            jarfile = os.path.normpath(os.path.join(d, 'jar.mn'))
 
-    def get_tier_platform_dirs(self):
-        '''Returns all the tier platform directories.'''
-        return self.top_makefile.get_variable_split('tier_platform_dirs')
+            if os.path.exists(jarfile):
+                self.tree.jar_manifests[jarfile] = self.parse_jar_manifest(jarfile)
 
-    def get_tier_base_dirs(self):
-        '''Obtain all the tier base directories'''
-        return self.top_makefile.get_variable_split('tier_base_dirs')
+        # Parse the IDL files.
+        for m, d in self.tree.xpidl_modules.iteritems():
+            for f in d['sources']:
+                try:
+                    filename = os.path.normpath(os.path.join(d['source_dir'], f))
+                    self.tree.idl_sources[filename] = self.parse_idl_file(filename)
+                except Exception, e:
+                    print 'Error parsing IDL file: %s' % filename
+                    print e
 
-    def get_makefile_from_path(self, path):
-        '''Obtain a MozillaMakefile for the given relative path.'''
-        full = os.path.join(self.dir, path)
-        file = os.path.join(full, 'Makefile')
+    def load_makefile(self, path):
+        '''Loads an indivudal Makefile into the instance.'''
+        assert(os.path.normpath(path) == path)
+        assert(os.path.isabs(path))
 
-        if not os.path.exists(file):
-            raise Exception('Path does not exist: %s' % file)
+        self.handled_makefile_paths.add(path)
+        m = makefile.MozillaMakefile(path)
 
-        return buildparser.makefile.MozillaMakefile(file)
-
-    def load_directory(self, directory):
-        '''Loads an individual directory into the instance.'''
-        assert(os.path.normpath(directory) == directory)
-        assert(os.path.isabs(directory))
-
-        makefile = None
-        makefile_path = os.path.join(directory, 'Makefile')
-        try:
-            makefile = buildparser.makefile.MozillaMakefile(makefile_path)
-        except:
-            print 'Makefile could not be constructed: %s' % makefile_path
-            return
-
-        own_variables = set(makefile.get_own_variable_names(include_conditionals=True))
+        own_variables = set(m.get_own_variable_names(include_conditionals=True))
 
         # prune out lowercase variables, which are defined as local
         lowercase_variables = set()
@@ -166,43 +188,50 @@ class ObjectDirectoryParser(object):
 
         used_variables = set()
 
-        # We now register this Makefile with the main tree
-        for obj in makefile.get_data_objects():
-            # TODO register with tree
-
+        # We now register this Makefile with the monolithic data structure
+        for obj in m.get_data_objects():
             used_variables |= obj.used_variables
+
+            if obj.source_dir is not None:
+                self.tree.source_directories.add(obj.source_dir)
+
+            if obj.top_source_dir is not None and self.tree.top_source_directory is None:
+                self.tree.top_source_directory = os.path.normpath(obj.top_source_dir)
+
+            if isinstance(obj, data.XPIDLInfo):
+                module = obj.module
+                assert(module is not None)
+
+                self.tree.xpidl_modules[module] = {
+                    'source_dir': obj.source_dir,
+                    'module':     module,
+                    'sources':    obj.sources,
+                }
+
+                self.tree.idl_directories.add(obj.source_dir)
 
         unused_variables = own_variables - used_variables - lowercase_variables
         for var in unused_variables:
             entry = self.unhandled_variables.get(var, set())
-            entry.add(makefile_path)
+            entry.add(path)
             self.unhandled_variables[var] = entry
 
-        # Collect child directories from the relevant list only.
-        subdirs = []
-        for path in self.relevant_makefile_paths:
-            dirname = os.path.dirname(path)
+    def parse_jar_manifest(self, filename):
+        '''Parse the contents of a JAR manifest filename into a data structure.'''
 
-            if len(path) < len(dirname):
-                continue
+        # TODO hook into JarMaker.py to parse the JAR
+        return {}
 
-            if dirname == directory:
-                continue
+    def parse_idl_file(self, filename):
+        idl_data = open(filename).read()
+        p = xpidl.IDLParser()
+        idl = p.parse(idl_data, filename=filename)
 
-            if os.path.commonprefix([directory, dirname]) == directory:
-                leftover = dirname[len(directory)+1:]
+        # TODO it probably isn't correct to search *all* idl directories
+        # because the same file may be defined multiple places.
+        idl.resolve(self.tree.idl_directories, p)
 
-                if not len(leftover):
-                    continue
-
-                if leftover.count('/') > 0 or leftover.count('\\') > 0:
-                    continue
-
-                subdirs.append(leftover)
-
-        subdirs.sort()
-        for d in subdirs:
-            full = os.path.normpath(os.path.join(directory, d))
-            self.load_directory(full)
-
-        self.handled_makefile_paths.add(makefile_path)
+        return {
+            'filename':     filename,
+            'dependencies': [os.path.normpath(dep) for dep in idl.deps],
+        }
