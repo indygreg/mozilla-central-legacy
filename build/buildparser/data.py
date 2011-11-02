@@ -39,10 +39,33 @@
 
 import os.path
 
+class TreeInfo(object):
+    '''This class represents an entire build tree.'''
+
+    __slots__ = (
+        'idl_directories',         # Set of directories containing IDL files
+        'idl_sources',             # Dictionary of filenames to metadata
+        'jar_manifests',           # Dictionary of filenames to metadata
+        'object_directory',        # Path to output/object directory
+        'source_directories',      # Set of directories containing sources
+        'top_source_directory',    # Main/top source directory
+        'xpidl_modules',           # Dictionary of XPIDL modules to metadata
+    )
+
+    def __init__(self):
+        self.idl_directories      = set()
+        self.idl_sources          = {}
+        self.jar_manifests        = {}
+        self.object_directory     = None
+        self.source_directories   = set()
+        self.top_source_directory = None
+        self.xpidl_modules        = {}
+
 class MakefileDerivedObject(object):
     '''Abstract class for something that was derived from a Makefile.'''
 
     __slots__ = (
+        'source_dir',       # Source directory for this Makefile
         'top_source_dir',   # The top source code directory
         'used_variables'    # Keeps track of variables consulted to build this object
     )
@@ -50,12 +73,15 @@ class MakefileDerivedObject(object):
     def __init__(self, makefile):
         assert(makefile is not None)
 
+        self.source_dir     = None
         self.top_source_dir = None
         self.used_variables = set()
 
-        # TODO this causes some Makefiles to crash
-        #if makefile.has_own_variable('topsrcdir'):
-        #    self.top_source_dir = makefile.get_variable_string('topsrcdir')
+        if makefile.has_own_variable('srcdir'):
+            self.source_dir = makefile.get_variable_string('srcdir')
+
+        if makefile.has_own_variable('topsrcdir'):
+            self.top_source_dir = makefile.get_variable_string('topsrcdir')
 
     def add_used_variable(self, name):
         '''Register a variable as used to create the object.
@@ -71,24 +97,6 @@ class MakefileDerivedObject(object):
 
     def get_used_variables(self):
         return self.used_variables
-
-class BuildTreeInfo(object):
-    '''Represents the build system data for an entire build tree.
-
-    This is effectively a high-level API into what the current build
-    configuration says to do. It is designed to be loosely coupled from the
-    definition of the build config and how things are actually built. In other
-    words, you should be able to construct one of these instances using
-    arbitrary means and then feed an instance to something that is able to
-    build the tree.
-    '''
-
-    def __init__(self):
-        self.modules = {}
-
-    def register_module(self, name, path):
-        '''Register a module at a specified path.'''
-        self.modules[name] = path
 
 class LibraryInfo(MakefileDerivedObject):
     '''Represents a library in the Mozilla build system.
