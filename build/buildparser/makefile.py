@@ -445,8 +445,13 @@ class MozillaMakefile(Makefile):
         if self.XPIDL in traits:
             idl = data.XPIDLInfo(self)
             idl.add_used_variable('XPIDL_MODULE')
+            idl.add_used_variable('MODULE')
             if self.has_own_variable('XPIDL_MODULE'):
                 idl.module = self.get_variable_string('XPIDL_MODULE')
+            elif self.has_own_variable('MODULE'):
+                idl.module = self.get_variable_string('MODULE')
+            else:
+                raise Exception('XPIDL trait without XPIDL_MODULE or MODULE defined')
 
             idl.add_used_variable('XPIDLSRCS')
             if self.has_own_variable('XPIDLSRCS'):
