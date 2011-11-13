@@ -57,6 +57,18 @@ class MakefileGenerator(object):
     def generate_makefile(self, fh):
         '''Convert the tree info into a Makefile'''
 
+        state = {
+            'fh':      fh,
+            'phonies': ['default']
+        }
+
+        self._print_header(state)
+        self._print_idl_rules(state)
+        self._print_footer(state)
+
+    def _print_header(self, state):
+        fh = state['fh']
+
         print >>fh, '# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT MODIFY BY HAND'
         print >>fh, 'TOP_SOURCE_DIR := %s' % self.tree.top_source_directory
         print >>fh, 'OBJECT_DIR := %s' % self.tree.object_directory
@@ -73,13 +85,10 @@ class MakefileGenerator(object):
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
         print >>fh, '\t$(MKDIR) -p "$@"\n'
 
-        state = {
-            'fh':      fh,
-            'phonies': ['default']
-        }
+    def _print_footer(self, state):
+        fh = state['fh']
 
-        self._print_idl_rules(state)
-
+        # Define .PHONY target with collected list
         print >>fh, '.PHONY: %s\n' % ' \\\n  '.join(state['phonies'])
 
     def _print_idl_rules(self, state):
