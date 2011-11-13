@@ -76,14 +76,15 @@ class MakefileGenerator(object):
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
         print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
         print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
-        print >>fh, 'MKDIR := mkdir'
         print >>fh, ''
 
-        print >>fh, '# Our default rule. It is order dependent.'
+        # The first defined target in a Makefile is the default one. The name
+        # 'default' reinforces this.
         print >>fh, 'default: idl\n'
 
+        # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
-        print >>fh, '\t$(MKDIR) -p "$@"\n'
+        print >>fh, '\t$(NSINSTALL) -D -m 775 "$@"\n'
 
     def _print_footer(self, state):
         fh = state['fh']
