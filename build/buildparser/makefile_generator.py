@@ -54,6 +54,16 @@ class MakefileGenerator(object):
 
         self.tree = tree
 
+    def get_converted_path(self, path):
+        '''Convert a string filesystem path into its Makefile equivalent, with
+        appropriate variable substitution.'''
+        if path[0:len(self.tree.object_directory)] == self.tree.object_directory:
+            return '$(OBJECT_DIR)%s' % path[len(self.tree.object_directory):]
+        elif path[0:len(self.tree.top_source_directory)] == self.tree.top_source_directory:
+            return '$(TOP_SOURCE_DIR)%s' % path[len(self.tree.top_source_directory):]
+        else:
+            return path
+
     def generate_makefile(self, fh):
         '''Convert the tree info into a Makefile'''
 
@@ -135,17 +145,19 @@ class MakefileGenerator(object):
                 '$(DIST_INCLUDE_DIR)', header_basename
             ))
 
+            converted_filename = self.get_converted_path(filename)
+
             copy_targets.append(dist_idl_filename)
             convert_targets.append(out_header_filename)
 
             # Create a symlink from the source IDL file to the dist directory
-            print >>fh, '%s: $(DIST_IDL_DIR) %s' % ( dist_idl_filename, filename )
-            print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % filename
+            print >>fh, '%s: $(DIST_IDL_DIR) %s' % ( dist_idl_filename, converted_filename )
+            print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % converted_filename
 
             # The conversion target and rule
-            dependencies = metadata['dependencies']
+            dependencies = [self.get_converted_path(f) for f in metadata['dependencies']]
             print >>fh, '%s: $(DIST_INCLUDE_DIR) idl_install_idls \\\n  %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
-            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % filename
+            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % converted_filename
 
         print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
         print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
