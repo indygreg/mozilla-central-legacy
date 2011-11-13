@@ -60,10 +60,21 @@ class MakefileGenerator(object):
         print >>fh, '# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT MODIFY BY HAND'
         print >>fh, 'TOP_SOURCE_DIR := %s' % self.tree.top_source_directory
         print >>fh, 'OBJECT_DIR := %s' % self.tree.object_directory
-        print >>fh, 'DIST_DIR := $(OBJECT_DIR)\\dist'
-        print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)\\include'
-        print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)\\idl'
+        print >>fh, 'DIST_DIR := $(OBJECT_DIR)/dist'
+        print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
+        print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
         print >>fh, 'COPY := cp'
+        print >>fh, 'MKDIR := mkdir'
+        print >>fh, ''
+
+        print >>fh, '# Our default rule. It is order dependent.'
+        print >>fh, 'default: | dirs idls\n'
+
+        print >>fh, '# Define output directories and create them'
+        print >>fh, 'dirs: $(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR)\n'
+
+        print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
+        print >>fh, '\t$(MKDIR) -p "$@"\n'
 
         self._print_idl_rules(fh)
 
@@ -71,16 +82,14 @@ class MakefileGenerator(object):
         '''Prints all the IDL rules.'''
 
         base_command = ' '.join([
-            'PYTHONPATH="$(TOP_SOURCE_DIR)/other-licenses/ply;$(TOP_SOURCE_DIR)/xpcom/idl-parser"',
+            'PYTHONPATH="$(TOP_SOURCE_DIR)/other-licenses/ply:$(TOP_SOURCE_DIR)/xpcom/idl-parser"',
             'python',
             '$(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py',
-            '-I $(DIST_INCLUDE_DIR)'
+            '-I $(DIST_IDL_DIR)'
         ])
 
         print >>fh, 'IDL_GENERATE_HEADER := %s' % base_command
         print >>fh, ''
-
-        print >>fh, 'idls: $(IDL_COPY_TARGETS) $(IDL_CONVERT_TARGETS)'
 
         copy_targets = []
         convert_targets = []
@@ -116,9 +125,11 @@ class MakefileGenerator(object):
 
             # The conversion target and rule
             dependencies = metadata['dependencies']
-            print >>fh, '%s: %s' % ( out_header_filename, ' '.join(dependencies) )
+            print >>fh, '%s: %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
             print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"' % filename
             print >>fh, ''
 
-        print >>fh, 'IDL_COPY_TARGETS: %s' % ' '.join(copy_targets)
-        print >>fh, 'IDL_CONVERT_TARGETS: %s' % ' '.join(convert_targets)
+        print >>fh, 'idl_copy_targets = %s\n' % ' \\\n  '.join(copy_targets)
+        print >>fh, 'idl_convert_targets = %s\n' % ' \\\n  '.join(convert_targets)
+
+        print >>fh, 'idls: | $(idl_copy_targets) $(idl_convert_targets)\n'
