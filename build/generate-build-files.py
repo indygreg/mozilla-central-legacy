@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # ***** BEGIN LICENSE BLOCK *****
 # Version: MPL 1.1/GPL 2.0/LGPL 2.1
 #
@@ -34,9 +35,7 @@
 #
 # ***** END LICENSE BLOCK *****
 
-# This script generates Visual Studio files from a configured object directory.
-# To run, point it at an object directory, specifying the full path. Relative
-# paths will not work at this time.
+# This script generates build systems files.
 
 import sys
 
