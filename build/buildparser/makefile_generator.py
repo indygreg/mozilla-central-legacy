@@ -68,10 +68,7 @@ class MakefileGenerator(object):
         print >>fh, ''
 
         print >>fh, '# Our default rule. It is order dependent.'
-        print >>fh, 'default: | dirs idls\n'
-
-        print >>fh, '# Define output directories and create them'
-        print >>fh, 'dirs: $(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR)\n'
+        print >>fh, 'default: idls\n'
 
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
         print >>fh, '\t$(MKDIR) -p "$@"\n'
@@ -119,17 +116,17 @@ class MakefileGenerator(object):
             convert_targets.append(out_header_filename)
 
             # The copy target and rule
-            print >>fh, '%s: %s' % ( dist_idl_filename, filename )
+            print >>fh, '%s: $(DIST_IDL_DIR) %s' % ( dist_idl_filename, filename )
             print >>fh, '\t$(COPY) "%s" "%s"' % ( filename, dist_idl_filename )
             print >>fh, ''
 
             # The conversion target and rule
             dependencies = metadata['dependencies']
-            print >>fh, '%s: %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
+            print >>fh, '%s: $(DIST_INCLUDE_DIR) \\\n  %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
             print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"' % filename
             print >>fh, ''
 
         print >>fh, 'idl_copy_targets = %s\n' % ' \\\n  '.join(copy_targets)
         print >>fh, 'idl_convert_targets = %s\n' % ' \\\n  '.join(convert_targets)
 
-        print >>fh, 'idls: | $(idl_copy_targets) $(idl_convert_targets)\n'
+        print >>fh, 'idls: $(idl_copy_targets) $(idl_convert_targets)\n'
