@@ -59,7 +59,7 @@ class MakefileGenerator(object):
 
         state = {
             'fh':      fh,
-            'phonies': ['default']
+            'phonies': set()
         }
 
         self._print_header(state)
@@ -80,7 +80,11 @@ class MakefileGenerator(object):
 
         # The first defined target in a Makefile is the default one. The name
         # 'default' reinforces this.
-        print >>fh, 'default: idl\n'
+        print >>fh, 'default: export\n'
+
+        print >>fh, 'export: idl\n'
+
+        state['phonies'] |= set(['default', 'export'])
 
         # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
@@ -146,4 +150,4 @@ class MakefileGenerator(object):
         print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
         print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
         print >>fh, 'idl: idl_install_idls idl_generate_headers\n'
-        state['phonies'].extend(['idl_install_idls', 'idl_generate_headers', 'idl'])
+        state['phonies'] |= set(['idl_install_idls', 'idl_generate_headers', 'idl'])
