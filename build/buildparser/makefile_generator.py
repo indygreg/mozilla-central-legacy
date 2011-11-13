@@ -63,20 +63,29 @@ class MakefileGenerator(object):
         print >>fh, 'DIST_DIR := $(OBJECT_DIR)/dist'
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
         print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
-        print >>fh, 'COPY := cp'
+        print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
         print >>fh, 'MKDIR := mkdir'
         print >>fh, ''
 
         print >>fh, '# Our default rule. It is order dependent.'
-        print >>fh, 'default: idls\n'
+        print >>fh, 'default: idl\n'
 
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
         print >>fh, '\t$(MKDIR) -p "$@"\n'
 
-        self._print_idl_rules(fh)
+        state = {
+            'fh':      fh,
+            'phonies': ['default']
+        }
 
-    def _print_idl_rules(self, fh):
+        self._print_idl_rules(state)
+
+        print >>fh, '.PHONY: %s\n' % ' \\\n  '.join(state['phonies'])
+
+    def _print_idl_rules(self, state):
         '''Prints all the IDL rules.'''
+
+        fh = state['fh']
 
         base_command = ' '.join([
             'PYTHONPATH="$(TOP_SOURCE_DIR)/other-licenses/ply:$(TOP_SOURCE_DIR)/xpcom/idl-parser"',
@@ -115,18 +124,16 @@ class MakefileGenerator(object):
             copy_targets.append(dist_idl_filename)
             convert_targets.append(out_header_filename)
 
-            # The copy target and rule
+            # Create a symlink from the source IDL file to the dist directory
             print >>fh, '%s: $(DIST_IDL_DIR) %s' % ( dist_idl_filename, filename )
-            print >>fh, '\t$(COPY) "%s" "%s"' % ( filename, dist_idl_filename )
-            print >>fh, ''
+            print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % filename
 
             # The conversion target and rule
             dependencies = metadata['dependencies']
-            print >>fh, '%s: $(DIST_INCLUDE_DIR) \\\n  %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
-            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"' % filename
-            print >>fh, ''
+            print >>fh, '%s: $(DIST_INCLUDE_DIR) idl_install_idls \\\n  %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
+            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % filename
 
-        print >>fh, 'idl_copy_targets = %s\n' % ' \\\n  '.join(copy_targets)
-        print >>fh, 'idl_convert_targets = %s\n' % ' \\\n  '.join(convert_targets)
-
-        print >>fh, 'idls: $(idl_copy_targets) $(idl_convert_targets)\n'
+        print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
+        print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
+        print >>fh, 'idl: idl_install_idls idl_generate_headers\n'
+        state['phonies'].extend(['idl_install_idls', 'idl_generate_headers', 'idl'])
