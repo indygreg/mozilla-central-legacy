@@ -50,6 +50,7 @@ from sys import argv, exit
 import uuid
 
 HTML_TEMPLATE = '''
+<!DOCTYPE html>
 <html>
   <head>
     <title>Build System Information</title>
@@ -104,6 +105,51 @@ HTML_TEMPLATE = '''
           <a href="${makefile_repo_link(path, 'hg') | h}">Mercurial</a>,
           <a href="${makefile_repo_link(path, 'github') | h}">GitHub</a>
         </div>
+        % if len(makefile_rules[path]) > 0:
+        <table border="1">
+          <tr>
+            <th>Target Name(s)</th>
+            <th>Doublecolon</th>
+            <th>Prerequisites</th>
+            <th>Conditions</th>
+          </tr>
+          % for rule in makefile_rules[path]:
+            <tr>
+              <td><ul>
+              % for target in rule['targets']:
+                <li>${target | h}</li>
+              % endfor
+              </ul></td>
+
+              % if rule['doublecolon']:
+                  <td><strong>YES</strong</td>
+              % else:
+                  <td>No</td>
+              % endif
+
+              <td>
+              % if len(rule['prerequisites']) > 0:
+                <ul>
+                % for prereq in rule['prerequisites']:
+                  <li>${prereq | h}</li>
+                % endfor
+                </ul>
+              % endif
+              </td>
+
+              <td>
+              % if len(rule['condition_strings']) > 0:
+                <ul>
+                % for c in rule['condition_strings']:
+                  <li>${c | h}</li>
+                % endfor
+                </ul>
+              % endif
+              </td>
+            </tr>
+          % endfor
+        </table>
+        % endif
       </div>
     % endfor
 
@@ -173,6 +219,7 @@ HTML_TEMPLATE = '''
 
     <h2>Variables Used in Conditionals</h2>
     <p>The following variables are used as part of evaluating a conditional.</p>
+    <p>TODO.</p>
   </body>
 </html>
 
@@ -254,7 +301,7 @@ if len(args) != 1:
 path = args[0]
 
 parser = buildparser.extractor.ObjectDirectoryParser(path)
-parser.load_tree()
+parser.load_tree(retain_metadata=True)
 
 if options.print_unhandled_variables:
     l = sorted(parser.unhandled_variables.iteritems(), key=lambda(k, v):
@@ -293,12 +340,20 @@ if options.generate_html:
                                           key=lambda(k, v): (len(v['paths']), k)
                                     )]
 
+    makefile_target_names = {}
+    makefile_rules = {}
+    for path in parser.all_makefile_paths:
+        makefile_target_names[path] = parser.get_target_names_from_makefile(path)
+        makefile_rules[path] = parser.get_rules_for_makefile(path)
+
     with open(options.generate_html, 'w') as fh:
         try:
             t = mako.template.Template(HTML_TEMPLATE)
             print >>fh, t.render(
                 makefile_paths=parser.all_makefile_paths,
                 makefile_ids=makefile_ids,
+                makefile_target_names=makefile_target_names,
+                makefile_rules=makefile_rules,
                 relevant_makefile_paths=parser.relevant_makefile_paths,
                 error_makefile_paths=parser.error_makefile_paths,
                 included_files=parser.included_files,

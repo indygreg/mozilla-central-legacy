@@ -123,17 +123,103 @@ class Makefile(object):
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
+    def expansion_to_string(self, e):
+        '''Convert an expansion to a string.
+
+        This effectively converts a string back to the form it was defined as
+        in the Makefile. This is different from the resolvestr() method on
+        Expansion classes because it doesn't actually expand variables.
+        '''
+        if isinstance(e, pymake.data.StringExpansion):
+            return e.s
+        elif isinstance(e, pymake.data.Expansion):
+            parts = []
+            for ex, is_func in e:
+                if is_func:
+                    if isinstance(ex, pymake.functions.VariableRef):
+                        parts.append('$(%s)' % ex.vname.s)
+                    else:
+                        raise Exception('Unhandled function type: %s' % ex)
+                else:
+                    parts.append(ex)
+
+            return ''.join(parts)
+        else:
+            raise Exception('Unhandled expansion type: %s' % e)
+
+    def expansion_to_list(self, e):
+        '''Convert an expansion to a list.
+
+        This is similar to expansion_to_string() except it returns a list.'''
+        s = self.expansion_to_string(e).strip()
+
+        if s == '':
+            return []
+        else:
+            return s.split(' ')
+
+    def condition_to_string(self, c):
+        '''Convert a condition to a string representation.'''
+
+        parts = []
+
+        if isinstance(c, pymake.parserdata.IfdefCondition):
+            if c.expected:
+                parts.append('ifdef')
+            else:
+                parts.append('ifndef')
+
+            parts.append(self.expansion_to_string(c.exp))
+        elif isinstance(c, pymake.parserdata.EqCondition):
+            if c.expected:
+                parts.append('ifeq')
+            else:
+                parts.append('ifneq')
+
+            parts.append('"%s"' % self.expansion_to_string(c.exp1))
+            parts.append('"%s"' % self.expansion_to_string(c.exp2))
+
+        elif isinstance(c, pymake.parserdata.ElseCondition):
+            parts.append('else')
+        else:
+            raise Exception('Unhandled condition type: %s' % c)
+
+        return ' '.join(parts)
+
     def get_statements(self, expand_conditional=False):
-        '''Obtain all the low-level PyMake-parsed statements from the file.'''
+        '''Obtain all the low-level PyMake-parsed statements from the file.
+
+        In default operation, this is a generator of pymake.parserdata.Statement
+        derived objects.
+
+        If expand_conditional is True, this generates tuples of
+        (pymake.parserdata.Statement, level) or (pymake.parserdata.Condition)
+        where level is an int describing what level of conditionals the
+        statement is at. If a statement isn't inside a conditional, the level is 0.
+
+        When a conditional is encountered, the output will look like:
+
+          (pymake.parserdata.ConditionBlock, 0)
+          (pymake.parserdata.IfdefCondition, 1)
+          (pymake.parserdata.SetVariable, 1)
+          (pymake.parserdata.Statement, 0)
+        '''
         self._parse_file()
 
-        for statement in self.statements:
-            if (expand_conditional and
-                isinstance(statement, pymake.parserdata.ConditionBlock)):
-                yield statement
-                for sub in statement:
-                    yield sub
-            else:
+        def examine_statements(statements, level):
+            for statement in statements:
+                yield (statement, level)
+                if isinstance(statement, pymake.parserdata.ConditionBlock):
+                    for group in statement:
+                        yield (group[0], level + 1)
+                        for t in examine_statements(group[1], level + 1):
+                            yield t
+
+        if expand_conditional:
+            for t in examine_statements(self.statements, 0):
+                yield t
+        else:
+            for statement in self.statements:
                 yield statement
 
     def get_own_variable_names(self, include_conditionals=True):
@@ -171,23 +257,57 @@ class Makefile(object):
             return self.include_files
 
         self.include_files = []
-        for statement in self.get_statements(expand_conditional=True):
-            if not isinstance(statement, pymake.parserdata.Include):
+        for o, level in self.get_statements(expand_conditional=True):
+            if not isinstance(o, pymake.parserdata.Include):
                 continue
 
-            # TODO perform expansion properly
-            # [gps] I was lazy during initial implementation because expansion
-            # requires a full Makefile instance
-            elements = []
-            for exp in statement.exp:
-                if isinstance(exp[0], pymake.functions.VariableRef):
-                    elements.append('$(%s)' % exp[0].vname.s)
-                else:
-                    elements.append(exp[0])
-
-            self.include_files.append(''.join(elements))
+            self.include_files.append(self.expansion_to_string(o.exp))
 
         return self.include_files
+
+    def get_rules(self):
+        '''Returns information about rules in this Makefile.
+
+        This emits a list of objects which describe each rule.'''
+
+        conditions_stack = []
+        last_level       = 0
+        current_rule     = None
+
+        print self.filename
+        for o, level in self.get_statements(expand_conditional=True):
+            print (o, level)
+
+            if level > last_level:
+                assert(isinstance(o, pymake.parserdata.Condition))
+                conditions_stack.append(o)
+            elif level < last_level:
+                for i in range(0, last_level - level):
+                    conditions_stack.pop()
+
+                if current_rule is not None:
+                    yield current_rule
+                    current_rule = None
+
+            elif isinstance(o, pymake.parserdata.Rule):
+                if current_rule is not None:
+                    yield current_rule
+
+                current_rule = {
+                    'commands':       [],
+                    'conditions':     conditions_stack,
+                    'doublecolon':    o.doublecolon,
+                    'prerequisites':  self.expansion_to_list(o.depexp),
+                    'targets':        self.expansion_to_list(o.targetexp),
+                }
+            elif isinstance(o, pymake.parserdata.Command):
+                assert(current_rule is not None)
+                current_rule['commands'].append(o)
+
+            last_level = level
+
+        if current_rule is not None:
+            yield current_rule
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)

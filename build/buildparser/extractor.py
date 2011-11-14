@@ -57,6 +57,8 @@ class ObjectDirectoryParser(object):
         'parsed',
         'top_makefile',
         'top_source_dir',
+        'retain_metadata',          # Boolean whether Makefile metadata is being
+                                    # retained.
         'all_makefile_paths',       # List of all filesystem paths discovered
         'relevant_makefile_paths',  # List of all Makefiles relevant to our interest
         'ignored_makefile_paths',   # List of Makefile paths ignored
@@ -68,6 +70,9 @@ class ObjectDirectoryParser(object):
                                     # filename and values are sets of paths that
                                     # included them.
         'variables',                # Dictionary holding details about variables.
+        'rules',                    # Dictionary of all rules encountered. Keys
+                                    # Makefile paths. Values are lists of dicts
+                                    # describing each rule.
         'unhandled_variables',
 
         'tree', # The parsed build tree
@@ -111,6 +116,7 @@ class ObjectDirectoryParser(object):
         self.top_source_dir = self.top_makefile.get_top_source_dir()
 
         # The following hold data once we are parsed.
+        self.retain_metadata         = False
         self.all_makefile_paths      = None
         self.relevant_makefile_paths = None
         self.ignored_makefile_paths  = None
@@ -118,10 +124,13 @@ class ObjectDirectoryParser(object):
         self.error_makefile_paths    = None
         self.included_files          = {}
         self.unhandled_variables     = {}
+        self.rules                   = {}
         self.variables               = {}
 
-    def load_tree(self):
+    def load_tree(self, retain_metadata=False):
         '''Loads data from the entire build tree into the instance.'''
+
+        self.retain_metadata = retain_metadata
 
         # First, collect all the Makefiles that we can find.
         self.all_makefile_paths = []
@@ -158,7 +167,7 @@ class ObjectDirectoryParser(object):
         # Traverse over all relevant Makefiles
         for path in self.relevant_makefile_paths:
             try:
-                self.load_makefile(path)
+                self.load_makefile(path, retain_metadata=retain_metadata)
             except Exception, e:
                 print 'Exception loading Makefile: %s' % path
                 print e
@@ -182,7 +191,7 @@ class ObjectDirectoryParser(object):
                     print 'Error parsing IDL file: %s' % filename
                     print e
 
-    def load_makefile(self, path):
+    def load_makefile(self, path, retain_metadata=False):
         '''Loads an indivudal Makefile into the instance.'''
         assert(os.path.normpath(path) == path)
         assert(os.path.isabs(path))
@@ -276,6 +285,22 @@ class ObjectDirectoryParser(object):
             entry.add(path)
             self.unhandled_variables[var] = entry
 
+        if retain_metadata:
+            self.collect_makefile_metadata(m)
+
+    def collect_makefile_metadata(self, m):
+        '''Collects metadata from a Makefile into memory.'''
+        assert(isinstance(m, makefile.MozillaMakefile))
+
+        if m.filename not in self.rules:
+            self.rules[m.filename] = []
+
+        rules = self.rules[m.filename]
+
+        for rule in m.get_rules():
+            rule['condition_strings'] = [m.condition_to_string(c) for c in rule['conditions']]
+            rules.append(rule)
+
     def parse_jar_manifest(self, filename):
         '''Parse the contents of a JAR manifest filename into a data structure.'''
 
@@ -295,3 +320,23 @@ class ObjectDirectoryParser(object):
             'filename':     filename,
             'dependencies': [os.path.normpath(dep) for dep in idl.deps],
         }
+
+    def get_rules_for_makefile(self, path):
+        '''Obtain all the rules for a Makefile at a path.'''
+
+        if not self.retain_metadata:
+            raise Exception('Metadata is not being retained. Refusing to proceed.')
+
+        return self.rules.get(path, [])
+
+    def get_target_names_from_makefile(self, path):
+        '''Obtain a set of target names from a Makefile.'''
+        if not self.retain_metadata:
+            raise Exception('Metadata is not being retained. Refusing to proceed.')
+
+        targets = set()
+
+        for rule in self.rules.get(path, []):
+            targets |= set(rule['targets'])
+
+        return targets
