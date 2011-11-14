@@ -274,10 +274,7 @@ class Makefile(object):
         last_level       = 0
         current_rule     = None
 
-        print self.filename
         for o, level in self.get_statements(expand_conditional=True):
-            print (o, level)
-
             if level > last_level:
                 assert(isinstance(o, pymake.parserdata.Condition))
                 conditions_stack.append(o)
@@ -299,7 +296,9 @@ class Makefile(object):
                     'doublecolon':    o.doublecolon,
                     'prerequisites':  self.expansion_to_list(o.depexp),
                     'targets':        self.expansion_to_list(o.targetexp),
+                    'line':           o.targetexp.loc.line
                 }
+
             elif isinstance(o, pymake.parserdata.Command):
                 assert(current_rule is not None)
                 current_rule['commands'].append(o)

@@ -119,7 +119,11 @@ HTML_TEMPLATE = '''
               % for target in rule['targets']:
                 <li>${target | h}</li>
               % endfor
-              </ul></td>
+              </ul>
+
+              <a href="${makefile_repo_link(path, 'hg', rule['line']) | h}">HG</a> |
+              <a href="${makefile_repo_link(path, 'github', rule['line']) | h}">GitHub</a>
+              </td>
 
               % if rule['doublecolon']:
                   <td><strong>YES</strong</td>
@@ -253,7 +257,7 @@ HTML_TEMPLATE = '''
     <a href="#${id}">${makefile_path(path) | h}</a>
 </%def>
 
-<%def name="makefile_repo_link(path, flavor)", buffered="True">
+<%def name="makefile_repo_link(path, flavor, line=None)", buffered="True">
     <%
     objdir = tree.object_directory
     newpath = path
@@ -263,16 +267,20 @@ HTML_TEMPLATE = '''
     if newpath[-8:] == 'Makefile':
         newpath += '.in'
 
-    base = None
+    uri = None
 
     if flavor == 'hg':
-        base = 'https://hg.mozilla.org/mozilla-central/file/default/'
+        uri = 'https://hg.mozilla.org/mozilla-central/file/default/%s' % newpath
+
+        if line is not None:
+            uri += '#l%s' % line
     elif flavor == 'github':
-        base = 'https://github.com/doublec/mozilla-central/blob/master/'
+        uri = 'https://github.com/doublec/mozilla-central/blob/master/%s' % newpath
+
+        if line is not None:
+            uri += '#L%s' % line
     else:
         raise 'Unknown flavor: %s' % flavor
-
-    uri = base + newpath
     %>
     ${uri}
 </%def>
