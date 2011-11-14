@@ -230,6 +230,7 @@ class MiscInfo(MakefileDerivedObject):
         'extra_components',    # Set of extra components, whatever they are
         'extra_js_module',     # Set of extra JavaScript modules
         'garbage',             # Set of extra things to clean up
+        'included_files',      # List of files included by the Makefile
         'is_gre_module',       # Whether the Makefile is a GRE module and has prefs
         'platform_dirs',       # Set of directories only compiled on the current
                                # platform.
@@ -243,5 +244,6 @@ class MiscInfo(MakefileDerivedObject):
         self.extra_components    = set()
         self.extra_js_module     = set()
         self.garbage             = set()
+        self.included_files      = None
         self.is_gre_module       = None
         self.platform_dirs       = set()

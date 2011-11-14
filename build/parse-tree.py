@@ -39,6 +39,8 @@
 import sys
 
 sys.path.append('build/pymake')
+sys.path.append('other-licenses/ply')
+sys.path.append('xpcom/idl-parser')
 
 import buildparser.extractor
 
@@ -51,6 +53,9 @@ op.add_option('--print-variable-counts', dest='print_variable_counts',
 op.add_option('--print-unhandled-variables', dest='print_unhandled_variables',
               action='store_true',
               help='Print information on unhandle variables')
+op.add_option('--print-included-file-count', dest='print_include_count',
+              help='Print counts of which files are included',
+              action='store_true')
 
 (options, args) = op.parse_args()
 
@@ -88,3 +93,9 @@ if options.print_variable_counts:
 
     for k, v in sorted(variables.iteritems(), key=lambda(k, v): (v, k)):
         print '%s\t%s' % ( v, k )
+
+if options.print_include_count:
+    l = sorted(parser.included_files.iteritems(), key=lambda(k, v):
+            (len(v), k))
+    for k, v in l:
+        print '%s\t%s' % ( len(v), k )

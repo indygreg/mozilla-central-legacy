@@ -61,6 +61,7 @@ class Makefile(object):
     __slots__ = (
         'filename',      # Filename of the Makefile
         'dir',           # Directory holding the Makefile
+        'include_files', # List of files being included
         'makefile',      # PyMake Makefile instance
         'statements',    # List of PyMake-parsed statements in the main file
         'own_variables', # Dict of variables defined in the main file
@@ -88,8 +89,9 @@ class Makefile(object):
         self.makefile = None
 
         # The following are caches for low-level statement data.
-        self.statements = None
+        self.statements    = None
         self.own_variables = None
+        self.include_files = None
 
     def has_variable(self, name):
         '''Determines whether a named variable is defined.'''
@@ -121,11 +123,18 @@ class Makefile(object):
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
-    def get_statements(self):
+    def get_statements(self, expand_conditional=False):
         '''Obtain all the low-level PyMake-parsed statements from the file.'''
         self._parse_file()
 
-        return self.statements
+        for statement in self.statements:
+            if (expand_conditional and
+                isinstance(statement, pymake.parserdata.ConditionBlock)):
+                yield statement
+                for sub in statement:
+                    yield sub
+            else:
+                yield statement
 
     def get_own_variable_names(self, include_conditionals=True):
         '''Returns a list of variables defined by the Makefile itself.
@@ -154,6 +163,31 @@ class Makefile(object):
             self._load_own_variables()
 
         return name in self.own_variables.keys()
+
+    def get_included_files(self):
+        '''Returns a list of files included by this Makefile.'''
+
+        if self.include_files is not None:
+            return self.include_files
+
+        self.include_files = []
+        for statement in self.get_statements(expand_conditional=True):
+            if not isinstance(statement, pymake.parserdata.Include):
+                continue
+
+            # TODO perform expansion properly
+            # [gps] I was lazy during initial implementation because expansion
+            # requires a full Makefile instance
+            elements = []
+            for exp in statement.exp:
+                if isinstance(exp[0], pymake.functions.VariableRef):
+                    elements.append('$(%s)' % exp[0].vname.s)
+                else:
+                    elements.append(exp[0])
+
+            self.include_files.append(''.join(elements))
+
+        return self.include_files
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
@@ -531,6 +565,8 @@ class MozillaMakefile(Makefile):
         if self.has_own_variable('GARBAGE'):
             for g in self.get_variable_split('GARBAGE'):
                 misc.garbage.add(g)
+
+        misc.included_files = self.get_included_files()
 
         yield tracker
         yield misc

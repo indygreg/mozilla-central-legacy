@@ -60,6 +60,7 @@ class ObjectDirectoryParser(object):
         'all_makefile_paths',
         'relevant_makefile_paths',
         'ignored_makefile_paths',
+        'included_files',
         'handled_makefile_paths',
         'unhandled_variables',
 
@@ -104,11 +105,12 @@ class ObjectDirectoryParser(object):
         self.top_source_dir = self.top_makefile.get_top_source_dir()
 
         # The following hold data once we are parsed.
-        self.all_makefile_paths = None
+        self.all_makefile_paths      = None
         self.relevant_makefile_paths = None
-        self.ignored_makefile_paths = None
-        self.handled_makefile_paths = None
-        self.unhandled_variables = {}
+        self.ignored_makefile_paths  = None
+        self.handled_makefile_paths  = None
+        self.included_files          = {}
+        self.unhandled_variables     = {}
 
     def load_tree(self):
         '''Loads data from the entire build tree into the instance.'''
@@ -236,6 +238,12 @@ class ObjectDirectoryParser(object):
 
                         if not found:
                             print 'Could not find export file: %s from %s' % ( f, obj.source_dir )
+            elif isinstance(obj, data.MiscInfo):
+                if obj.included_files is not None:
+                    for path in obj.included_files:
+                        v = self.included_files.get(path, set())
+                        v.add(m.filename)
+                        self.included_files[path] = v
 
         unused_variables = own_variables - used_variables - lowercase_variables
         for var in unused_variables:
