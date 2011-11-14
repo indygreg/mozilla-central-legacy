@@ -226,9 +226,7 @@ class MozillaMakefile(Makefile):
     ]
 
     '''This list tracks all variables that are still in the wild but aren't used'''
-    UNUSED_VARIABLES = [
-        'FORCE_USE_PIC',    # Bug 698248 tracks removal
-    ]
+    UNUSED_VARIABLES = []
 
     def __init__(self, filename):
         Makefile.__init__(self, filename)
