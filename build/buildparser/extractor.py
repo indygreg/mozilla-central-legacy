@@ -53,15 +53,21 @@ class ObjectDirectoryParser(object):
     '''
 
     __slots__ = (
-        'dir',
+        'dir',                      # Directory data was extracted from.
         'parsed',
         'top_makefile',
         'top_source_dir',
-        'all_makefile_paths',
-        'relevant_makefile_paths',
-        'ignored_makefile_paths',
-        'included_files',
-        'handled_makefile_paths',
+        'all_makefile_paths',       # List of all filesystem paths discovered
+        'relevant_makefile_paths',  # List of all Makefiles relevant to our interest
+        'ignored_makefile_paths',   # List of Makefile paths ignored
+        'handled_makefile_paths',   # Set of Makefile paths which were processed
+        'error_makefile_paths',     # Set of Makefile paths experiencing an error
+                                    # during processing.
+        'included_files',           # Dictionary defining which makefiles were
+                                    # included from where. Keys are the included
+                                    # filename and values are sets of paths that
+                                    # included them.
+        'variables',                # Dictionary holding details about variables.
         'unhandled_variables',
 
         'tree', # The parsed build tree
@@ -109,8 +115,10 @@ class ObjectDirectoryParser(object):
         self.relevant_makefile_paths = None
         self.ignored_makefile_paths  = None
         self.handled_makefile_paths  = None
+        self.error_makefile_paths    = None
         self.included_files          = {}
         self.unhandled_variables     = {}
+        self.variables               = {}
 
     def load_tree(self):
         '''Loads data from the entire build tree into the instance.'''
@@ -142,6 +150,7 @@ class ObjectDirectoryParser(object):
                 self.ignored_makefile_paths.append(path)
 
         self.handled_makefile_paths = set()
+        self.error_makefile_paths   = set()
 
         self.tree = data.TreeInfo()
         self.tree.object_directory = self.dir
@@ -153,6 +162,7 @@ class ObjectDirectoryParser(object):
             except Exception, e:
                 print 'Exception loading Makefile: %s' % path
                 print e
+                self.error_makefile_paths.add(path)
 
         # Look for JAR Manifests in source directories and extract data from
         # them.
@@ -181,12 +191,27 @@ class ObjectDirectoryParser(object):
         m = makefile.MozillaMakefile(path)
 
         own_variables = set(m.get_own_variable_names(include_conditionals=True))
+        own_variables_unconditional = set(m.get_own_variable_names(include_conditionals=False))
 
         # prune out lowercase variables, which are defined as local
         lowercase_variables = set()
         for v in own_variables:
             if v.islower():
                 lowercase_variables.add(v)
+
+            if v not in self.variables:
+                self.variables[v] = {
+                    'paths':               set(),
+                    'conditional_paths':   set(),
+                    'unconditional_paths': set(),
+                }
+
+            info = self.variables[v]
+            info['paths'].add(path)
+            if v in own_variables_unconditional:
+                info['unconditional_paths'].add(path)
+            else:
+                info['conditional_paths'].add(path)
 
         used_variables = set()
 
