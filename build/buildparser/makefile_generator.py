@@ -86,6 +86,7 @@ class MakefileGenerator(object):
         print >>fh, 'DIST_DIR := $(OBJECT_DIR)/dist'
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
         print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
+        print >>fh, 'TEMP_DIR := $(DIST_DIR)/tmp'
         print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
         print >>fh, 'COPY := cp'
         print >>fh, ''
@@ -101,7 +102,7 @@ class MakefileGenerator(object):
         state['phonies'] |= set(['default', 'export', 'distdirs'])
 
         # Directory creation targets
-        print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
+        print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR) $(TEMP_DIR):'
         print >>fh, '\t$(NSINSTALL) -D -m 775 "$@"\n'
 
     def _print_footer(self, state):
@@ -119,7 +120,8 @@ class MakefileGenerator(object):
             'PYTHONPATH="$(TOP_SOURCE_DIR)/other-licenses/ply:$(TOP_SOURCE_DIR)/xpcom/idl-parser"',
             'python',
             '$(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py',
-            '-I $(DIST_IDL_DIR)'
+            '-I $(DIST_IDL_DIR)',
+            '--cachedir=$(TEMP_DIR)',
         ])
 
         print >>fh, 'IDL_GENERATE_HEADER := %s' % base_command
