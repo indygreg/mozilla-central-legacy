@@ -43,6 +43,7 @@ class TreeInfo(object):
     '''This class represents an entire build tree.'''
 
     __slots__ = (
+        'exports',                 # Dictionary of path/namespace to set of filenames
         'idl_directories',         # Set of directories containing IDL files
         'idl_sources',             # Dictionary of filenames to metadata
         'jar_manifests',           # Dictionary of filenames to metadata
@@ -53,6 +54,7 @@ class TreeInfo(object):
     )
 
     def __init__(self):
+        self.exports              = {}
         self.idl_directories      = set()
         self.idl_sources          = {}
         self.jar_manifests        = {}
@@ -67,7 +69,10 @@ class MakefileDerivedObject(object):
     __slots__ = (
         'source_dir',       # Source directory for this Makefile
         'top_source_dir',   # The top source code directory
-        'used_variables'    # Keeps track of variables consulted to build this object
+        'used_variables',   # Keeps track of variables consulted to build this object
+        'vpath',            # List of VPATH entries for this Makefile. The
+                            # VPATH is order dependent, so we store a list,
+                            # not a set.
     )
 
     def __init__(self, makefile):
@@ -76,12 +81,16 @@ class MakefileDerivedObject(object):
         self.source_dir     = None
         self.top_source_dir = None
         self.used_variables = set()
+        self.vpath          = []
 
         if makefile.has_own_variable('srcdir'):
             self.source_dir = makefile.get_variable_string('srcdir')
 
         if makefile.has_own_variable('topsrcdir'):
             self.top_source_dir = makefile.get_variable_string('topsrcdir')
+
+        if makefile.has_own_variable('VPATH'):
+            self.vpath = makefile.get_variable_split('VPATH')
 
     def add_used_variable(self, name):
         '''Register a variable as used to create the object.

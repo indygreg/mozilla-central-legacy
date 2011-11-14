@@ -74,6 +74,7 @@ class MakefileGenerator(object):
 
         self._print_header(state)
         self._print_idl_rules(state)
+        self._print_file_exports(state)
         self._print_footer(state)
 
     def _print_header(self, state):
@@ -86,15 +87,18 @@ class MakefileGenerator(object):
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
         print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
         print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
+        print >>fh, 'COPY := cp'
         print >>fh, ''
 
         # The first defined target in a Makefile is the default one. The name
         # 'default' reinforces this.
         print >>fh, 'default: export\n'
 
-        print >>fh, 'export: idl\n'
+        print >>fh, 'export: distdirs idl file_exports\n'
 
-        state['phonies'] |= set(['default', 'export'])
+        print >>fh, 'distdirs: $(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR)\n'
+
+        state['phonies'] |= set(['default', 'export', 'distdirs'])
 
         # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR):'
@@ -151,15 +155,54 @@ class MakefileGenerator(object):
             convert_targets.append(out_header_filename)
 
             # Create a symlink from the source IDL file to the dist directory
-            print >>fh, '%s: $(DIST_IDL_DIR) %s' % ( dist_idl_filename, converted_filename )
+            print >>fh, '%s: %s' % ( dist_idl_filename, converted_filename )
             print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % converted_filename
 
             # The conversion target and rule
             dependencies = [self.get_converted_path(f) for f in metadata['dependencies']]
-            print >>fh, '%s: $(DIST_INCLUDE_DIR) idl_install_idls \\\n  %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
+            print >>fh, '%s: %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
             print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % converted_filename
 
         print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
         print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
         print >>fh, 'idl: idl_install_idls idl_generate_headers\n'
         state['phonies'] |= set(['idl_install_idls', 'idl_generate_headers', 'idl'])
+
+    def _print_file_exports(self, state):
+        '''Prints targets for exporting files.'''
+
+        fh = state['fh']
+
+        dirs = sorted(self.tree.exports.keys())
+        out_dirs = ['$(DIST_INCLUDE_DIR)%s' % d for d in dirs]
+
+        print >>fh, '%s:' % ' '.join(out_dirs)
+        print >>fh, '\t$(NSINSTALL) -D -m 775 "$@"\n'
+
+        export_targets = []
+
+        for dir in dirs:
+            out_dir = '$(DIST_INCLUDE_DIR)%s' % dir
+
+            if out_dir[-1:] != '/':
+                out_dir += '/'
+
+            source_filenames = sorted(self.tree.exports[dir].values())
+
+            # We could have a unified target for all sources and invoke nsinstall
+            # once, but that would be a lot of work for nsinstall. We go with
+            # explicit per-filename targets. These should be highly
+            # parallelized, so it shouldn't be a big issue.
+            for source_filename in source_filenames:
+                basename = os.path.basename(source_filename)
+                out_filename = '%s%s' % ( out_dir, basename )
+                source_converted = self.get_converted_path(source_filename)
+
+                print >>fh, '%s: %s' % ( out_filename, source_converted )
+                print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" "%s"\n' % ( source_converted, out_dir )
+
+                export_targets.append(out_filename)
+
+        export_targets.sort()
+        print >>fh, 'file_exports: %s\n' % ' \\\n  '.join(export_targets)
+        state['phonies'].add('file_exports')

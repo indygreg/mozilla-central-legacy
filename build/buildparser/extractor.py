@@ -209,6 +209,33 @@ class ObjectDirectoryParser(object):
                 }
 
                 self.tree.idl_directories.add(obj.source_dir)
+            elif isinstance(obj, data.ExportsInfo):
+                for k, v in obj.exports.iteritems():
+                    k = '/%s' % k
+
+                    if k not in self.tree.exports:
+                        self.tree.exports[k] = {}
+
+                    for f in v:
+                        if f in v:
+                            print 'WARNING: redundant exports file: %s (from %s)' % ( f, obj.source_dir )
+
+                        search_paths = [obj.source_dir]
+                        search_paths.extend(obj.vpath)
+
+                        found = False
+
+                        for path in search_paths:
+                            filename = os.path.join(path, f)
+                            if not os.path.exists(filename):
+                                continue
+
+                            found = True
+                            self.tree.exports[k][f] = filename
+                            break
+
+                        if not found:
+                            print 'Could not find export file: %s from %s' % ( f, obj.source_dir )
 
         unused_variables = own_variables - used_variables - lowercase_variables
         for var in unused_variables:
