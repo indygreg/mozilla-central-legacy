@@ -274,19 +274,21 @@ class Makefile(object):
         last_level       = 0
         current_rule     = None
 
+        # TODO this doesn't properly capture commands within nested ifdefs
+        # within rule blocks. Makefiles are crazy...
         for o, level in self.get_statements(expand_conditional=True):
             if level > last_level:
                 assert(isinstance(o, pymake.parserdata.Condition))
                 conditions_stack.append(o)
+                last_level = level
+                continue
             elif level < last_level:
                 for i in range(0, last_level - level):
                     conditions_stack.pop()
 
-                if current_rule is not None:
-                    yield current_rule
-                    current_rule = None
+            last_level = level
 
-            elif isinstance(o, pymake.parserdata.Rule):
+            if isinstance(o, pymake.parserdata.Rule):
                 if current_rule is not None:
                     yield current_rule
 
@@ -296,17 +298,42 @@ class Makefile(object):
                     'doublecolon':    o.doublecolon,
                     'prerequisites':  self.expansion_to_list(o.depexp),
                     'targets':        self.expansion_to_list(o.targetexp),
-                    'line':           o.targetexp.loc.line
+                    'line':           o.targetexp.loc.line,
+                }
+
+            elif isinstance(o, pymake.parserdata.StaticPatternRule):
+                if current_rule is not None:
+                    yield current_rule
+
+                current_rule = {
+                    'commands':      [],
+                    'conditions':    conditions_stack,
+                    'doublecolon':   o.doublecolon,
+                    'pattern':       self.expansion_to_list(o.patternexp),
+                    'prerequisites': self.expansion_to_list(o.depexp),
+                    'targets':       self.expansion_to_list(o.targetexp),
+                    'line':          o.targetexp.loc.line,
                 }
 
             elif isinstance(o, pymake.parserdata.Command):
                 assert(current_rule is not None)
                 current_rule['commands'].append(o)
 
-            last_level = level
-
         if current_rule is not None:
             yield current_rule
+
+    def get_ifdef_variables(self):
+        '''Returns tuples denoting which variables are used as part of ifdefs
+        or ifndefs.
+
+        Each tuple has the elements (name, trueish, line), where trueish is
+        True for ifdef and False for ifndef
+        '''
+        for o, level in self.get_statements(expand_conditional=True):
+            if not isinstance(o, pymake.parserdata.IfdefCondition):
+                continue
+
+            yield (self.expansion_to_string(o.exp), o.expected, o.exp.loc.line)
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
