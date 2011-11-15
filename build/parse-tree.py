@@ -167,15 +167,19 @@ HTML_TEMPLATE = '''
       <tr>
         <th>Name</th>
         <th>Makefile Count</th>
-        <th>Support Count</th>
         <th>Used as Conditional</th>
       </tr>
       % for variable in sorted(variables.keys()):
         <tr>
           <td><a href="#${variable_ids[variable]}">${variable | h}</a></td>
           <td>${len(variables[variable]['paths'])}</td>
-          <td>?</td>
-          <td>?</td>
+          <td>
+          % if variable in ifdef_variables:
+            <strong>Yes</strong>
+          % else:
+            No
+          % endif
+          </td>
         </tr>
       % endfor
     </table>
@@ -202,28 +206,52 @@ HTML_TEMPLATE = '''
     % for variable in sorted(variables.keys()):
       <div id="${variable_ids[variable]}" class="variable">
         <h4>${variable | h}</h4>
-        <div><strong>Makefiles</strong>:
-          ${', '.join(makefile_link(p) for p in variables[variable]['paths'])}
-        </div>
 
-        % if len(variables[variable]['unconditional_paths']) > 0:
-        <div><strong>Unconditional Makefiles</strong>:
-          ${', '.join(makefile_link(p) for p in variables[variable]['unconditional_paths'])}
-        </div>
-        % endif
-
-        % if len(variables[variable]['conditional_paths']) > 0:
-        <div><strong>Conditional Makefiles</strong>:
-          ${', '.join(makefile_link(p) for p in variables[variable]['conditional_paths'])}
-        </div>
-        % endif
-
+        <table border="1">
+          <tr>
+            <th>Makefile</th>
+            <th>Used as ifdef</th>
+            <th>Defined Conditionally</th>
+            <th>Utilized</th>
+          </tr>
+          % for path in sorted(variables[variable]['paths']):
+          <tr>
+            <td>${makefile_link(path)}</td>
+            <td>
+            % if variable in ifdef_variables and path in ifdef_variables[variable]:
+              <strong>Yes</strong>
+            % else:
+              No
+            % endif
+            </td>
+            <td>
+            % if path in variables[variable]['conditional_paths']:
+              <strong>Yes</strong>
+            % else:
+              No
+            % endif
+            </td>
+            <td>?</td>
+          </tr>
+          % endfor
+        </table>
       </div>
     % endfor
 
     <h2>Variables Used in Conditionals</h2>
     <p>The following variables are used as part of evaluating a conditional.</p>
-    <p>TODO.</p>
+    <table border="1">
+      <tr>
+        <th>Name</th>
+        <th># Makefiles</th>
+      </tr>
+      % for var in sorted(ifdef_variables.keys()):
+      <tr>
+        <td><a href="#${variable_ids[var]}">${var | h}</td>
+        <td>${len(ifdef_variables[var].keys())}</td>
+      </tr>
+      % endfor
+    </table>
   </body>
 </html>
 
@@ -368,7 +396,8 @@ if options.generate_html:
                 tree=parser.tree,
                 variables=parser.variables,
                 variable_ids=variable_ids,
-                variables_by_makefile_count=variables_by_makefile_count
+                variables_by_makefile_count=variables_by_makefile_count,
+                ifdef_variables=parser.ifdef_variables
             )
         except:
             print mako.exceptions.text_error_template().render()
