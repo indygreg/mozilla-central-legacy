@@ -43,6 +43,7 @@ from . import makefile
 import os
 import os.path
 import sys
+import traceback
 import xpidl
 
 class ObjectDirectoryParser(object):
@@ -70,6 +71,8 @@ class ObjectDirectoryParser(object):
                                     # filename and values are sets of paths that
                                     # included them.
         'variables',                # Dictionary holding details about variables.
+        'ifdef_variables',          # Dictionary holding info on variables used
+                                    # in ifdefs.
         'rules',                    # Dictionary of all rules encountered. Keys
                                     # Makefile paths. Values are lists of dicts
                                     # describing each rule.
@@ -126,6 +129,7 @@ class ObjectDirectoryParser(object):
         self.unhandled_variables     = {}
         self.rules                   = {}
         self.variables               = {}
+        self.ifdef_variables         = {}
 
     def load_tree(self, retain_metadata=False):
         '''Loads data from the entire build tree into the instance.'''
@@ -136,7 +140,7 @@ class ObjectDirectoryParser(object):
         self.all_makefile_paths = []
         for root, dirs, files in os.walk(self.dir):
             for name in files:
-                if name == 'Makefile':
+                if name == 'Makefile' or name[-3:] == 'mk':
                     self.all_makefile_paths.append(os.path.normpath(os.path.join(root, name)))
 
         self.all_makefile_paths.sort()
@@ -170,7 +174,7 @@ class ObjectDirectoryParser(object):
                 self.load_makefile(path, retain_metadata=retain_metadata)
             except Exception, e:
                 print 'Exception loading Makefile: %s' % path
-                print e
+                traceback.print_exc()
                 self.error_makefile_paths.add(path)
 
         # Look for JAR Manifests in source directories and extract data from
@@ -200,27 +204,12 @@ class ObjectDirectoryParser(object):
         m = makefile.MozillaMakefile(path)
 
         own_variables = set(m.get_own_variable_names(include_conditionals=True))
-        own_variables_unconditional = set(m.get_own_variable_names(include_conditionals=False))
 
         # prune out lowercase variables, which are defined as local
         lowercase_variables = set()
         for v in own_variables:
             if v.islower():
                 lowercase_variables.add(v)
-
-            if v not in self.variables:
-                self.variables[v] = {
-                    'paths':               set(),
-                    'conditional_paths':   set(),
-                    'unconditional_paths': set(),
-                }
-
-            info = self.variables[v]
-            info['paths'].add(path)
-            if v in own_variables_unconditional:
-                info['unconditional_paths'].add(path)
-            else:
-                info['conditional_paths'].add(path)
 
         used_variables = set()
 
@@ -253,8 +242,8 @@ class ObjectDirectoryParser(object):
                         self.tree.exports[k] = {}
 
                     for f in v:
-                        if f in v:
-                            print 'WARNING: redundant exports file: %s (from %s)' % ( f, obj.source_dir )
+                        #if f in v:
+                        #    print 'WARNING: redundant exports file: %s (from %s)' % ( f, obj.source_dir )
 
                         search_paths = [obj.source_dir]
                         search_paths.extend(obj.vpath)
@@ -291,6 +280,43 @@ class ObjectDirectoryParser(object):
     def collect_makefile_metadata(self, m):
         '''Collects metadata from a Makefile into memory.'''
         assert(isinstance(m, makefile.MozillaMakefile))
+
+        own_variables = set(m.get_own_variable_names(include_conditionals=True))
+        own_variables_unconditional = set(m.get_own_variable_names(include_conditionals=False))
+
+        for v in own_variables:
+            if v not in self.variables:
+                self.variables[v] = {
+                    'paths':               set(),
+                    'conditional_paths':   set(),
+                    'unconditional_paths': set(),
+                }
+
+            info = self.variables[v]
+            info['paths'].add(m.filename)
+            if v in own_variables_unconditional:
+                info['unconditional_paths'].add(m.filename)
+            else:
+                info['conditional_paths'].add(m.filename)
+
+        for (name, expected, line) in m.get_ifdef_variables():
+            if name not in self.variables:
+                self.variables[name] = {
+                    'paths':               set(),
+                    'conditional_paths':   set(),
+                    'unconditional_paths': set(),
+                }
+
+            self.variables[name]['paths'].add(m.filename)
+
+            if name not in self.ifdef_variables:
+                self.ifdef_variables[name] = {}
+
+            d = self.ifdef_variables[name]
+            if m.filename not in d:
+                d[m.filename] = []
+
+            d[m.filename].append((expected, line))
 
         if m.filename not in self.rules:
             self.rules[m.filename] = []
