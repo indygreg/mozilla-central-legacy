@@ -92,12 +92,17 @@ class ObjectDirectoryParser(object):
         'js',
         'modules',
         'nsprpub',
-        'security/manager',
+        #'security/manager',
         'toolkit/content',
         'toolkit/xre',
-        'widget',
+        #'widget',
         'xpcom/reflect/xptcall',
     ]]
+
+    SOURCE_DIR_MAKEFILES = [
+        'config/config.mk',
+        'config/rules.mk',
+    ]
 
     def __init__(self, directory):
         '''Construct an instance from a directory.
@@ -136,14 +141,25 @@ class ObjectDirectoryParser(object):
 
         self.retain_metadata = retain_metadata
 
+        self.top_source_dir = self.top_makefile.get_variable_string('topsrcdir')
+
         # First, collect all the Makefiles that we can find.
-        self.all_makefile_paths = []
+
+        all_makefiles = set()
+
         for root, dirs, files in os.walk(self.dir):
             for name in files:
-                if name == 'Makefile' or name[-3:] == 'mk':
-                    self.all_makefile_paths.append(os.path.normpath(os.path.join(root, name)))
+                if name == 'Makefile' or name[-3:] == '.mk':
+                    all_makefiles.add(os.path.normpath(os.path.join(root, name)))
 
-        self.all_makefile_paths.sort()
+        # manually add other, special .mk files
+        # TODO grab these automatically
+        for path in self.SOURCE_DIR_MAKEFILES:
+            all_makefiles.add(os.path.normpath(
+                os.path.join(self.top_source_dir, path))
+            )
+
+        self.all_makefile_paths = sorted(all_makefiles)
 
         # Prune out the directories that have known problems.
         self.relevant_makefile_paths = []
@@ -205,6 +221,14 @@ class ObjectDirectoryParser(object):
 
         own_variables = set(m.get_own_variable_names(include_conditionals=True))
 
+        if retain_metadata:
+            self.collect_makefile_metadata(m)
+
+        # We don't perform additional processing of included files. This
+        # assumes that .mk means included, which appears to currently be fair.
+        if path[-3:] == '.mk':
+            return
+
         # prune out lowercase variables, which are defined as local
         lowercase_variables = set()
         for v in own_variables:
@@ -219,9 +243,6 @@ class ObjectDirectoryParser(object):
 
             if obj.source_dir is not None:
                 self.tree.source_directories.add(obj.source_dir)
-
-            if obj.top_source_dir is not None and self.tree.top_source_directory is None:
-                self.tree.top_source_directory = os.path.normpath(obj.top_source_dir)
 
             if isinstance(obj, data.XPIDLInfo):
                 module = obj.module
@@ -273,9 +294,6 @@ class ObjectDirectoryParser(object):
             entry = self.unhandled_variables.get(var, set())
             entry.add(path)
             self.unhandled_variables[var] = entry
-
-        if retain_metadata:
-            self.collect_makefile_metadata(m)
 
     def collect_makefile_metadata(self, m):
         '''Collects metadata from a Makefile into memory.'''
