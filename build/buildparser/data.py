@@ -47,6 +47,9 @@ class TreeInfo(object):
         'idl_directories',         # Set of directories containing IDL files
         'idl_sources',             # Dictionary of filenames to metadata
         'jar_manifests',           # Dictionary of filenames to metadata
+        'libraries',               # Dictionary of libraries. Keys are unique
+                                   # library names. Values are dictionaries
+                                   # with additional metadata.
         'object_directory',        # Path to output/object directory
         'source_directories',      # Set of directories containing sources
         'top_source_directory',    # Main/top source directory
@@ -58,6 +61,7 @@ class TreeInfo(object):
         self.idl_directories      = set()
         self.idl_sources          = {}
         self.jar_manifests        = {}
+        self.libraries            = {}
         self.object_directory     = None
         self.source_directories   = set()
         self.top_source_directory = None
@@ -67,6 +71,7 @@ class MakefileDerivedObject(object):
     '''Abstract class for something that was derived from a Makefile.'''
 
     __slots__ = (
+        'directory',        # Directory containing this Makefile
         'source_dir',       # Source directory for this Makefile
         'top_source_dir',   # The top source code directory
         'used_variables',   # Keeps track of variables consulted to build this object
@@ -78,6 +83,7 @@ class MakefileDerivedObject(object):
     def __init__(self, makefile):
         assert(makefile is not None)
 
+        self.directory      = makefile.dir
         self.source_dir     = None
         self.top_source_dir = None
         self.used_variables = set()
