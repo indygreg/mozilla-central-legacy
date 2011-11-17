@@ -86,6 +86,8 @@ class ObjectDirectoryParser(object):
     # skip over these.
     # TODO support all directories.
     IGNORE_DIRECTORIES = [os.path.normpath(f) for f in [
+        'accessible/src/atk', # non-Linux
+        'build/win32',        # non-Linux
         'browser/app',
         'browser/installer',
         'browser/locales',   # $(shell) in global scope
@@ -183,6 +185,7 @@ class ObjectDirectoryParser(object):
 
         self.tree = data.TreeInfo()
         self.tree.object_directory = self.dir
+        self.tree.top_source_directory = self.top_source_dir
 
         # Traverse over all relevant Makefiles
         for path in self.relevant_makefile_paths:
@@ -255,6 +258,7 @@ class ObjectDirectoryParser(object):
                 }
 
                 self.tree.idl_directories.add(obj.source_dir)
+
             elif isinstance(obj, data.ExportsInfo):
                 for k, v in obj.exports.iteritems():
                     k = '/%s' % k
@@ -282,6 +286,38 @@ class ObjectDirectoryParser(object):
 
                         if not found:
                             print 'Could not find export file: %s from %s' % ( f, obj.source_dir )
+
+            elif isinstance(obj, data.LibraryInfo):
+                name = obj.name
+
+                if name in self.tree.libraries:
+                    print 'WARNING: library already defined: %s' % name
+                    continue
+
+                def normalize_include(path):
+                    if os.path.isabs(path):
+                        return path
+
+                    return os.path.normpath(os.path.join(obj.directory, path))
+
+                includes = []
+                for path in obj.includes:
+                    includes.append(normalize_include(path))
+                for path in obj.local_includes:
+                    includes.append(normalize_include(path))
+
+                self.tree.libraries[name] = {
+                    'c_flags':     obj.c_flags,
+                    'cpp_sources': obj.cpp_sources,
+                    'cxx_flags':   obj.cxx_flags,
+                    'defines':     obj.defines,
+                    'includes':    includes,
+                    'pic':         obj.pic,
+                    'is_static':   obj.is_static,
+                    'source_dir':  obj.source_dir,
+                    'output_dir':  obj.directory,
+                }
+
             elif isinstance(obj, data.MiscInfo):
                 if obj.included_files is not None:
                     for path in obj.included_files:
