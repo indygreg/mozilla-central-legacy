@@ -129,6 +129,8 @@ class Makefile(object):
         This effectively converts a string back to the form it was defined as
         in the Makefile. This is different from the resolvestr() method on
         Expansion classes because it doesn't actually expand variables.
+
+        TODO consider adding this logic on the appropriate PyMake classes.
         '''
         if isinstance(e, pymake.data.StringExpansion):
             return e.s
@@ -136,10 +138,7 @@ class Makefile(object):
             parts = []
             for ex, is_func in e:
                 if is_func:
-                    if isinstance(ex, pymake.functions.VariableRef):
-                        parts.append('$(%s)' % ex.vname.s)
-                    else:
-                        raise Exception('Unhandled function type: %s' % ex)
+                    parts.append(self.function_to_string(ex))
                 else:
                     parts.append(ex)
 
@@ -157,6 +156,81 @@ class Makefile(object):
             return []
         else:
             return s.split(' ')
+
+    def function_to_string(self, ex):
+        '''Convert a PyMake function instance to a string.'''
+        if isinstance(ex, pymake.functions.AddPrefixFunction):
+            return '$(addprefix %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.AddSuffixFunction):
+            return '$(addsuffix %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.DirFunction):
+            return '$(dir %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.FilterFunction):
+            return '$(filter %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FilteroutFunction):
+            return '$(filter-out %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FindstringFunction):
+            return '$(findstring %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.ForEachFunction):
+            return '$(foreach %s, %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1]),
+                self.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.PatSubstFunction):
+            return '$(patsubst %s, %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1]),
+                self.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.StripFunction):
+            return '$(strip %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.SubstitutionRef):
+            return '$(%s:%s=%s)' % (
+                self.expansion_to_string(ex.vname),
+                self.expansion_to_string(ex.substfrom),
+                self.expansion_to_string(ex.substto)
+            )
+
+        elif isinstance(ex, pymake.functions.SubstFunction):
+            return '$(subst %s, %s, %s)' % (
+                self.expansion_to_string(ex._arguments[0]),
+                self.expansion_to_string(ex._arguments[1]),
+                self.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.WildcardFunction):
+            return '$(wildcard %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.VariableRef):
+            return '$(%s)' % ex.vname.s
+
+        else:
+            raise Exception('Unhandled function type: %s' % ex)
 
     def condition_to_string(self, c):
         '''Convert a condition to a string representation.'''
