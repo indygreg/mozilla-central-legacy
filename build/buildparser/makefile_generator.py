@@ -75,6 +75,7 @@ class MakefileGenerator(object):
         self._print_header(state)
         self._print_idl_rules(state)
         self._print_file_exports(state)
+        self._print_libraries(state)
         self._print_footer(state)
 
     def _print_header(self, state):
@@ -89,17 +90,19 @@ class MakefileGenerator(object):
         print >>fh, 'TEMP_DIR := $(DIST_DIR)/tmp'
         print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
         print >>fh, 'COPY := cp'
+        print >>fh, 'CXX := g++'
         print >>fh, ''
 
         # The first defined target in a Makefile is the default one. The name
         # 'default' reinforces this.
-        print >>fh, 'default: export\n'
+        print >>fh, 'default: export libraries\n'
 
         print >>fh, 'export: distdirs idl file_exports\n'
+        print >>fh, 'libraries: export object_files\n'
 
         print >>fh, 'distdirs: $(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR)\n'
 
-        state['phonies'] |= set(['default', 'export', 'distdirs'])
+        state['phonies'] |= set(['default', 'export', 'libraries', 'distdirs'])
 
         # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR) $(TEMP_DIR):'
@@ -208,3 +211,47 @@ class MakefileGenerator(object):
         export_targets.sort()
         print >>fh, 'file_exports: %s\n' % ' \\\n  '.join(export_targets)
         state['phonies'].add('file_exports')
+
+    def _print_libraries(self, state):
+        '''Prints library targets.'''
+
+        fh = state['fh']
+
+        object_filenames = []
+
+        names = sorted(self.tree.libraries.keys())
+        for name in names:
+            # TODO calculate filenames properly
+
+            library = self.tree.libraries[name]
+
+            compiler_args = ['-c']
+            compiler_args.extend(library['cxx_flags'])
+
+            for define in library['defines']:
+                compiler_args.append('-D%s' % define)
+
+            for include in library['includes']:
+                compiler_args.append('-I%s' % self.get_converted_path(include))
+
+            for source in library['cpp_sources']:
+                basename = os.path.basename(source)
+                source_filename = '%s/%s' % (
+                    self.get_converted_path(library['source_dir']),
+                    source
+                )
+                target_filename = '%s/%s.o' % (
+                    self.get_converted_path(library['output_dir']),
+                    os.path.splitext(basename)[0]
+                )
+
+                print >>fh, '%s: %s' % ( target_filename, source_filename )
+                print >>fh, '\t$(CXX) %s -o "%s" "%s"\n' % (
+                    ' '.join(compiler_args), target_filename, source_filename
+                )
+
+                object_filenames.append(target_filename)
+
+        object_filenames.sort()
+        print >>fh, 'object_files: %s\n' % ' \\\n  '.join(object_filenames)
+        state['phonies'].add('object_files')
