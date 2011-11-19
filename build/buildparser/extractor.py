@@ -60,6 +60,14 @@ class BuildSystem(object):
         'nsprpub',
     )
 
+    # Ideally no paths should be ignored, but alas.
+    IGNORED_PATHS = (
+        # We ignore libffi because we have no way of producing the files from the
+        # .in because configure doesn't give us an easily parseable file
+        # containing the defines.
+        'js/src/ctypes/libffi',
+    )
+
     __slots__ = (
         'autoconfs',      # Mapping of identifiers to autoconf.mk data.Makefile
                           # instances
@@ -96,6 +104,15 @@ class BuildSystem(object):
                 continue
 
             relative = root[len(self.config.source_directory)+1:]
+            ignored = False
+
+            for ignore in self.IGNORED_PATHS:
+                if relative[0:len(ignore)] == ignore:
+                    ignored = True
+                    break
+
+            if ignored:
+                continue
 
             for name in files:
                 if name == 'Makefile.in':
