@@ -192,8 +192,21 @@ class Makefile(object):
                 self.expansion_to_string(ex._arguments[1])
             )
 
+        elif isinstance(ex, pymake.functions.BasenameFunction):
+            return '$(basename %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.CallFunction):
+            return '$(call %s)' % ','.join(
+                [self.expansion_to_string(e) for e in ex._arguments])
+
         elif isinstance(ex, pymake.functions.DirFunction):
             return '$(dir %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.ErrorFunction):
+            return '$(error %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.EvalFunction):
+            return '$(eval %s)' % self.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.FilterFunction):
             return '$(filter %s, %s)' % (
@@ -220,12 +233,22 @@ class Makefile(object):
                 self.expansion_to_string(ex._arguments[2])
             )
 
+        elif isinstance(ex, pymake.functions.IfFunction):
+            return '$(if %s)' % ','.join([
+                self.expansion_to_string(e) for e in ex._arguments])
+
         elif isinstance(ex, pymake.functions.PatSubstFunction):
             return '$(patsubst %s, %s, %s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1]),
                 self.expansion_to_string(ex._arguments[2])
             )
+
+        elif isinstance(ex, pymake.functions.ShellFunction):
+            return '$(shell %s)' % self.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.SortFunction):
+            return '$(sort %s)' % self.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.StripFunction):
             return '$(strip %s)' % self.expansion_to_string(ex._arguments[0])
@@ -244,11 +267,17 @@ class Makefile(object):
                 self.expansion_to_string(ex._arguments[2])
             )
 
+        elif isinstance(ex, pymake.functions.WarningFunction):
+            return '$(warning %s' % self.expansion_to_string(ex._arguments[0])
+
         elif isinstance(ex, pymake.functions.WildcardFunction):
             return '$(wildcard %s)' % self.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.VariableRef):
-            return '$(%s)' % ex.vname.s
+            if isinstance(ex.vname, pymake.data.StringExpansion):
+                return '$(%s)' % ex.vname.s
+            else:
+                return self.expansion_to_string(ex.vname)
 
         else:
             raise Exception('Unhandled function type: %s' % ex)
@@ -280,6 +309,56 @@ class Makefile(object):
             raise Exception('Unhandled condition type: %s' % c)
 
         return ' '.join(parts)
+
+    def statement_to_string(self, statement):
+        '''Convert a statement to its string representation.'''
+
+        (s, level) = statement
+
+        if isinstance(s, pymake.parserdata.Command):
+            return '\t%s' % self.expansion_to_string(s.exp)
+        elif isinstance(s, pymake.parserdata.Condition):
+            return self.condition_to_string(s)
+        elif isinstance(s, pymake.parserdata.ConditionBlock):
+            return None
+        elif isinstance(s, pymake.parserdata.EmptyDirective):
+            return self.expansion_to_string(s.exp)
+        elif isinstance(s, pymake.parserdata.ExportDirective):
+            return 'export %s' % self.expansion_to_string(s.exp)
+        elif isinstance(s, pymake.parserdata.Include):
+            return 'include %s' % self.expansion_to_string(s.exp)
+        elif isinstance(s, pymake.parserdata.Rule):
+            sep = ':'
+            if s.doublecolon:
+                sep = '::'
+
+            return '%s%s %s' % (
+                self.expansion_to_string(s.targetexp),
+                sep,
+                self.expansion_to_string(s.depexp)
+            )
+        elif isinstance(s, pymake.parserdata.SetVariable):
+            # TODO what is targetexp used for?
+            return '%s %s %s' % (
+                self.expansion_to_string(s.vnameexp),
+                s.token,
+                s.value
+            )
+        elif isinstance(s, pymake.parserdata.StaticPatternRule):
+            sep = ':'
+            if s.doublecolon:
+                sep = '::'
+
+            return '%s%s %s : %s' % (
+                self.expansion_to_string(s.targetexp),
+                sep,
+                self.expansion_to_string(s.patternexp),
+                self.expansion_to_string(s.depexp)
+            )
+        elif isinstance(s, pymake.parserdata.VPathDirective):
+            return 'vpath %s' % self.expansion_to_string(s.exp)
+        else:
+            raise Exception('Unhandled statement type: %s' % s)
 
     def get_statements(self, expand_conditional=False):
         '''Obtain all the low-level PyMake-parsed statements from the file.
@@ -429,6 +508,31 @@ class Makefile(object):
                 continue
 
             yield (self.expansion_to_string(o.exp), o.expected, o.exp.loc.line)
+
+    def get_stripped_statements(self, defined_variables=None):
+        '''Obtain the statements constituting this Makefile that will be
+        evaluated assuming conditions are met. In other words, this strips
+        statements related to conditionals that don't evaluate to true for
+        the given preconditions.'''
+        if defined_variables is not None:
+            assert(isinstance(defined_variables, set))
+
+        strip_level = None
+        last_level = 0
+
+        # TODO implement
+        for (o, level) in self.get_statements(expand_conditional=True):
+            pass
+
+    def write_statements_to_file(self, statements, fh):
+        '''Writes a series of statements back to a file handle. This will
+        produce a file consumeable by Make.'''
+        for statement in statements:
+            s = self.statement_to_string(statement)
+            if s is None:
+                continue
+
+            print >>fh, s
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
