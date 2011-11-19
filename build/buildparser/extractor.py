@@ -37,14 +37,158 @@
 # This file contains classes and methods used to extract metadata from the
 # Mozilla build system.
 
+from . import config
 from . import data
 from . import makefile
 
 import os
 import os.path
+import re
 import sys
 import traceback
 import xpidl
+
+class BuildSystem(object):
+    '''High-level interface to the build system.'''
+
+    CALLBACK_ACTIONS = {
+        'mkdir': 'Created directory: %s',
+    }
+
+    MANAGED_PATHS = (
+        'js/src',
+        'nsprpub',
+    )
+
+    __slots__ = (
+        'autoconfs',      # Mapping of identifiers to autoconf.mk data.Makefile
+                          # instances
+        'config',         # config.BuildConfig instance
+        'is_configured',  # whether the object directory has been configured
+    )
+
+    def __init__(self, conf):
+        '''Construct an instance from a source and target directory.'''
+        assert(isinstance(conf, config.BuildConfig))
+        self.config = conf
+
+        self.refresh_state()
+
+    def refresh_state(self):
+        # TODO implementation is naive
+        self.autoconfs = {}
+
+        autoconf = os.path.join(self.config.object_directory, 'config', 'autoconf.mk')
+
+        self.is_configured = os.path.exists(autoconf)
+
+        if self.is_configured:
+            self.autoconfs['main'] = makefile.Makefile(autoconf)
+
+            for managed in self.MANAGED_PATHS:
+                path = os.path.join(self.config.object_directory, managed, 'config', 'autoconf.mk')
+                self.autoconfs[managed] = makefile.Makefile(path)
+
+    def _find_input_makefiles(self):
+        for root, dirs, files in os.walk(self.config.source_directory):
+            # Filter out object directories inside the source directory
+            if root[0:len(self.config.object_directory)] == self.config.object_directory:
+                continue
+
+            relative = root[len(self.config.source_directory)+1:]
+
+            for name in files:
+                if name == 'Makefile.in':
+                    yield (relative, name)
+
+    def generate_makefiles(self, callback=None):
+        '''Generate Makefile's from configured object tree.'''
+
+        if not self.is_configured:
+            raise Exception('Attempting to generate Makefiles before tree configuration')
+
+        for (relative, path) in self._find_input_makefiles():
+            autoconf = self._get_autoconf_for_file(relative)
+            if callback:
+                callback('print', '%s/%s' % ( relative, path ))
+
+            self.generate_makefile(relative, path, autoconf, callback=callback)
+
+
+    def generate_makefile(self, relative_path, filename, autoconf, callback=None):
+        '''Generate a Makefile from an input template and an autoconf file.'''
+        input_path = os.path.join(self.config.source_directory, relative_path, filename)
+
+        out_basename = filename
+        if out_basename[-3:] == '.in':
+            out_basename = out_basename[0:-3]
+
+        output_path = os.path.join(self.config.object_directory,
+                                   relative_path,
+                                   out_basename)
+
+        # Create output directory
+        output_directory = os.path.dirname(output_path)
+
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+            if callback:
+                callback('mkdir', [output_directory])
+
+        sub_re = re.compile(r"@([a-z0-9_]+)@")
+
+        managed_path = None
+        for managed in self.MANAGED_PATHS:
+            if relative_path[0:len(managed)] == managed:
+                managed_path = managed
+                break
+
+        with open(input_path, 'r') as input:
+            with open(output_path, 'wb') as output:
+                for line in input:
+                    # Handle simple case of no substitution first
+                    if line.count('@') < 2:
+                        print >>output, line,
+                        continue
+
+                    # Now we perform variable replacement on the line.
+
+
+                    # We assume these will be calculated at least once b/c they
+                    # are common.
+                    top_source_directory = self.config.source_directory
+
+                    if managed_path is not None:
+                        top_source_directory = os.path.join(top_source_directory,
+                                                            managed_path)
+
+                    source_directory = os.path.join(self.config.source_directory,
+                                                    relative_path)
+
+                    newline = line
+                    for match in sub_re.finditer(line):
+                        variable = match.group(1)
+                        if variable == 'top_srcdir':
+                            newline = newline.replace('@top_srcdir@', top_source_directory)
+                        elif variable == 'srcdir':
+                            newline = newline.replace('@srcdir@', source_directory)
+                        else:
+                            value = autoconf.get_variable_string(variable, resolve=True)
+                            if value is None:
+                                value = ''
+
+                            newline = newline.replace(match.group(0), value)
+
+                    print >>output, newline,
+
+    def _get_autoconf_for_file(self, path):
+        '''Obtain an autoconf file for a relative path.'''
+
+        for managed in self.MANAGED_PATHS:
+            if path[0:len(managed)] == managed:
+                return self.autoconfs[managed]
+
+        return self.autoconfs['main']
 
 class ObjectDirectoryParser(object):
     '''A parser for an object directory.

@@ -65,6 +65,9 @@ class Makefile(object):
         'makefile',      # PyMake Makefile instance
         'statements',    # List of PyMake-parsed statements in the main file
         'own_variables', # Dict of variables defined in the main file
+        'variable_assignments', # Dictionary of variable names to string
+                                # content for variables which are assigned
+                                # once and only once in the current file.
     )
 
     def __init__(self, filename):
@@ -92,6 +95,7 @@ class Makefile(object):
         self.statements    = None
         self.own_variables = None
         self.include_files = None
+        self.variable_assignments = None
 
     def has_variable(self, name):
         '''Determines whether a named variable is defined.'''
@@ -101,16 +105,33 @@ class Makefile(object):
         v = self.makefile.variables.get(name, True)[2]
         return v is not None
 
-    def get_variable_string(self, name):
-        '''Obtain a named variable as a string.'''
-        if self.makefile is None:
-            self._load_makefile()
+    def get_variable_string(self, name, resolve=True):
+        '''Obtain a named variable as a string.
 
-        v = self.makefile.variables.get(name, True)[2]
-        if v is None:
-            return None
+        If resolve is True, the variable's value will be resolved. If not,
+        the Makefile syntax of the expansion is returned. In either case,
+        if the variable is not defined, None is returned.
+        '''
+        if resolve:
+            if self.makefile is None:
+                self._load_makefile()
 
-        return v.resolvestr(self.makefile, self.makefile.variables)
+            v = self.makefile.variables.get(name, True)[2]
+            if v is None:
+                return None
+
+            return v.resolvestr(self.makefile, self.makefile.variables)
+        else:
+            if self.variable_assignments is None:
+                self._load_variable_assignments()
+
+            if name not in self.variable_assignments:
+                return None
+
+            if len(self.variable_assignments[name]) > 1:
+                raise Exception('Cannot return string representation of variable set multiple times: %s' % name)
+
+            return self.variable_assignments[name][0].value
 
     def get_variable_split(self, name):
         '''Obtain a named variable as a list.'''
@@ -452,6 +473,20 @@ class Makefile(object):
         examine_statements(self.statements, False)
 
         self.own_variables = vars
+
+    def _load_variable_assignments(self):
+        self.variable_assignments = {}
+        for (statement, level) in self.get_statements(expand_conditional=True):
+            if not isinstance(statement, pymake.parserdata.SetVariable):
+                continue
+
+            assert(isinstance(statement.vnameexp, pymake.data.StringExpansion))
+
+            name = statement.vnameexp.s
+            v = self.variable_assignments.get(name, [])
+            v.append(statement)
+
+            self.variable_assignments[name] = v
 
 class MozillaMakefile(Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''
