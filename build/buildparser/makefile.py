@@ -112,10 +112,17 @@ class Statement(object):
                 Statement.expansion_to_string(self.statement.depexp).lstrip()
             )).rstrip()
         elif self.is_setvariable:
-            # TODO what is targetexp used for?
-            return '%s %s %s' % (
-                self.vname_expansion_string, self.token, self.value
-            )
+            if self.statement.targetexp is not None:
+                return '%s: %s %s %s' % (
+                    Statement.expansion_to_string(self.statement.targetexp),
+                    self.vname_expansion_string,
+                    self.token,
+                    self.value
+                )
+            else:
+                return '%s %s %s' % (
+                    self.vname_expansion_string, self.token, self.value
+                )
         elif self.is_static_pattern_rule:
             return ('\n%s%s %s : %s' % (
                 Statement.expansion_to_string(self.statement.targetexp),
