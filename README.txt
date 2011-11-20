@@ -1,12 +1,130 @@
-This is a branch adding experimental build system parsing and conversions to
-the tree.
+The Build Splendid Build System
+===============================
 
-Nearly all the new code lives in build/buildparser/*.
+The code in this tree contains an alternate build system for Mozilla projects.
 
-VISUAL STUDIO OUTPUT IS CURRENTLY TOTALLY BUSTED. DON'T ATTEMPT TO USE!
+Main Features
+=============
 
-Architecture
-============
+Unified Build Tool
+------------------
+
+A new file, build.py, is introduced in the main source directory. This
+file serves as a gateway to common build actions, including build
+configuration.
+
+The first time you run build.py,
+
+  $ ./build.py
+
+The tool recognizes that you don't have an existing build config and opens a
+wizard to help you create one. The config files are replacements for mozconfig
+files.
+
+You launch build.py with an action you want to perform. Common actions are
+"configure," "makefiles," or "build." When you run an action, the prerequisites
+are executed automatically.
+
+The unified build tool also has nifty output formatting. By default, output is
+very silent, so you only see high-level logging to stdout. Even when you run
+configure, you just see "starting configure" [wait 10 seconds] "Configure
+finished." Of course, you can turn on verbose mode to see everything. Each
+output line contains a relative timestamp from action start so you can see how
+long things are taking. There is also a forensic log mode which writes newline-
+delimited JSON objects describing each entry. This allows for easier machine
+consumption of logs without having to write a complicated parser.
+
+Derecursified Makefile Generation
+---------------------------------
+
+This build system is capable of producing a fully-derecursified Makefile. It
+accomplishes this by parsing existing Makefiles for variables that have
+rules from rules.mk (like CPPSRCS or EXPORTS) and dynamically produces a new
+Makefile with individual rules for these. See the technical overview below.
+
+BXR - The Build Cross Reference
+-------------------------------
+
+To help see how the build system is configured without having to grok
+Makefiles, BXR is introduced. BXR takes metadata from the build system and
+formats it to HTML.
+
+Run BXR through build.py:
+
+  $ ./build.py bxr
+
+Side-by-Side Compatibility With Existing Build System
+-----------------------------------------------------
+
+Build Splendid has been designed to be installed side-by-side with the existing
+build system. It makes no backwards-incompatible changes that should impact the
+existing build system. So, once it lands, developers can select which one to
+use.
+
+The only caveat is Build Splendid needs to own the object directory. So, you
+can't use both build systems on the same output directory. But, you can have
+both working from the same source directory.
+
+Changes to Existing Files
+-------------------------
+
+* configure.in's updated to allow optional suppression of Makefile.in
+  conversion. Build Splendid can perform this conversion itself.
+
+FAQ
+===
+
+Is this a full build system replacement?
+----------------------------------------
+
+No. There is lots of functionality in the original build system (PGO, i10n,
+packaging, etc) that is not yet implemented in this build system. However,
+functionality that I think is used by 95% of people is included. So, for
+most developers, this build system should suffice.
+
+We should care about making this build system more robust because it builds
+much, much faster.
+
+Why did you kill mozconfigs?
+----------------------------
+
+Because they are annoying and error prone. I find it extremely annoying that
+the documentation for all the options is on a web site. The configurable
+options need to be versioned with the code so users are guaranteed to get
+correct information when setting up things. And, our current validation
+story is a joke. Even if it were pretty good, I'd rather do validation in
+Python than in configure or makefiles.
+
+Have any performance numbers?
+-----------------------------
+Yes!
+
+Linux and Windows numbers executed on a Core i7-2600K running in 64-bit. Linux
+was running in a VM, but the VM had 4GB dedicated memory.
+
+Under Linux:
+
+  # Empty object directory configure
+  * 13.8s - $ make -f client.mk configure
+  * 14.1s - $ make.py -f client.mk configure
+  * 13.1s - $ build.py configure
+
+Please note that build.py does *not* produce Makefile during configure phase.
+
+  # PyMake performance
+  * 2.8s  - PyMake parse all 1148 Makefile.in into statement list
+
+When can this get checked in?
+-----------------------------
+
+I don't know. It is a lot of code that needs to be reviewed. And, some test
+code likely needs written.
+
+Technical Overview
+==================
+
+Most new code is located in build/buildparser and is defined as Python
+modules for reusability.
 
 The code is conceptualized in 3 components: parsing/extraction,
 representation, and transformation.

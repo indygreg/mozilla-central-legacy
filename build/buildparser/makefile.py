@@ -68,6 +68,8 @@ class StatementCollection(object):
     )
 
     def __init__(self, filename=None):
+        self._ifdefs = None
+
         if filename:
             self._load_raw_statements(pymake.parser.parsefile(filename))
         else:
@@ -86,12 +88,12 @@ class StatementCollection(object):
                 if not isinstance(s, pymake.parserdata.IfdefCondition):
                     continue
 
-                self._ifdefs.append (
+                self._ifdefs.append((
                     self.expansion_to_string(s.exp),
                     s.expected,
                     level > 0,
                     (s.exp.loc.path, s.exp.loc.line, s.exp.loc.column)
-                )
+                ))
 
         return self._ifdefs
 
@@ -504,7 +506,7 @@ class Makefile(object):
         'filename',      # Filename of the Makefile
         'dir',           # Directory holding the Makefile
         'makefile',      # PyMake Makefile instance
-        'statements',    # List of PyMake-parsed statements in the main file
+        '_statements',    # List of PyMake-parsed statements in the main file
     )
 
     def __init__(self, filename):
@@ -524,7 +526,15 @@ class Makefile(object):
         # constructor. If the environment isn't sane (e.g. no proper shell),
         # PyMake will explode.
         self.makefile      = None
-        self.statements    = None
+        self._statements    = None
+
+    @property
+    def statements(self):
+        '''Obtain the StatementCollection for this Makefile.'''
+        if self._statements is None:
+            self._statements = StatementCollection(filename=self.filename)
+
+        return self._statements
 
     def variable_defined(self, name, search_includes=False):
         '''Returns whether a variable is defined in the Makefile.
@@ -538,9 +548,6 @@ class Makefile(object):
             v = self.makefile.variables.get(name, True)[2]
             return v is not None
         else:
-            if self.statements is None:
-                self._load_statements()
-
             return name in self.statements.defined_variables
 
     def get_variable_string(self, name, resolve=True):
@@ -583,41 +590,32 @@ class Makefile(object):
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
     def get_own_variable_names(self, include_conditionals=True):
-        '''Returns a list of variables defined by the Makefile itself.
-
-        This looks at the low-level parsed Makefile, before including other
-        files, and determines which variables are defined.
+        '''Returns a set of variable names defined by the Makefile itself.
 
         include_conditionals can be used to filter out variables defined inside
         a conditional (e.g. #ifdef). By default, all variables are returned,
         even the ones inside conditionals that may not be evaluated.
         '''
+        names = set()
 
-        # Lazy-load and cache.
-        if self.own_variables is None:
-            self._load_own_variables()
+        for ( name, value, token, is_conditional, location ) in self.statements.variable_assignments:
+            if is_conditional and not include_conditionals:
+                continue
 
-        if include_conditionals:
-            return [n for n in self.own_variables.keys()]
-        else:
-            return [k for k, v in self.own_variables.iteritems() if not v[1]]
+            names.add(name)
+
+        return names
 
     def has_own_variable(self, name, include_conditionals=True):
         '''Returns whether the specified variable is defined in the Makefile
         itself (as opposed to being defined in an included file.'''
-        if self.own_variables is None:
-            self._load_own_variables()
-
-        return name in self.own_variables.keys()
+        return name in self.get_own_variable_names(include_conditionals)
 
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
         self.makefile.include(self.filename)
         self.makefile.finishparsing()
 
-    def _load_statements(self):
-        if self.statements is None:
-            self.statements = StatementsCollection(filename=self.filename)
 
 class MozillaMakefile(Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''
@@ -952,7 +950,7 @@ class MozillaMakefile(Makefile):
             for g in self.get_variable_split('GARBAGE'):
                 misc.garbage.add(g)
 
-        misc.included_files = self.get_included_files()
+        misc.included_files = [t[0] for t in self.statements.includes]
 
         yield tracker
         yield misc

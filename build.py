@@ -53,10 +53,11 @@ import os.path
 import time
 
 SUPPORTED_ACTIONS = (
-   'build',
-   'configure',
-   'makefiles',
-   'wipe',
+    'build',
+    'bxr',
+    'configure',
+    'makefiles',
+    'wipe',
 )
 
 op = optparse.OptionParser()
@@ -95,11 +96,19 @@ op_group_output.add_option(
 )
 op.add_option_group(op_group_output)
 
+op_group_bxr = optparse.OptionGroup(op, 'BXR Options')
+op_group_bxr.add_option(
+    '--bxr-file', dest='bxr_file', metavar='FILE',
+    default='./bxr.html',
+    help='Path to write BXR to.'
+)
+op.add_option_group(op_group_bxr)
+
 op.set_usage('''Usage: %prog [options] [action]
 
 Supported Actions:
 
-     build   Performs all steps necessary to build the tree. This is what you
+      build  Performs all steps necessary to build the tree. This is what you
              will run most of the time and it is the default action.
 
   configure  Run autoconf and ensure your build environment is proper. This
@@ -110,6 +119,9 @@ Supported Actions:
              of config options.
 
        wipe  Completely wipe your configured object directory.
+
+        bxr  Create the Build Cross Reference HTML file describing the current
+             build tree.
 
 
 Makefile Generation Choices:
@@ -142,7 +154,7 @@ if len(args) > 0:
     action = args[0]
 
 if action not in SUPPORTED_ACTIONS:
-    op.error('Unknown action (%s). Run with --help for usage.' % action)
+    op.error('Unknown action: %s' % action)
 
 config_file = os.path.join(os.path.dirname(__file__), 'build_config.ini')
 
@@ -193,6 +205,13 @@ bs = buildparser.extractor.BuildSystem(config, callback=action_callback)
 
 if action == 'build':
     bs.build()
+elif action == 'bxr':
+    # We lazy import because we don't want a dependency on Mako. If that
+    # package is every included with the source tree, we can change this.
+    import buildparser.bxr
+    with open(options.bxr_file, 'wb') as fh:
+        buildparser.bxr.generate_bxr(config, fh)
+
 elif action == 'configure':
     bs.configure()
 elif action == 'makefiles':

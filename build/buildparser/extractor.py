@@ -268,19 +268,28 @@ class BuildSystem(object):
                     yield (relative, name)
 
     def generate_makefiles(self):
-        '''Generate Makefile's from configured object tree.'''
+        '''Generate Makefile's into configured object tree.'''
 
         if not self.is_configured:
-            raise Exception('Attempting to generate Makefiles before tree configuration')
+            self.configure()
 
         self.run_callback('generate_makefile_begin', {},
                           'Beginning generating of Makefiles',
                           important=True)
 
+        # PyMake's cache only holds 15 items. We assume we have the resources
+        # (because we are building m-c after all) and keep ALL THE THINGS in
+        # memory.
+        statements_cache = {}
+
         for (relative, path) in self._find_input_makefiles():
             try:
-                autoconf = self._get_autoconf_for_file(relative)
-                self.generate_makefile(relative, path, translation_map=autoconf)
+                full = os.path.join(self.config.source_directory, relative, path)
+
+                statements_cache[full] = makefile.StatementCollection(filename=full)
+
+                #autoconf = self._get_autoconf_for_file(relative)
+                #self.generate_makefile(relative, path, translation_map=autoconf)
             except:
                 self.run_callback(
                     'generate_makefile_exception',
@@ -352,7 +361,7 @@ class BuildSystem(object):
         source_directory = os.path.join(self.config.source_directory,
                                         relative_path)
 
-        sub_re = re.compile(r"@([a-z0-9_]+)@")
+        sub_re = re.compile(r"@([a-z0-9_]+?)@")
 
         def perform_variable_translation(line):
             # Handle simple case of no substitution first
@@ -735,7 +744,7 @@ class ObjectDirectoryParser(object):
             else:
                 info['conditional_paths'].add(m.filename)
 
-        for (name, expected, line) in m.get_ifdef_variables():
+        for (name, expected, is_conditional, (path, line, column)) in m.statements.ifdefs:
             if name not in self.variables:
                 self.variables[name] = {
                     'paths':               set(),
@@ -759,7 +768,7 @@ class ObjectDirectoryParser(object):
 
         rules = self.rules[m.filename]
 
-        for rule in m.get_rules():
+        for rule in m.statements.rules:
             rule['condition_strings'] = [m.condition_to_string(c) for c in rule['conditions']]
             rules.append(rule)
 
