@@ -491,7 +491,7 @@ class Statement(object):
             )
 
         elif isinstance(ex, pymake.functions.WarningFunction):
-            return '$(warning %s' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(warning %s)' % Statement.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.WildcardFunction):
             return '$(wildcard %s)' % Statement.expansion_to_string(ex._arguments[0])
