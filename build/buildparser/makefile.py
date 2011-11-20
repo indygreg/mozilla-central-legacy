@@ -106,29 +106,29 @@ class Statement(object):
         elif self.is_include:
             return 'include %s' % self.expansion_string
         elif self.is_rule:
-            return ('%s%s %s' % (
+            return ('\n%s%s %s' % (
                 Statement.expansion_to_string(self.statement.targetexp),
                 self.target_separator,
                 Statement.expansion_to_string(self.statement.depexp).lstrip()
-            )).strip()
+            )).rstrip()
         elif self.is_setvariable:
             # TODO what is targetexp used for?
             return '%s %s %s' % (
                 self.vname_expansion_string, self.token, self.value
             )
         elif self.is_static_pattern_rule:
-            return '%s%s %s : %s' % (
+            return ('\n%s%s %s : %s' % (
                 Statement.expansion_to_string(self.statement.targetexp),
                 self.target_separator,
                 Statement.expansion_to_string(self.statement.patternexp),
                 Statement.expansion_to_string(self.statement.depexp)
-            )
+            )).rstrip()
         elif self.is_vpath:
             return 'vpath %s' % self.expansion_string
         elif self.is_condition_block:
             raise Exception('Cannot convert condition block to string. Did you forget to check .has_str?')
         elif self.is_condition_block_end:
-            return 'endif'
+            return 'endif\n'
         elif self.is_ifeq_end or self.is_ifdef_end or self.is_else_end:
             raise Exception('Cannot convert end conditions to strings. Did you forget to check .has_str?')
         else:
