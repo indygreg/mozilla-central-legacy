@@ -51,6 +51,7 @@ import os.path
 import pymake.data
 import pymake.parser
 import pymake.parserdata
+import re
 
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
@@ -59,7 +60,15 @@ class StatementCollection(object):
         # List of tuples describing ifdefs
         '_ifdefs',
 
-        # List of our normalized statements.
+        # List of our normalized statement tuples.
+        #
+        # Each tuple is of the form:
+        #  ( obj, level )
+        #
+        # Where obj is a class from pymake.parserdata, typically something
+        # derived from Statement or Condition. obj could also be a string
+        # semaphore value. These semaphores were inserted by this class
+        # to make linear examination of the statement stream easier.
         'statements',
 
         # Dictionary of variable names defined unconditionally. Keys are
@@ -67,10 +76,19 @@ class StatementCollection(object):
         'top_level_variables',
     )
 
-    def __init__(self, filename=None):
+    def __init__(self, filename=None, buf=None):
+        '''Construct a set of statements.
+
+        If buf is defined, filename must all be defined. If buf is defined,
+        statements will be read from that string. Else, statements will be
+        read from the passed filename.
+        '''
         self._ifdefs = None
 
-        if filename:
+        if buf is not None:
+            assert(filename is not None)
+            self._load_raw_statements(pymake.parser.parsestring(buf, filename))
+        elif filename:
             self._load_raw_statements(pymake.parser.parsefile(filename))
         else:
             raise Exception('Invalid arguments given to constructor')
@@ -247,7 +265,82 @@ class StatementCollection(object):
 
             yield s
 
-    def expansion_to_string(self, e):
+    def include_includes(self):
+        '''Follow file includes and insert remote statements into this
+        collection.
+
+        For every Include statement in the original list, an IncludeBegin
+        semaphore statement will be inserted immediately before. All
+        statements from that include file will be inserted after it. After
+        all the statements are added, a IncludeEnd semaphore statement will
+        be inserted. All statements will appear on the same level.
+        '''
+        statements = []
+
+        for t in self.statements:
+            s = t[0]
+            if not isinstance(s, pymake.parserdata.Include):
+                statements.append(t)
+                continue
+
+            statements.append(('IncludeBegin', t[1]))
+            statements.append(t)
+            raise Exception('TODO implement')
+            statements.append(('IncludeEnd', t[1]))
+
+        self.statements = statements
+        self.clear_caches()
+
+    def strip_false_conditionals(self):
+        '''Rewrite the raw statement list with raw conditionals filtered out.'''
+        statements = []
+        currently_defined = set()
+        filter_level = None
+
+        # Conditionals are expanded immediately, during the first pass, so it
+        # is safe to linearly traverse and prune as we go.
+        for s, level in self.statements:
+            #print (s, level)
+            if filter_level is not None and level >= filter_level:
+                continue
+
+            if isinstance(s, pymake.parserdata.IfdefCondition):
+                name = self.expansion_to_string(s.exp)
+                defined = name in currently_defined
+
+                if (defined and not expected) or (not defined and expected):
+                    filter_level = level
+                    continue
+
+            elif isinstance(s, pymake.parserdata.Include):
+                # The error on function is an arbitrary restriction. We could
+                # possibly work around it, but that would be harder since
+                # functions possibly require more context to operate on than
+                # the simple parser data.
+                filename = self.expansion_to_string(s, error_on_function=True)
+
+                included = StatementCollection(filename)
+                included.strip_false_conditionals() # why not?
+
+                raise Exception('TODO')
+
+            elif isinstance(s, pymake.parserdata.SetVariable):
+                # At the worst, we are in a conditional that we couldn't
+                # evaluate, so there is no harm in marking as defined even if
+                # it might not be. make will do the right thing at run-time.
+                currently_defined.add(self.expansion_to_string(s.vnameexp))
+
+            statements.append((s, level))
+
+        self.clear_caches()
+
+    def clear_caches(self):
+        '''During normal operation, this object caches some data. This clears
+        those caches.'''
+        self._ifdefs = None
+
+
+    def expansion_to_string(self, e, error_on_function=False):
         '''Convert an expansion to a string.
 
         This effectively converts a string back to the form it was defined as
@@ -262,6 +355,9 @@ class StatementCollection(object):
             parts = []
             for ex, is_func in e:
                 if is_func:
+                    if error_on_function:
+                        raise Exception('Unable to perform expansion due to function presence')
+
                     parts.append(self.function_to_string(ex))
                 else:
                     parts.append(ex)
@@ -497,17 +593,23 @@ class StatementCollection(object):
         self.statements = [s for s in examine(statements, 0)]
 
 class Makefile(object):
-    '''A generic wrapper around a PyMake Makefile.
+    '''A high-level API for a Makefile.
 
-    This provides a convenient API that is missing from PyMake. Perhaps it will
-    be merged in some day.
+    This provides a convenient bridge between StatementCollection,
+    pymake.data.Makefile, and raw file operations.
+
+    From an API standpoint, interaction between the 3 is a bit fuzzy. Read
+    the docs for caveats.
     '''
     __slots__ = (
         'filename',      # Filename of the Makefile
         'dir',           # Directory holding the Makefile
-        'makefile',      # PyMake Makefile instance
-        '_statements',    # List of PyMake-parsed statements in the main file
+        '_makefile',      # PyMake Makefile instance
+        '_statements',   # StatementCollection for this file.
+        '_lines',        # List of lines containing (modified) Makefile lines
     )
+
+    RE_SUB = re.compile(r"@([a-z0-9_]+?)@")
 
     def __init__(self, filename):
         '''Construct a Makefile from a file'''
@@ -525,16 +627,89 @@ class Makefile(object):
         # this is loaded, PyMake will perform some evaluation during the
         # constructor. If the environment isn't sane (e.g. no proper shell),
         # PyMake will explode.
-        self.makefile      = None
-        self._statements    = None
+        self._makefile   = None
+        self._statements = None
+        self._lines      = None
 
     @property
     def statements(self):
         '''Obtain the StatementCollection for this Makefile.'''
         if self._statements is None:
-            self._statements = StatementCollection(filename=self.filename)
+            if self._lines is not None:
+                self._statements = StatementCollection(buf=''.join(self._lines))
+            else:
+                self._statements = StatementCollection(filename=self.filename)
 
         return self._statements
+
+    @property
+    def makefile(self):
+        if self._makefile is None:
+            if self._lines is not None:
+                raise Exception('Cannot load Makefile from modified content at this time')
+
+            self._makefile = pymake.data.Makefile(workdir=self.dir)
+            self._makefile.include(self.filename)
+            self._makefile.finishparsing()
+
+        return self._makefile
+
+    def perform_substitutions(self, mapping, raise_on_missing=False,
+                              error_on_missing=False, callback_on_missing=None):
+        '''Performs variable substitutions on the Makefile.
+
+        A dictionary of variables is passed. Each "@key@" in the source
+        Makefile will be substituted for the literal value in the dictionary.
+
+        This will invalidate any cached objects. However, consumers could
+        still have a reference to an old one. So, if this method is called,
+        it should be done before any other method is consumed.
+
+        Invalidation of the cached objects also means that changes to the
+        StatementCollection will be lost.
+
+        The caller has a few choices when it comes to behavior for source
+        variables missing from the translation map. The default behavior is
+        to insert the empty string (''). If raise_on_missing is True, an
+        exception will be thrown. If error_on_missing is True, an $(error)
+        will be inserted.
+        '''
+
+        lines = []
+
+        with open(self.filename, 'rb') as fh:
+            for line in fh:
+                # Handle simple case of no substitution first
+                if line.count('@') < 2:
+                    lines.append(line)
+                    continue
+
+                # Now we perform variable replacement on the line.
+                newline = line
+                for match in self.RE_SUB.finditer(line):
+                    variable = match.group(1)
+                    value = mapping.get(variable, None)
+
+                    if value is None:
+                        if raise_on_missing:
+                            raise Exception('Missing variable from translation map: %s' % variable)
+
+                        if callback_on_missing is not None:
+                            callback_on_missing(variable)
+
+                        if error_on_missing:
+                            value = '$(error Missing source variable: %s)' % variable
+                        else:
+                            value = ''
+                    newline = newline.replace(match.group(0), value)
+
+                lines.append(newline)
+
+        self._makefile   = None
+        self._statements = None
+        self._lines      = lines
+
+        return lines
 
     def variable_defined(self, name, search_includes=False):
         '''Returns whether a variable is defined in the Makefile.
@@ -542,9 +717,6 @@ class Makefile(object):
         By default, it only looks for variables defined in the current
         file, not in included files.'''
         if search_includes:
-            if self.makefile is None:
-                self._load_makefile()
-
             v = self.makefile.variables.get(name, True)[2]
             return v is not None
         else:
@@ -558,9 +730,6 @@ class Makefile(object):
         if the variable is not defined, None is returned.
         '''
         if resolve:
-            if self.makefile is None:
-                self._load_makefile()
-
             v = self.makefile.variables.get(name, True)[2]
             if v is None:
                 return None
@@ -580,9 +749,6 @@ class Makefile(object):
 
     def get_variable_split(self, name):
         '''Obtain a named variable as a list.'''
-        if self.makefile is None:
-            self._load_makefile()
-
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return []
@@ -610,12 +776,6 @@ class Makefile(object):
         '''Returns whether the specified variable is defined in the Makefile
         itself (as opposed to being defined in an included file.'''
         return name in self.get_own_variable_names(include_conditionals)
-
-    def _load_makefile(self):
-        self.makefile = pymake.data.Makefile(workdir=self.dir)
-        self.makefile.include(self.filename)
-        self.makefile.finishparsing()
-
 
 class MozillaMakefile(Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''

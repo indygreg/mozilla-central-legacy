@@ -274,7 +274,7 @@ class BuildSystem(object):
             self.configure()
 
         self.run_callback('generate_makefile_begin', {},
-                          'Beginning generating of Makefiles',
+                          'Beginning generation of Makefiles',
                           important=True)
 
         # PyMake's cache only holds 15 items. We assume we have the resources
@@ -286,15 +286,13 @@ class BuildSystem(object):
             try:
                 full = os.path.join(self.config.source_directory, relative, path)
 
-                statements_cache[full] = makefile.StatementCollection(filename=full)
-
-                #autoconf = self._get_autoconf_for_file(relative)
-                #self.generate_makefile(relative, path, translation_map=autoconf)
+                autoconf = self._get_autoconf_for_file(relative)
+                self.generate_makefile(relative, path, translation_map=autoconf)
             except:
                 self.run_callback(
                     'generate_makefile_exception',
                     {'path': os.path.join(relative, path), 'exception': traceback.format_exc()},
-                    'Exception when generating Makefile {path}\n{exception}',
+                    'Exception when processing Makefile {path}\n{exception}',
                     error=True)
 
         self.run_callback('generate_makefile_finish', {},
@@ -361,49 +359,29 @@ class BuildSystem(object):
         source_directory = os.path.join(self.config.source_directory,
                                         relative_path)
 
-        sub_re = re.compile(r"@([a-z0-9_]+?)@")
+        mapping = {}
+        for k, v in translation_map.iteritems():
+            mapping[k] = v
 
-        def perform_variable_translation(line):
-            # Handle simple case of no substitution first
-            if line.count('@') < 2:
-                return line
+        mapping['srcdir']     = source_directory
+        mapping['top_srcdir'] = top_source_directory
+        mapping['configure_input'] = 'Generated automatically from Build Splendid'
 
-            # Now we perform variable replacement on the line.
-            newline = line
-            for match in sub_re.finditer(line):
-                variable = match.group(1)
-                if variable == 'top_srcdir':
-                    newline = newline.replace('@top_srcdir@', top_source_directory)
-                elif variable == 'srcdir':
-                    newline = newline.replace('@srcdir@', source_directory)
-                else:
-                    if variable not in translation_map:
-                        # TODO warning
-                        pass
+        def missing_callback(variable):
+            self.run_callback(
+                'makefile_substitution_missing',
+                {'path': os.path.join(relative_path, out_basename), 'var': variable},
+                'Missing source variable for substitution: {var} in {path}',
+                error=True)
 
-                    value = translation_map.get(variable, '')
-                    newline = newline.replace(match.group(0), value)
+        m = makefile.Makefile(input_path)
+        lines = m.perform_substitutions(mapping,
+                                        callback_on_missing=missing_callback)
 
-            return newline
-
-        # We have two branches that perform outputting for performance reasons.
-        # The rewrite branch reads files using PyMake. The simple branch reads
-        # files manually. We don't perform them sequentially to save on the
-        # redundant I/O.
-        if apply_rewrite:
-            raise Exception('Not implemented')
-            m = makefile.Makefile(output_path)
-            statements = [s for s in m.get_statements(expand_conditional=True)]
-            with open(output_path, 'wb') as fh:
-                m.write_statements_to_file(statements, fh)
-        else:
-            with open(input_path, 'r') as input:
-                with open(output_path, 'wb') as output:
-                    for line in input:
-                        if translation_map is not None:
-                            line = perform_variable_translation(line)
-
-                        print >>output, line,
+        # TODO implement apply_rewrite
+        with open(output_path, 'wb') as output:
+            for line in lines:
+                print >>output, line,
 
         self.run_callback(
             'generate_makefile_success',

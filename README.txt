@@ -2,6 +2,20 @@ The Build Splendid Build System
 ===============================
 
 The code in this tree contains an alternate build system for Mozilla projects.
+It is called Build Splendid, or BS for short.
+
+Quick Start
+===========
+
+To quickly get up to your knees in BS, grab this branch then run:
+
+  $ ./build.py
+
+Or, if you'd rather see what you can do:
+
+  $ ./build.py --help
+
+Everything new on this tree is accessed through that one gateway script.
 
 Main Features
 =============
@@ -18,8 +32,9 @@ The first time you run build.py,
   $ ./build.py
 
 The tool recognizes that you don't have an existing build config and opens a
-wizard to help you create one. The config files are replacements for mozconfig
-files.
+wizard to help you create one. Behind the scenes it writes out a config file.
+But, this file is transparent to the user and is managed through build.py.
+These config files are replacements for mozconfig files.
 
 You launch build.py with an action you want to perform. Common actions are
 "configure," "makefiles," or "build." When you run an action, the prerequisites
@@ -110,15 +125,36 @@ Under Linux:
   * 13.1s - $ build.py configure
 
 Please note that build.py does *not* produce Makefile during configure phase.
+For that, we do:
+
+  * 1.1s  - $ build.py makefiles
 
   # PyMake performance
-  * 2.8s  - PyMake parse all 1148 Makefile.in into statement list
+  * 2.8s  - Parse all 1152 Makefile.in into statement list
+  * 1.0s  - Read all Makefile.in, perform variable translation, and write
 
 When can this get checked in?
 -----------------------------
 
 I don't know. It is a lot of code that needs to be reviewed. And, some test
 code likely needs written.
+
+Why did you reinvent parts of PyMake?
+-------------------------------------
+
+There is a lot of code doing make/pymake-like things, but I didn't modify the
+PyMake core classes. The main reason I did this was I wanted to avoid making
+modifications that wouldn't be acceptable to be merged into the core of PyMake.
+
+There are also technical reasons. PyMake's core data modules (pymake.data.*)
+are unsuitable for consumption as a library. The data model is tightly
+coupled with the execution model of make. This won't work for my needs since
+I need to use PyMake as a parsing library. Fortunately, PyMake loosely coupled
+its parser from its higher-level API. Most of the work I've done is
+interfacing with PyMake's parser-level API. Since it is so low level,
+some reinvention was bound to happen.
+
+
 
 Technical Overview
 ==================
