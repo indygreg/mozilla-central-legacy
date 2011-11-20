@@ -44,7 +44,6 @@ from . import makefile
 import hashlib
 import os
 import os.path
-import re
 import subprocess
 import sys
 import traceback
