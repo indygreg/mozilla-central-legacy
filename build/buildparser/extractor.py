@@ -41,19 +41,17 @@ from . import config
 from . import data
 from . import makefile
 
+import hashlib
 import os
 import os.path
 import re
+import subprocess
 import sys
 import traceback
 import xpidl
 
 class BuildSystem(object):
     '''High-level interface to the build system.'''
-
-    CALLBACK_ACTIONS = {
-        'mkdir': 'Created directory: %s',
-    }
 
     MANAGED_PATHS = (
         'js/src',
@@ -68,34 +66,185 @@ class BuildSystem(object):
         'js/src/ctypes/libffi',
     )
 
-    __slots__ = (
-        'autoconfs',      # Mapping of identifiers to autoconf.mk data.Makefile
-                          # instances
-        'config',         # config.BuildConfig instance
-        'is_configured',  # whether the object directory has been configured
+    # Paths in object directory that are produced by configure. We keep
+    # track of these paths and look for changes, etc.
+    CONFIGURE_MANAGED_FILES = (
+        'config/expandlibs_config.py',
+        'config/autoconf.mk',
+        'config/doxygen.cfg',
+        'gfx/cairo/cairo/src/cairo-features.h',
+        'js/src/config/autoconf.mk',
+        'js/src/config/expandlibs_config.py',
+        'js/src/config.status',
+        'js/src/editline/Makefile',   # TODO why is this getting produced?
+        'js/src/js-confdefs.h',
+        'js/src/js-config',
+        'js/src/js-config.h',
+        'js/src/Makefile',            # TODO why is this getting produced
+        'network/necko-config.h',
+        'nsprpub/config/autoconf.mk',
+        'nsprpub/config/nspr-config',
+        'nsprpub/config/nsprincl.mk',
+        'nsprpub/config/nsprincl.sh',
+        'nsprpub/config.status',
+        'xpcom/xpcom-config.h',
+        'xpcom/xpcom-private.h',
+        'config.status',
+        'mozilla-config.h',
     )
 
-    def __init__(self, conf):
+    # Files produced by configure that we don't care about
+    CONFIGURE_IGNORE_FILES = (
+        'js/src/config.log',
+        'js/src/unallmakefiles',
+        'nsprpub/config.log',
+        'config.cache',
+        'config.log',
+        'unallmakefiles',
+    )
+
+    CONFIGURE_IGNORE_DIRECTORIES = (
+        'js/src/ctypes/libffi',
+    )
+
+    __slots__ = (
+        # Mapping of identifiers to autoconf.mk data.Makefile instances
+        'autoconfs',
+
+        # Method that gets invoked any time an action is performed.
+        'callback',
+
+        # config.BuildConfig instance
+        'config',
+
+        # whether the object directory has been configured
+        'is_configured',
+
+        # Holds cached state for configure output
+        'configure_state',
+    )
+
+    def __init__(self, conf, callback=None):
         '''Construct an instance from a source and target directory.'''
         assert(isinstance(conf, config.BuildConfig))
         self.config = conf
+        self.callback = callback
+
+        self.configure_state = {
+            'files': {}
+        }
 
         self.refresh_state()
 
+    def build(self):
+        if not self.is_configured:
+            self.configure()
+
+        # TODO make conditional
+        self.generate_makefiles()
+
     def refresh_state(self):
-        # TODO implementation is naive
         self.autoconfs = {}
 
-        autoconf = os.path.join(self.config.object_directory, 'config', 'autoconf.mk')
+        def get_variable_map(filename):
+            d = {}
 
-        self.is_configured = os.path.exists(autoconf)
+            statement = makefile.StatementCollection(filename=filename)
+            for (name, value, token, conditional, location) in statement.variable_assignments:
+                if conditional:
+                    raise Exception('Conditional variable assignment encountered in autoconf file: %s' % location)
 
-        if self.is_configured:
-            self.autoconfs['main'] = makefile.Makefile(autoconf)
+                if name in d:
+                    if token not in ('=', ':='):
+                        raise Exception('Variable assigned multiple times in autoconf file: %s' % name)
 
-            for managed in self.MANAGED_PATHS:
-                path = os.path.join(self.config.object_directory, managed, 'config', 'autoconf.mk')
-                self.autoconfs[managed] = makefile.Makefile(path)
+                d[name] = value
+
+            return d
+
+        self.is_configured = True
+
+        for path in self.CONFIGURE_MANAGED_FILES:
+            full = os.path.join(self.config.object_directory, path)
+
+            # Construct defined variables from autoconf.mk files
+            if path[-len('config/autoconf.mk'):] == 'config/autoconf.mk':
+                if os.path.exists(full):
+                    k = path[0:-len('config/autoconf.mk')].rstrip('/')
+                    self.autoconfs[k] = get_variable_map(full)
+                else:
+                    self.is_configured = False
+
+            if not os.path.exists(full) and path in self.configure_state['files']:
+                raise Exception('File managed by configure has disappeared. Re-run configure: %s' % path)
+
+            if os.path.exists(full):
+                self.configure_state['files'][path] = {
+                    'sha1': self._sha1_file_hash(full),
+                    'mtime': os.path.getmtime(full),
+                }
+
+    def configure(self):
+        '''Runs configure on the build system.'''
+
+        # TODO regenerate configure's from configure.in's if needed
+
+        # Create object directory if it doesn't exist
+        if not os.path.exists(self.config.object_directory):
+            self.run_callback('create_object_directory',
+                              {'dir':self.config.object_directory},
+                              'Creating object directory {dir}',
+                              important=True)
+
+            os.makedirs(self.config.object_directory)
+
+        configure_path = os.path.join(self.config.source_directory, 'configure')
+
+        env = {}
+        for k, v in os.environ.iteritems():
+            env[k] = v
+
+        # We tell configure via an environment variable not to load a
+        # .mozconfig
+        env['IGNORE_MOZCONFIG'] = '1'
+
+        # Tell configure scripts not to generate Makefiles, as we do that.
+        env['DONT_GENERATE_MAKEFILES'] = '1'
+
+        args = self.config.configure_args
+
+        self.run_callback('configure_begin', {'args': args},
+                          formatter='Starting configure: {args}',
+                          important=True)
+
+        p = subprocess.Popen(
+            args,
+            cwd=self.config.object_directory,
+            executable=configure_path,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
+        while True:
+            for line in p.stdout:
+                self.run_callback('configure_output', {'line': line.strip()},
+                                  '{line}', important=False)
+
+            if p.poll() is not None:
+                break
+
+        result = p.wait()
+
+        if result != 0:
+            self.run_callback('configure_error', {'resultcode': result},
+                              'Configure Error: {resultcode}',
+                              error=True)
+        else:
+            self.run_callback('configure_finish', {},
+                              'Configure finished successfully',
+                              important=True)
+
+        self.refresh_state()
 
     def _find_input_makefiles(self):
         for root, dirs, files in os.walk(self.config.source_directory):
@@ -118,22 +267,57 @@ class BuildSystem(object):
                 if name == 'Makefile.in':
                     yield (relative, name)
 
-    def generate_makefiles(self, callback=None):
+    def generate_makefiles(self):
         '''Generate Makefile's from configured object tree.'''
 
         if not self.is_configured:
             raise Exception('Attempting to generate Makefiles before tree configuration')
 
+        self.run_callback('generate_makefile_begin', {},
+                          'Beginning generating of Makefiles',
+                          important=True)
+
         for (relative, path) in self._find_input_makefiles():
-            autoconf = self._get_autoconf_for_file(relative)
-            if callback:
-                callback('print', '%s/%s' % ( relative, path ))
+            try:
+                autoconf = self._get_autoconf_for_file(relative)
+                self.generate_makefile(relative, path, translation_map=autoconf)
+            except:
+                self.run_callback(
+                    'generate_makefile_exception',
+                    {'path': os.path.join(relative, path), 'exception': traceback.format_exc()},
+                    'Exception when generating Makefile {path}\n{exception}',
+                    error=True)
 
-            self.generate_makefile(relative, path, autoconf, callback=callback)
+        self.run_callback('generate_makefile_finish', {},
+                          'Finished generation of Makefiles',
+                          important=True)
 
+    def generate_makefile(self, relative_path, filename, translation_map=None,
+                          strip_false_conditionals=False, apply_rewrite=False):
+        '''Generate a Makefile from an input file.
 
-    def generate_makefile(self, relative_path, filename, autoconf, callback=None):
-        '''Generate a Makefile from an input template and an autoconf file.'''
+        Generation options can be toggled by presence of arguments:
+
+          translation_map
+              If defined as a dictionary, strings of form "@varname@" will be
+              replaced by the value contained in the passed dictionary. If this
+              argument is None (the default), no translation will occur.
+
+          strip_false_conditionals
+              If True, conditionals evaluated to false will be stripped from the
+              Makefile. This implies apply_rewrite=True
+
+          apply_rewrite
+             If True, the Makefile will be rewritten from PyMake's parser
+             output. This will lose formatting of the original file. However,
+             the produced file should be functionally equivalent to the
+             original. This argument likely has little use in normal
+             operation. It is exposed to debug the functionality of the
+             rewriting engine.
+        '''
+        if strip_false_conditionals:
+            apply_rewrite = True
+
         input_path = os.path.join(self.config.source_directory, relative_path, filename)
 
         out_basename = filename
@@ -149,10 +333,8 @@ class BuildSystem(object):
 
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-            if callback:
-                callback('mkdir', [output_directory])
-
-        sub_re = re.compile(r"@([a-z0-9_]+)@")
+            self.run_callback('mkdir', {'dir': output_directory},
+                              'Created directory: {dir}')
 
         managed_path = None
         for managed in self.MANAGED_PATHS:
@@ -160,43 +342,64 @@ class BuildSystem(object):
                 managed_path = managed
                 break
 
-        with open(input_path, 'r') as input:
-            with open(output_path, 'wb') as output:
-                for line in input:
-                    # Handle simple case of no substitution first
-                    if line.count('@') < 2:
+        # We assume these will be calculated at least once b/c they
+        # are common.
+        top_source_directory = self.config.source_directory
+        if managed_path is not None:
+            top_source_directory = os.path.join(top_source_directory,
+                                                managed_path)
+
+        source_directory = os.path.join(self.config.source_directory,
+                                        relative_path)
+
+        sub_re = re.compile(r"@([a-z0-9_]+)@")
+
+        def perform_variable_translation(line):
+            # Handle simple case of no substitution first
+            if line.count('@') < 2:
+                return line
+
+            # Now we perform variable replacement on the line.
+            newline = line
+            for match in sub_re.finditer(line):
+                variable = match.group(1)
+                if variable == 'top_srcdir':
+                    newline = newline.replace('@top_srcdir@', top_source_directory)
+                elif variable == 'srcdir':
+                    newline = newline.replace('@srcdir@', source_directory)
+                else:
+                    if variable not in translation_map:
+                        # TODO warning
+                        pass
+
+                    value = translation_map.get(variable, '')
+                    newline = newline.replace(match.group(0), value)
+
+            return newline
+
+        # We have two branches that perform outputting for performance reasons.
+        # The rewrite branch reads files using PyMake. The simple branch reads
+        # files manually. We don't perform them sequentially to save on the
+        # redundant I/O.
+        if apply_rewrite:
+            raise Exception('Not implemented')
+            m = makefile.Makefile(output_path)
+            statements = [s for s in m.get_statements(expand_conditional=True)]
+            with open(output_path, 'wb') as fh:
+                m.write_statements_to_file(statements, fh)
+        else:
+            with open(input_path, 'r') as input:
+                with open(output_path, 'wb') as output:
+                    for line in input:
+                        if translation_map is not None:
+                            line = perform_variable_translation(line)
+
                         print >>output, line,
-                        continue
 
-                    # Now we perform variable replacement on the line.
-
-
-                    # We assume these will be calculated at least once b/c they
-                    # are common.
-                    top_source_directory = self.config.source_directory
-
-                    if managed_path is not None:
-                        top_source_directory = os.path.join(top_source_directory,
-                                                            managed_path)
-
-                    source_directory = os.path.join(self.config.source_directory,
-                                                    relative_path)
-
-                    newline = line
-                    for match in sub_re.finditer(line):
-                        variable = match.group(1)
-                        if variable == 'top_srcdir':
-                            newline = newline.replace('@top_srcdir@', top_source_directory)
-                        elif variable == 'srcdir':
-                            newline = newline.replace('@srcdir@', source_directory)
-                        else:
-                            value = autoconf.get_variable_string(variable, resolve=True)
-                            if value is None:
-                                value = ''
-
-                            newline = newline.replace(match.group(0), value)
-
-                    print >>output, newline,
+        self.run_callback(
+            'generate_makefile_success',
+            {'path': os.path.join(relative_path, out_basename)},
+            'Generated Makefile {path}')
 
     def _get_autoconf_for_file(self, path):
         '''Obtain an autoconf file for a relative path.'''
@@ -205,7 +408,25 @@ class BuildSystem(object):
             if path[0:len(managed)] == managed:
                 return self.autoconfs[managed]
 
-        return self.autoconfs['main']
+        return self.autoconfs['']
+
+    def _sha1_file_hash(self, filename):
+        h = hashlib.sha1()
+        with open(filename, 'rb') as fh:
+            while True:
+                data = fh.read(8192)
+                if not data:
+                    break
+
+                h.update(data)
+
+        return h.hexdigest()
+
+    def run_callback(self, action, params, formatter,
+                     important=False, error=False):
+        if self.callback:
+            self.callback(action, params, formatter,
+                          important=important, error=error)
 
 class ObjectDirectoryParser(object):
     '''A parser for an object directory.

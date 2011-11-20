@@ -47,19 +47,102 @@ sys.path.append('xpcom/idl-parser')
 
 import buildparser.config
 import buildparser.extractor
+import json
 import optparse
 import os.path
+import time
 
-op = optparse.OptionParser(usage='Usage: %prog [options]')
-op.add_option('--config', dest='config_file', metavar='FILE',
-              help='Path to config file to load and/or save.')
-op.add_option('--generate-makefiles',
-              dest='generate_makefiles',
-              default=False,
-              action='store_true',
-              help='Force (re)generation of Makefiles')
+SUPPORTED_ACTIONS = (
+   'build',
+   'configure',
+   'makefiles',
+   'wipe',
+)
+
+op = optparse.OptionParser()
+
+op_group_config = optparse.OptionGroup(op, 'Config File Options')
+op_group_config.add_option('--config-file', dest='config_file', metavar='FILE',
+                           help='Path to config file to load and/or save')
+op_group_config.add_option('--no-save-config', dest='no_save_config',
+                            action='store_true', default=False,
+                            help='Do not save generated config file')
+op.add_option_group(op_group_config)
+
+op_group_makefiles = optparse.OptionGroup(op, 'Makefile Generation Options')
+op_group_makefiles.add_option(
+    '--makefile-conversion',
+    dest='makefile_conversion',
+    type='choice',
+    choices=['traditional', 'prune', 'optimized'],
+    default='optimized',
+    help='Determines how Makefiles are produced. The choices are {traditional, prune, optimized}'
+)
+op.add_option_group(op_group_makefiles)
+
+op_group_output = optparse.OptionGroup(op, 'Output Options')
+op_group_output.add_option(
+    '-v', '--verbose', dest='verbose', action='store_true', default=False,
+    help='Print verbose output. By default, builds are very silent.'
+)
+op_group_output.add_option(
+    '--print-as-json', dest='print_json', action='store_true', default=False,
+    help='Log machine-friendly JSON to STDOUT instead of human-friendly text'
+)
+op_group_output.add_option(
+    '--forensic-log', dest='forensic_log', metavar='FILE',
+    help='Path to write forensic, machine-readable log to'
+)
+op.add_option_group(op_group_output)
+
+op.set_usage('''Usage: %prog [options] [action]
+
+Supported Actions:
+
+     build   Performs all steps necessary to build the tree. This is what you
+             will run most of the time and it is the default action.
+
+  configure  Run autoconf and ensure your build environment is proper. This
+             will be executed automatically as needed.
+
+  makefiles  Perform generation of Makefiles. If Makefiles already exist, they
+             will be overwritten. Makefile generation is influenced by a number
+             of config options.
+
+       wipe  Completely wipe your configured object directory.
+
+
+Makefile Generation Choices:
+
+  traditional  Performs simple conversion from .in files by replacing
+               variable tokens (@var@). This is how Makefiles typically
+               operate. It is the safest option, but is the slowest.
+
+        prune  This will analyze the Makefile and prune conditional blocks that
+               aren't relevant for the current configuration. The reduction
+               is conservative with what it eliminates, so the produced Makefile
+               should be functionally equivalent to the original. This performs
+               little optimization. It is useful if you are interested in more
+               readable Makefiles with unused code eliminated.
+
+    optimized  Produce a fully optimized Makefile build. This will perform deep
+               inspection of Makefiles and will move known constructs to a fully
+               derecursified Makefile. Unknown variables and rules will be
+               retained in the Makefile and will be called during building. This
+               produces the fastest builds and is the default choice.''')
 
 (options, args) = op.parse_args()
+
+action = 'build'
+
+if len(args) > 0:
+    if len(args) != 1:
+        op.error('Unknown positional arguments')
+
+    action = args[0]
+
+if action not in SUPPORTED_ACTIONS:
+    op.error('Unknown action (%s). Run with --help for usage.' % action)
 
 config_file = os.path.join(os.path.dirname(__file__), 'build_config.ini')
 
@@ -77,14 +160,44 @@ else:
     print 'Config file does not exist at %s\n. I will help you generate one!' % config_file
     config.run_commandline_wizard(os.path.abspath(os.path.dirname(__file__)),
                                   sys.stdout)
-    config.save(config_file)
-    print 'Saved config file to %s' % config_file
 
-bs = buildparser.extractor.BuildSystem(config)
+    if not options.no_save_config:
+        config.save(config_file)
+        print 'Saved config file to %s' % config_file
 
-if options.generate_makefiles:
-    def makefile_callback(action, args):
-        print '%s: %s' % ( action, args )
+forensic_handle = None
+if options.forensic_log:
+    forensic_handle = open(options.forensic_log, 'ab')
 
-    print 'Generating Makefiles...'
-    bs.generate_makefiles(callback=makefile_callback)
+start_time = time.time()
+
+def action_callback(action, params, formatter, important=False, error=False):
+    now = time.time()
+
+    elapsed = now - start_time
+
+    json_obj = [now, action, params]
+
+    if forensic_handle is not None:
+        json.dump(json_obj, forensic_handle)
+        print >>forensic_handle, ''
+
+    if options.verbose or important or error:
+        if options.print_json:
+            json.dump(json_obj, sys.stdout)
+        else:
+            print '%4.2f %s' % ( elapsed, formatter.format(**params) )
+
+# Now that we have the config squared away, we start doing stuff.
+bs = buildparser.extractor.BuildSystem(config, callback=action_callback)
+
+if action == 'build':
+    bs.build()
+elif action == 'configure':
+    bs.configure()
+elif action == 'makefiles':
+    bs.generate_makefiles()
+elif action == 'wipe':
+    bs.wipe()
+
+action_callback('finished', {}, 'Build action finished', important=True)

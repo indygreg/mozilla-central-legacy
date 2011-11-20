@@ -78,6 +78,16 @@ class BuildConfig(object):
     def object_directory(self):
         return self.config.get('paths', 'object_directory')
 
+    @property
+    def configure_args(self):
+        '''Returns list of configure arguments for this configuration.'''
+        args = []
+
+        # TODO this should be configurable
+        args.append('--enable-application=browser')
+
+        return args
+
     def load_file(self, filename):
         self.config.read(filename)
 

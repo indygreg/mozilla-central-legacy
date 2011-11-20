@@ -52,97 +52,198 @@ import pymake.data
 import pymake.parser
 import pymake.parserdata
 
-class Makefile(object):
-    '''A generic wrapper around a PyMake Makefile.
+class StatementCollection(object):
+    '''Provides methods for interacting with PyMake's parser output.'''
 
-    This provides a convenient API that is missing from PyMake. Perhaps it will
-    be merged in some day.
-    '''
     __slots__ = (
-        'filename',      # Filename of the Makefile
-        'dir',           # Directory holding the Makefile
-        'include_files', # List of files being included
-        'makefile',      # PyMake Makefile instance
-        'statements',    # List of PyMake-parsed statements in the main file
-        'own_variables', # Dict of variables defined in the main file
-        'variable_assignments', # Dictionary of variable names to string
-                                # content for variables which are assigned
-                                # once and only once in the current file.
+        # List of tuples describing ifdefs
+        '_ifdefs',
+
+        # List of our normalized statements.
+        'statements',
+
+        # Dictionary of variable names defined unconditionally. Keys are
+        # variable names and values are lists of their SetVariable statements.
+        'top_level_variables',
     )
 
-    def __init__(self, filename):
-        '''Construct a Makefile from a file'''
-        if not os.path.exists(filename):
-            raise Exception('Path does not exist: %s' % filename)
-
-        self.filename = filename
-        self.dir      = os.path.dirname(filename)
-
-        # Each Makefile instance can look at two sets of data, the low-level
-        # parser output or the high-level "this is what's in a Makefile". Both
-        # data sets are lazy-loaded for performance reasons.
-
-        # The Makefile is lazy loaded because under some conditions loading the
-        # Makefile can cause PyMake to explode. I [gps] think that PyMake is
-        # trying to evaluate variables during loading and the PyMake
-        # environment isn't set up properly to allow the exec(), etc calls
-        # to succeed. We either need to produce a proper environment for PyMake
-        # or fix PyMake so it doens't die a horrible death. Until then, we lazy
-        # load the actual Makefile.
-        self.makefile = None
-
-        # The following are caches for low-level statement data.
-        self.statements    = None
-        self.own_variables = None
-        self.include_files = None
-        self.variable_assignments = None
-
-    def has_variable(self, name):
-        '''Determines whether a named variable is defined.'''
-        if self.makefile is None:
-            self._load_makefile()
-
-        v = self.makefile.variables.get(name, True)[2]
-        return v is not None
-
-    def get_variable_string(self, name, resolve=True):
-        '''Obtain a named variable as a string.
-
-        If resolve is True, the variable's value will be resolved. If not,
-        the Makefile syntax of the expansion is returned. In either case,
-        if the variable is not defined, None is returned.
-        '''
-        if resolve:
-            if self.makefile is None:
-                self._load_makefile()
-
-            v = self.makefile.variables.get(name, True)[2]
-            if v is None:
-                return None
-
-            return v.resolvestr(self.makefile, self.makefile.variables)
+    def __init__(self, filename=None):
+        if filename:
+            self._load_raw_statements(pymake.parser.parsefile(filename))
         else:
-            if self.variable_assignments is None:
-                self._load_variable_assignments()
+            raise Exception('Invalid arguments given to constructor')
 
-            if name not in self.variable_assignments:
-                return None
+    @property
+    def ifdefs(self):
+        '''Returns ifdef occurences in the collection.
 
-            if len(self.variable_assignments[name]) > 1:
-                raise Exception('Cannot return string representation of variable set multiple times: %s' % name)
+        Each returned item in the list is a tuple of
+          ( name, expected, is_conditional, location )
+        '''
+        if self._ifdefs is None:
+            self._ifdefs = []
+            for (s, level) in self.statements:
+                if not isinstance(s, pymake.parserdata.IfdefCondition):
+                    continue
 
-            return self.variable_assignments[name][0].value
+                self._ifdefs.append (
+                    self.expansion_to_string(s.exp),
+                    s.expected,
+                    level > 0,
+                    (s.exp.loc.path, s.exp.loc.line, s.exp.loc.column)
+                )
 
-    def get_variable_split(self, name):
-        '''Obtain a named variable as a list.'''
-        if self.makefile is None:
-            self._load_makefile()
+        return self._ifdefs
 
-        v = self.makefile.variables.get(name, True)[2]
-        if v is None:
-            return []
+    @property
+    def includes(self):
+        '''Returns information about file includes.
 
-        return v.resolvesplit(self.makefile, self.makefile.variables)
+        Each returned item is a tuple of
+          ( path, is_conditional, location )
+        '''
+        for (s, level) in self.statements:
+            if isinstance(s, pymake.parserdata.Include):
+                yield (
+                    self.expansion_to_string(s.exp),
+                    level > 0,
+                    (s.exp.loc.path, s.exp.loc.line, s.exp.loc.column)
+                )
+
+    @property
+    def variable_assignments(self):
+        '''Returns information about variable assignments.
+
+        Each returned item is a tuple of:
+          ( name, value, token, is_conditional, location )
+        '''
+        for (s, level) in self.statements:
+            if not isinstance(s, pymake.parserdata.SetVariable):
+                continue
+
+            assert(isinstance(s.vnameexp, pymake.data.StringExpansion))
+
+            name = s.vnameexp.s
+
+            yield (
+                name,
+                s.value,
+                s.token,
+                level > 0,
+                ( s.valueloc.path, s.valueloc.line, s.valueloc.column )
+            )
+
+    @property
+    def unconditional_variable_assignments(self):
+        '''Like variable_assignments but for variables being assigned
+        unconditionally (e.g. outside ifdef, ifeq, etc).
+
+        Returned items are tuples of:
+          ( name, value, token, location )
+        '''
+
+        for (name, value, token, conditional, location) in self.variable_assignments:
+            if conditional:
+                continue
+
+            yield (name, value, token, location)
+
+    @property
+    def rules(self):
+        '''Returns information about rules defined by statements.
+
+        This emits a list of objects which describe each rule.'''
+
+        conditions_stack = []
+        last_level       = 0
+        current_rule     = None
+
+        # TODO this doesn't properly capture commands within nested ifdefs
+        # within rule blocks. Makefiles are crazy...
+        for o, level in self.statements:
+            if level > last_level:
+                assert(isinstance(o, pymake.parserdata.Condition))
+                conditions_stack.append(o)
+                last_level = level
+                continue
+            elif level < last_level:
+                for i in range(0, last_level - level):
+                    conditions_stack.pop()
+
+            last_level = level
+
+            if isinstance(o, pymake.parserdata.Rule):
+                if current_rule is not None:
+                    yield current_rule
+
+                current_rule = {
+                    'commands':       [],
+                    'conditions':     conditions_stack,
+                    'doublecolon':    o.doublecolon,
+                    'prerequisites':  self.expansion_to_list(o.depexp),
+                    'targets':        self.expansion_to_list(o.targetexp),
+                    'line':           o.targetexp.loc.line,
+                }
+
+            elif isinstance(o, pymake.parserdata.StaticPatternRule):
+                if current_rule is not None:
+                    yield current_rule
+
+                current_rule = {
+                    'commands':      [],
+                    'conditions':    conditions_stack,
+                    'doublecolon':   o.doublecolon,
+                    'pattern':       self.expansion_to_list(o.patternexp),
+                    'prerequisites': self.expansion_to_list(o.depexp),
+                    'targets':       self.expansion_to_list(o.targetexp),
+                    'line':          o.targetexp.loc.line,
+                }
+
+            elif isinstance(o, pymake.parserdata.Command):
+                assert(current_rule is not None)
+                current_rule['commands'].append(o)
+
+        if current_rule is not None:
+            yield current_rule
+
+    def lines(self):
+        '''Emit lines that constitute a Makefile for this collection.'''
+        conditional_stack = []
+        last_level = 0
+
+        for (statement, level) in self.statements:
+            print (level, statement)
+            if (isinstance(statement, pymake.parserdata.ConditionBlock)):
+                continue
+
+            if level < last_level:
+                for i in range(last_level - level):
+                    record = conditional_stack.pop()
+
+                    if record == 'ifdef':
+                        yield 'endef\n'
+                    elif record == 'ifeq':
+                        yield 'endif\n'
+                    else:
+                        raise Exception('Unhandled conditional type in implementation: %s' % record)
+
+            elif level > last_level:
+                assert(isinstance(statement, pymake.parserdata.Condition))
+
+                if isinstance(statement, pymake.parserdata.IfdefCondition):
+                    conditional_stack.append('ifdef')
+                elif isinstance(statement, pymake.parserdata.EqCondition):
+                    conditional_stack.append('ifeq')
+                else:
+                    raise Exception('Unhandled condition: %s' % statement)
+
+            last_level = level
+
+            s = self.statement_to_string((statement, level))
+            if s is None:
+                continue
+
+            yield s
 
     def expansion_to_string(self, e):
         '''Convert an expansion to a string.
@@ -285,30 +386,29 @@ class Makefile(object):
     def condition_to_string(self, c):
         '''Convert a condition to a string representation.'''
 
-        parts = []
-
         if isinstance(c, pymake.parserdata.IfdefCondition):
-            if c.expected:
-                parts.append('ifdef')
-            else:
-                parts.append('ifndef')
+            s = self.expansion_to_string(c.exp)
 
-            parts.append(self.expansion_to_string(c.exp))
+            if c.expected:
+                return 'ifdef %s' % s
+            else:
+                return 'ifndef %s' % s
+
         elif isinstance(c, pymake.parserdata.EqCondition):
-            if c.expected:
-                parts.append('ifeq')
-            else:
-                parts.append('ifneq')
+            s = ','.join([
+                self.expansion_to_string(c.exp1).strip(),
+                self.expansion_to_string(c.exp2).strip()
+            ])
 
-            parts.append('"%s"' % self.expansion_to_string(c.exp1))
-            parts.append('"%s"' % self.expansion_to_string(c.exp2))
+            if c.expected:
+                return 'ifeq (%s)' % s
+            else:
+                return 'ifneq (%s)' % s
 
         elif isinstance(c, pymake.parserdata.ElseCondition):
-            parts.append('else')
+            return 'else'
         else:
             raise Exception('Unhandled condition type: %s' % c)
-
-        return ' '.join(parts)
 
     def statement_to_string(self, statement):
         '''Convert a statement to its string representation.'''
@@ -360,41 +460,127 @@ class Makefile(object):
         else:
             raise Exception('Unhandled statement type: %s' % s)
 
-    def get_statements(self, expand_conditional=False):
-        '''Obtain all the low-level PyMake-parsed statements from the file.
+    def _load_raw_statements(self, statements):
+        '''Loads PyMake's parser output into this container.'''
 
-        In default operation, this is a generator of pymake.parserdata.Statement
-        derived objects.
+        last_statement = None
 
-        If expand_conditional is True, this generates tuples of
-        (pymake.parserdata.Statement, level) or (pymake.parserdata.Condition)
-        where level is an int describing what level of conditionals the
-        statement is at. If a statement isn't inside a conditional, the level is 0.
-
-        When a conditional is encountered, the output will look like:
-
-          (pymake.parserdata.ConditionBlock, 0)
-          (pymake.parserdata.IfdefCondition, 1)
-          (pymake.parserdata.SetVariable, 1)
-          (pymake.parserdata.Statement, 0)
-        '''
-        self._parse_file()
-
-        def examine_statements(statements, level):
-            for statement in statements:
-                yield (statement, level)
+        # This converts PyMake statements into our internal representation.
+        # We add a nested level marker to each statement. We also expand
+        # ConditionBlocks and add semaphore statements to aid with analysis
+        # later.
+        def examine(stmts, level):
+            for statement in stmts:
+                # ConditionBlocks are composed of statement blocks.
+                # Each group inside a condition block consists of a condition
+                # and a set of statements to be executed when that condition
+                # is satisfied.
                 if isinstance(statement, pymake.parserdata.ConditionBlock):
-                    for group in statement:
-                        yield (group[0], level + 1)
-                        for t in examine_statements(group[1], level + 1):
-                            yield t
+                    yield (statement, level)
+                    for condition, l in statement:
+                        yield (condition, level + 1)
 
-        if expand_conditional:
-            for t in examine_statements(self.statements, 0):
-                yield t
+                        # Recursively add these conditional statements at the
+                        # next level.
+                        examine(l, level + 2)
+
+                        yield ('EndConditional', level + 1)
+
+                    yield ('EndConditionBlock', level)
+                else:
+                    yield (statement, level)
+
+                    last_statement = statement
+
+        self.statements = [s for s in examine(statements, 0)]
+
+class Makefile(object):
+    '''A generic wrapper around a PyMake Makefile.
+
+    This provides a convenient API that is missing from PyMake. Perhaps it will
+    be merged in some day.
+    '''
+    __slots__ = (
+        'filename',      # Filename of the Makefile
+        'dir',           # Directory holding the Makefile
+        'makefile',      # PyMake Makefile instance
+        'statements',    # List of PyMake-parsed statements in the main file
+    )
+
+    def __init__(self, filename):
+        '''Construct a Makefile from a file'''
+        if not os.path.exists(filename):
+            raise Exception('Path does not exist: %s' % filename)
+
+        self.filename = filename
+        self.dir      = os.path.dirname(filename)
+
+        # Each Makefile instance can look at two sets of data, the low-level
+        # statements or the high-level Makefile from PyMake. Each data set is
+        # lazy-loaded.
+
+        # Care must be taken when loading the PyMake Makefile instance. When
+        # this is loaded, PyMake will perform some evaluation during the
+        # constructor. If the environment isn't sane (e.g. no proper shell),
+        # PyMake will explode.
+        self.makefile      = None
+        self.statements    = None
+
+    def variable_defined(self, name, search_includes=False):
+        '''Returns whether a variable is defined in the Makefile.
+
+        By default, it only looks for variables defined in the current
+        file, not in included files.'''
+        if search_includes:
+            if self.makefile is None:
+                self._load_makefile()
+
+            v = self.makefile.variables.get(name, True)[2]
+            return v is not None
         else:
-            for statement in self.statements:
-                yield statement
+            if self.statements is None:
+                self._load_statements()
+
+            return name in self.statements.defined_variables
+
+    def get_variable_string(self, name, resolve=True):
+        '''Obtain a named variable as a string.
+
+        If resolve is True, the variable's value will be resolved. If not,
+        the Makefile syntax of the expansion is returned. In either case,
+        if the variable is not defined, None is returned.
+        '''
+        if resolve:
+            if self.makefile is None:
+                self._load_makefile()
+
+            v = self.makefile.variables.get(name, True)[2]
+            if v is None:
+                return None
+
+            return v.resolvestr(self.makefile, self.makefile.variables)
+        else:
+            if self.variable_assignments is None:
+                self._load_variable_assignments()
+
+            if name not in self.variable_assignments:
+                return None
+
+            if len(self.variable_assignments[name]) > 1:
+                raise Exception('Cannot return string representation of variable set multiple times: %s' % name)
+
+            return self.variable_assignments[name][0].value
+
+    def get_variable_split(self, name):
+        '''Obtain a named variable as a list.'''
+        if self.makefile is None:
+            self._load_makefile()
+
+        v = self.makefile.variables.get(name, True)[2]
+        if v is None:
+            return []
+
+        return v.resolvesplit(self.makefile, self.makefile.variables)
 
     def get_own_variable_names(self, include_conditionals=True):
         '''Returns a list of variables defined by the Makefile itself.
@@ -424,173 +610,14 @@ class Makefile(object):
 
         return name in self.own_variables.keys()
 
-    def get_included_files(self):
-        '''Returns a list of files included by this Makefile.'''
-
-        if self.include_files is not None:
-            return self.include_files
-
-        self.include_files = []
-        for o, level in self.get_statements(expand_conditional=True):
-            if not isinstance(o, pymake.parserdata.Include):
-                continue
-
-            self.include_files.append(self.expansion_to_string(o.exp))
-
-        return self.include_files
-
-    def get_rules(self):
-        '''Returns information about rules in this Makefile.
-
-        This emits a list of objects which describe each rule.'''
-
-        conditions_stack = []
-        last_level       = 0
-        current_rule     = None
-
-        # TODO this doesn't properly capture commands within nested ifdefs
-        # within rule blocks. Makefiles are crazy...
-        for o, level in self.get_statements(expand_conditional=True):
-            if level > last_level:
-                assert(isinstance(o, pymake.parserdata.Condition))
-                conditions_stack.append(o)
-                last_level = level
-                continue
-            elif level < last_level:
-                for i in range(0, last_level - level):
-                    conditions_stack.pop()
-
-            last_level = level
-
-            if isinstance(o, pymake.parserdata.Rule):
-                if current_rule is not None:
-                    yield current_rule
-
-                current_rule = {
-                    'commands':       [],
-                    'conditions':     conditions_stack,
-                    'doublecolon':    o.doublecolon,
-                    'prerequisites':  self.expansion_to_list(o.depexp),
-                    'targets':        self.expansion_to_list(o.targetexp),
-                    'line':           o.targetexp.loc.line,
-                }
-
-            elif isinstance(o, pymake.parserdata.StaticPatternRule):
-                if current_rule is not None:
-                    yield current_rule
-
-                current_rule = {
-                    'commands':      [],
-                    'conditions':    conditions_stack,
-                    'doublecolon':   o.doublecolon,
-                    'pattern':       self.expansion_to_list(o.patternexp),
-                    'prerequisites': self.expansion_to_list(o.depexp),
-                    'targets':       self.expansion_to_list(o.targetexp),
-                    'line':          o.targetexp.loc.line,
-                }
-
-            elif isinstance(o, pymake.parserdata.Command):
-                assert(current_rule is not None)
-                current_rule['commands'].append(o)
-
-        if current_rule is not None:
-            yield current_rule
-
-    def get_ifdef_variables(self):
-        '''Returns tuples denoting which variables are used as part of ifdefs
-        or ifndefs.
-
-        Each tuple has the elements (name, trueish, line), where trueish is
-        True for ifdef and False for ifndef
-        '''
-        for o, level in self.get_statements(expand_conditional=True):
-            if not isinstance(o, pymake.parserdata.IfdefCondition):
-                continue
-
-            yield (self.expansion_to_string(o.exp), o.expected, o.exp.loc.line)
-
-    def get_stripped_statements(self, defined_variables=None):
-        '''Obtain the statements constituting this Makefile that will be
-        evaluated assuming conditions are met. In other words, this strips
-        statements related to conditionals that don't evaluate to true for
-        the given preconditions.'''
-        if defined_variables is not None:
-            assert(isinstance(defined_variables, set))
-
-        strip_level = None
-        last_level = 0
-
-        # TODO implement
-        for (o, level) in self.get_statements(expand_conditional=True):
-            pass
-
-    def write_statements_to_file(self, statements, fh):
-        '''Writes a series of statements back to a file handle. This will
-        produce a file consumeable by Make.'''
-        for statement in statements:
-            s = self.statement_to_string(statement)
-            if s is None:
-                continue
-
-            print >>fh, s
-
     def _load_makefile(self):
         self.makefile = pymake.data.Makefile(workdir=self.dir)
         self.makefile.include(self.filename)
         self.makefile.finishparsing()
 
-    def _parse_file(self):
+    def _load_statements(self):
         if self.statements is None:
-            self.statements = pymake.parser.parsefile(self.filename)
-
-    def _load_own_variables(self):
-        self._parse_file()
-
-        # Name to tuple of ( number of definitions, defined anywhere in condition )
-        vars = {}
-
-        # We also need to collect SetVariable statements inside condition
-        # blocks. Condition blocks just contain lists of statements, so we
-        # recursively examine these all while adding to the same list.
-        def examine_statements(statements, in_condition):
-            for statement in statements:
-                if isinstance(statement, pymake.parserdata.SetVariable):
-                    vnameexp = statement.vnameexp
-                    if isinstance(vnameexp, pymake.data.StringExpansion):
-                        name = vnameexp.s
-
-                        if not name in vars:
-                            vars[name] = (1, in_condition)
-                        else:
-                            has_condition = vars[name][1]
-                            if not has_condition:
-                                has_condition = in_condition
-
-                            vars[name] = ( vars[name][0] + 1, has_condition )
-                    else:
-                        raise Exception('Unhandled SetVariable vnameexp: %s' % type(vnameexp))
-
-                elif isinstance(statement, pymake.parserdata.ConditionBlock):
-                    for group in statement:
-                        examine_statements(group[1], True)
-
-        examine_statements(self.statements, False)
-
-        self.own_variables = vars
-
-    def _load_variable_assignments(self):
-        self.variable_assignments = {}
-        for (statement, level) in self.get_statements(expand_conditional=True):
-            if not isinstance(statement, pymake.parserdata.SetVariable):
-                continue
-
-            assert(isinstance(statement.vnameexp, pymake.data.StringExpansion))
-
-            name = statement.vnameexp.s
-            v = self.variable_assignments.get(name, [])
-            v.append(statement)
-
-            self.variable_assignments[name] = v
+            self.statements = StatementsCollection(filename=self.filename)
 
 class MozillaMakefile(Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''
