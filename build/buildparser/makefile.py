@@ -407,13 +407,13 @@ class StatementCollection(object):
     def function_to_string(self, ex):
         '''Convert a PyMake function instance to a string.'''
         if isinstance(ex, pymake.functions.AddPrefixFunction):
-            return '$(addprefix %s, %s)' % (
+            return '$(addprefix %s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1])
             )
 
         elif isinstance(ex, pymake.functions.AddSuffixFunction):
-            return '$(addsuffix %s, %s)' % (
+            return '$(addsuffix %s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1])
             )
@@ -435,19 +435,19 @@ class StatementCollection(object):
             return '$(eval %s)' % self.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.FilterFunction):
-            return '$(filter %s, %s)' % (
+            return '$(filter %s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1])
             )
 
         elif isinstance(ex, pymake.functions.FilteroutFunction):
-            return '$(filter-out %s, %s)' % (
+            return '$(filter-out %s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1])
             )
 
         elif isinstance(ex, pymake.functions.FindstringFunction):
-            return '$(findstring %s, %s)' % (
+            return '$(findstring %s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1])
             )
@@ -456,7 +456,7 @@ class StatementCollection(object):
             return '$(firstword %s)' % self.expansion_to_string(ex._arguments[0])
 
         elif isinstance(ex, pymake.functions.ForEachFunction):
-            return '$(foreach %s, %s, %s)' % (
+            return '$(foreach %s,%s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1]),
                 self.expansion_to_string(ex._arguments[2])
@@ -471,7 +471,7 @@ class StatementCollection(object):
                 [self.expansion_to_string(e) for e in ex._arguments])
 
         elif isinstance(ex, pymake.functions.PatSubstFunction):
-            return '$(patsubst %s, %s, %s)' % (
+            return '$(patsubst %s,%s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1]),
                 self.expansion_to_string(ex._arguments[2])
@@ -494,7 +494,7 @@ class StatementCollection(object):
             )
 
         elif isinstance(ex, pymake.functions.SubstFunction):
-            return '$(subst %s, %s, %s)' % (
+            return '$(subst %s,%s,%s)' % (
                 self.expansion_to_string(ex._arguments[0]),
                 self.expansion_to_string(ex._arguments[1]),
                 self.expansion_to_string(ex._arguments[2])
