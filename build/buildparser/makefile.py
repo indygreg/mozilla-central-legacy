@@ -79,7 +79,8 @@ class Statement(object):
         pymake.parserdata.EmptyDirective,
         pymake.parserdata.ExportDirective,
         pymake.parserdata.IfdefCondition,
-        pymake.parserdata.Include
+        pymake.parserdata.Include,
+        pymake.parserdata.VPathDirective,
     )
 
     def __init__(self, statement, level, condition_index=None):
@@ -89,7 +90,6 @@ class Statement(object):
 
     def __str__(self):
         '''Convert this statement back to its Makefile representation.'''
-        s = self.statement
 
         if self.is_command:
             return '\t%s' % self.expansion_string
@@ -102,34 +102,25 @@ class Statement(object):
         elif self.is_include:
             return 'include %s' % self.expansion_string
         elif self.is_rule:
-            s = self.statement
-            sep = ':'
-            if s.doublecolon:
-                sep = '::'
-
             return ('%s%s %s' % (
-                Statement.expansion_to_string(s.targetexp),
-                sep,
-                Statement.expansion_to_string(s.depexp).lstrip()
+                Statement.expansion_to_string(self.statement.targetexp),
+                self.target_separator,
+                Statement.expansion_to_string(self.statement.depexp).lstrip()
             )).strip()
         elif self.is_setvariable:
             # TODO what is targetexp used for?
             return '%s %s %s' % (
                 self.vname_expansion_string, self.token, self.value
             )
-        elif isinstance(self.statement, pymake.parserdata.StaticPatternRule):
-            sep = ':'
-            if s.doublecolon:
-                sep = '::'
-
+        elif self.is_static_pattern_rule:
             return '%s%s %s : %s' % (
-                Statement.expansion_to_string(s.targetexp),
-                sep,
-                Statement.expansion_to_string(s.patternexp),
-                Statement.expansion_to_string(s.depexp)
+                Statement.expansion_to_string(self.statement.targetexp),
+                self.target_separator,
+                Statement.expansion_to_string(self.statement.patternexp),
+                Statement.expansion_to_string(self.statement.depexp)
             )
-        elif isinstance(s, pymake.parserdata.VPathDirective):
-            return 'vpath %s' % Statement.expansion_to_string(s.exp)
+        elif self.is_vpath:
+            return 'vpath %s' % self.expansion_string
         elif self.is_condition_block:
             raise Exception('Cannot convert condition block to string. Did you forget to check .has_str?')
         elif self.is_condition_block_end:
@@ -137,7 +128,7 @@ class Statement(object):
         elif self.is_ifeq_end or self.is_ifdef_end or self.is_else_end:
             raise Exception('Cannot convert end conditions to strings. Did you forget to check .has_str?')
         else:
-            raise Exception('Unhandled statement type: %s' % s)
+            raise Exception('Unhandled statement type: %s' % self.statement)
 
     @property
     def has_str(self):
@@ -218,6 +209,21 @@ class Statement(object):
         return isinstance(self.statement, str)
 
     @property
+    def is_static_pattern_rule(self):
+        return isinstance(self.statement, pymake.parserdata.StaticPatternRule)
+
+    @property
+    def is_vpath(self):
+        return isinstance(self.statement, pymake.parserdata.VPathDirective)
+
+    @property
+    def doublecolon(self):
+        '''Returns boolean on whether the rule is a doublecolon rule.'''
+        assert(self.is_rule or self.is_static_pattern_rule)
+
+        return self.statement.doublecolon
+
+    @property
     def location(self):
         '''Returns the best pymake.parserdata.Location instance for this
         instance.
@@ -269,6 +275,14 @@ class Statement(object):
             return self.statement.vnameexp
         else:
             return None
+
+    @property
+    def target_separator(self):
+        '''Returns the colon separator after the target for rules.'''
+        if self.doublecolon:
+            return '::'
+        else:
+            return ':'
 
     @property
     def token(self):
