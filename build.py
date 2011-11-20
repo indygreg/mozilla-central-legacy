@@ -47,53 +47,14 @@ sys.path.append('xpcom/idl-parser')
 
 import buildparser.config
 import buildparser.extractor
+import buildparser.makefile
 import json
 import optparse
 import os.path
+import pymake.parser
 import time
 
-SUPPORTED_ACTIONS = (
-    'build',
-    'bxr',
-    'configure',
-    'makefiles',
-    'wipe',
-)
-
-op = optparse.OptionParser()
-
-op_group_config = optparse.OptionGroup(op, 'Config File Options')
-op_group_config.add_option('--config-file', dest='config_file', metavar='FILE',
-                           help='Path to config file to load and/or save')
-op_group_config.add_option('--no-save-config', dest='no_save_config',
-                            action='store_true', default=False,
-                            help='Do not save generated config file')
-op.add_option_group(op_group_config)
-
-op_group_output = optparse.OptionGroup(op, 'Output Options')
-op_group_output.add_option(
-    '-v', '--verbose', dest='verbose', action='store_true', default=False,
-    help='Print verbose output. By default, builds are very silent.'
-)
-op_group_output.add_option(
-    '--print-as-json', dest='print_json', action='store_true', default=False,
-    help='Log machine-friendly JSON to STDOUT instead of human-friendly text'
-)
-op_group_output.add_option(
-    '--forensic-log', dest='forensic_log', metavar='FILE',
-    help='Path to write forensic, machine-readable log to'
-)
-op.add_option_group(op_group_output)
-
-op_group_bxr = optparse.OptionGroup(op, 'BXR Options')
-op_group_bxr.add_option(
-    '--bxr-file', dest='bxr_file', metavar='FILE',
-    default='./bxr.html',
-    help='Path to write BXR to.'
-)
-op.add_option_group(op_group_bxr)
-
-op.set_usage('''Usage: %prog [options] [action]
+USAGE = '''Usage: %prog [options] [action]
 
 Supported Actions:
 
@@ -111,8 +72,74 @@ Supported Actions:
 
         bxr  Create the Build Cross Reference HTML file describing the current
              build tree.'''
+
+SUPPORTED_ACTIONS = (
+    'build',
+    'bxr',
+    'configure',
+    'makefiles',
+    'wipe',
 )
 
+def get_option_parser():
+    op = optparse.OptionParser()
+
+    op_group_config = optparse.OptionGroup(op, 'Config File Options')
+    op_group_config.add_option('--config-file', dest='config_file',
+                               metavar='FILE',
+                               help='Path to config file to load and/or save.')
+    op_group_config.add_option('--no-save-config', dest='no_save_config',
+                               action='store_true', default=False,
+                               help='Do not save generated config file.')
+    op.add_option_group(op_group_config)
+
+    op_group_output = optparse.OptionGroup(op, 'Output Options')
+    op_group_output.add_option(
+        '-v', '--verbose', dest='verbose', action='store_true', default=False,
+        help='Print verbose output. By default, builds are very silent.'
+    )
+    op_group_output.add_option(
+        '--print-as-json', dest='print_json', action='store_true', default=False,
+        help='Log machine-friendly JSON to STDOUT instead of human-friendly text'
+    )
+    op_group_output.add_option(
+        '--forensic-log', dest='forensic_log', metavar='FILE',
+        help='Path to write forensic, machine-readable log to'
+    )
+    op.add_option_group(op_group_output)
+
+    op_group_bxr = optparse.OptionGroup(op, 'BXR Options')
+    op_group_bxr.add_option(
+        '--bxr-file', dest='bxr_file', metavar='FILE',
+        default='./bxr.html',
+        help='Path to write BXR to.'
+    )
+    op.add_option_group(op_group_bxr)
+
+    op_group_debug = optparse.OptionGroup(op, 'Debugging and Power User Options')
+    op_group_debug.add_option(
+        '--print-makefile-statements', dest='print_makefile_statements',
+        metavar='FILE', default=None,
+        help='Print the PyMake parsed statement list from the specified file.'
+    )
+    op_group_debug.add_option(
+        '--print-statementcollection', dest='print_statement_collection',
+        metavar='FILE', default=None,
+        help='Print the StatementCollection statement list for a Makefile.'
+    )
+    op_group_debug.add_option(
+        '--print-reformatted-makefile',
+        dest='print_reformatted_statements',
+        metavar='FILE', default=None,
+        help='Print a Makefile reformatted through the StatementCollection class.'
+    )
+    op.add_option_group(op_group_debug)
+
+    op.set_usage(USAGE)
+
+    return op
+
+op = get_option_parser()
 (options, args) = op.parse_args()
 
 action = 'build'
@@ -126,6 +153,11 @@ if len(args) > 0:
 if action not in SUPPORTED_ACTIONS:
     op.error('Unknown action: %s' % action)
 
+# This is where the main functionality begins.
+# TODO consider moving to a module.
+
+start_time = time.time()
+
 config_file = os.path.join(os.path.dirname(__file__), 'build_config.ini')
 
 if options.config_file:
@@ -133,27 +165,16 @@ if options.config_file:
 elif 'MOZ_BUILD_CONFIG' in os.environ:
     config_file = os.environ['MOZ_BUILD_CONFIG']
 
-config = buildparser.config.BuildConfig()
-
-if os.path.exists(config_file):
-    print 'Loading existing config file %s' % config_file
-    config.load_file(config_file)
-else:
-    print 'Config file does not exist at %s\n. I will help you generate one!' % config_file
-    config.run_commandline_wizard(os.path.abspath(os.path.dirname(__file__)),
-                                  sys.stdout)
-
-    if not options.no_save_config:
-        config.save(config_file)
-        print 'Saved config file to %s' % config_file
-
 forensic_handle = None
 if options.forensic_log:
     forensic_handle = open(options.forensic_log, 'ab')
 
-start_time = time.time()
-
 def action_callback(action, params, formatter, important=False, error=False):
+    '''Our logging/reporting callback. It takes an enumerated string
+    action, a dictionary of parameters describing that action, a
+    formatting string for producing human readable text of that event,
+    and some flags indicating if the message is important or represents
+    an error.'''
     now = time.time()
 
     elapsed = now - start_time
@@ -170,8 +191,54 @@ def action_callback(action, params, formatter, important=False, error=False):
         else:
             print '%4.2f %s' % ( elapsed, formatter.format(**params) )
 
+config = buildparser.config.BuildConfig()
+
+if os.path.exists(config_file):
+    config.load_file(config_file)
+    action_callback('config_load', {'file': config_file},
+                    'Loaded existing config file: {file}',
+                    important=True)
+else:
+    print 'Config file does not exist at %s\n. I will help you generate one!' % config_file
+    config.run_commandline_wizard(os.path.abspath(os.path.dirname(__file__)),
+                                  sys.stdout)
+
+    if not options.no_save_config:
+        config.save(config_file)
+        action_callback('config_save', {'file': config_file},
+                        'Saved config file to {file', important=True)
+
 # Now that we have the config squared away, we start doing stuff.
 bs = buildparser.extractor.BuildSystem(config, callback=action_callback)
+
+other_action_taken = False
+
+# The debug and power user options take precedence over explicit actions.
+if options.print_makefile_statements is not None:
+    statements = pymake.parser.parsefile(options.print_makefile_statements)
+    statements.dump(sys.stdout, '')
+    other_action_taken = True
+
+if options.print_statement_collection is not None:
+    statements = buildparser.makefile.StatementCollection(
+        filename=options.print_statement_collection)
+
+    for statement in statements.statements:
+        print statement
+
+    other_action_taken = True
+
+if options.print_reformatted_statements is not None:
+    statements = buildparser.makefile.StatementCollection(
+        filename=options.print_reformatted_statements)
+
+    for line in statements.lines:
+        print line
+
+    other_action_taken = True
+
+if other_action_taken:
+    exit(0)
 
 if action == 'build':
     bs.build()
