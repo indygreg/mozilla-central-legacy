@@ -94,7 +94,7 @@ class Statement(object):
         if self.is_command:
             return '\t%s' % self.expansion_string
         elif self.is_condition:
-            return Statement.condition_to_string(self.statement)
+            return self.condition_string
         elif self.is_empty_directive:
             return self.expansion_string
         elif self.is_export:
@@ -186,7 +186,7 @@ class Statement(object):
 
     @property
     def is_ifeq(self):
-        return isinstance(self.statement, pymake.parserdata.IfeqCondition)
+        return isinstance(self.statement, pymake.parserdata.EqCondition)
 
     @property
     def is_ifeq_end(self):
@@ -215,6 +215,39 @@ class Statement(object):
     @property
     def is_vpath(self):
         return isinstance(self.statement, pymake.parserdata.VPathDirective)
+
+    @property
+    def condition_string(self):
+        '''Convert a condition to a string representation.'''
+
+        assert(self.condition_index is not None)
+        prefix = ''
+        if (self.is_ifdef or self.is_ifeq) and self.condition_index > 0:
+            prefix = 'else '
+
+        if self.is_ifdef:
+            s = self.expansion_string
+
+            if self.expected_condition:
+                return '%sifdef %s' % ( prefix, s )
+            else:
+                return '%sifndef %s' % ( prefix, s )
+
+        elif self.is_ifeq:
+            s = ','.join([
+                Statement.expansion_to_string(self.statement.exp1).strip(),
+                Statement.expansion_to_string(self.statement.exp2).strip()
+            ])
+
+            if self.expected_condition:
+                return '%sifeq (%s)' % ( prefix, s )
+            else:
+                return '%sifneq (%s)' % ( prefix, s )
+
+        elif self.is_else:
+            return 'else'
+        else:
+            raise Exception('Unhandled condition type: %s' % self.statement)
 
     @property
     def doublecolon(self):
@@ -471,34 +504,6 @@ class Statement(object):
 
         else:
             raise Exception('Unhandled function type: %s' % ex)
-
-    @staticmethod
-    def condition_to_string(c):
-        '''Convert a condition to a string representation.'''
-
-        if isinstance(c, pymake.parserdata.IfdefCondition):
-            s = Statement.expansion_to_string(c.exp)
-
-            if c.expected:
-                return 'ifdef %s' % s
-            else:
-                return 'ifndef %s' % s
-
-        elif isinstance(c, pymake.parserdata.EqCondition):
-            s = ','.join([
-                Statement.expansion_to_string(c.exp1).strip(),
-                Statement.expansion_to_string(c.exp2).strip()
-            ])
-
-            if c.expected:
-                return 'ifeq (%s)' % s
-            else:
-                return 'ifneq (%s)' % s
-
-        elif isinstance(c, pymake.parserdata.ElseCondition):
-            return 'else'
-        else:
-            raise Exception('Unhandled condition type: %s' % c)
 
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
