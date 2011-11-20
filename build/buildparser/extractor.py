@@ -149,10 +149,13 @@ class BuildSystem(object):
         def get_variable_map(filename):
             d = {}
 
-            statement = makefile.StatementCollection(filename=filename)
-            for (name, value, token, conditional, location) in statement.variable_assignments:
+            statements = makefile.StatementCollection(filename=filename)
+            statements.strip_false_conditionals()
+            for name, value, token, conditional, location in statements.variable_assignments:
                 if conditional:
-                    raise Exception('Conditional variable assignment encountered in autoconf file: %s' % location)
+                    raise Exception(
+                        'Conditional variable assignment encountered (%s) in autoconf file: %s' % (
+                            name, location[0] ))
 
                 if name in d:
                     if token not in ('=', ':='):
@@ -277,6 +280,10 @@ class BuildSystem(object):
                           'Beginning generation of Makefiles',
                           important=True)
 
+        conversion = self.config.makefile_conversion
+        apply_rewrite = conversion == 'rewrite'
+        strip_false_conditionals = conversion in ('prune', 'optimized')
+
         # PyMake's cache only holds 15 items. We assume we have the resources
         # (because we are building m-c after all) and keep ALL THE THINGS in
         # memory.
@@ -287,7 +294,10 @@ class BuildSystem(object):
                 full = os.path.join(self.config.source_directory, relative, path)
 
                 autoconf = self._get_autoconf_for_file(relative)
-                self.generate_makefile(relative, path, translation_map=autoconf)
+                self.generate_makefile(
+                    relative, path, translation_map=autoconf,
+                    strip_false_conditionals=strip_false_conditionals,
+                    apply_rewrite=apply_rewrite)
             except:
                 self.run_callback(
                     'generate_makefile_exception',
@@ -375,13 +385,17 @@ class BuildSystem(object):
                 error=True)
 
         m = makefile.Makefile(input_path)
-        lines = m.perform_substitutions(mapping,
-                                        callback_on_missing=missing_callback)
+        m.perform_substitutions(mapping, callback_on_missing=missing_callback)
 
-        # TODO implement apply_rewrite
+        if apply_rewrite:
+            lines = m.statements.lines
+
+        #if strip_false_conditionals:
+        #    m.statements.strip_false_conditionals()
+
         with open(output_path, 'wb') as output:
-            for line in lines:
-                print >>output, line,
+            for line in m.lines:
+                print >>output, line
 
         self.run_callback(
             'generate_makefile_success',

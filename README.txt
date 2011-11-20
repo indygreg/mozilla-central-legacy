@@ -127,11 +127,10 @@ Under Linux:
 Please note that build.py does *not* produce Makefile during configure phase.
 For that, we do:
 
-  * 1.1s  - $ build.py makefiles
-
-  # PyMake performance
+  # PyMake/Build Splendid Performance
   * 2.8s  - Parse all 1152 Makefile.in into statement list
   * 1.0s  - Read all Makefile.in, perform variable translation, and write
+  * 3.4s  - Read all Makefile.in and perform simple PyMake output translation
 
 When can this get checked in?
 -----------------------------

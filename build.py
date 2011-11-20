@@ -70,17 +70,6 @@ op_group_config.add_option('--no-save-config', dest='no_save_config',
                             help='Do not save generated config file')
 op.add_option_group(op_group_config)
 
-op_group_makefiles = optparse.OptionGroup(op, 'Makefile Generation Options')
-op_group_makefiles.add_option(
-    '--makefile-conversion',
-    dest='makefile_conversion',
-    type='choice',
-    choices=['traditional', 'prune', 'optimized'],
-    default='optimized',
-    help='Determines how Makefiles are produced. The choices are {traditional, prune, optimized}'
-)
-op.add_option_group(op_group_makefiles)
-
 op_group_output = optparse.OptionGroup(op, 'Output Options')
 op_group_output.add_option(
     '-v', '--verbose', dest='verbose', action='store_true', default=False,
@@ -121,27 +110,8 @@ Supported Actions:
        wipe  Completely wipe your configured object directory.
 
         bxr  Create the Build Cross Reference HTML file describing the current
-             build tree.
-
-
-Makefile Generation Choices:
-
-  traditional  Performs simple conversion from .in files by replacing
-               variable tokens (@var@). This is how Makefiles typically
-               operate. It is the safest option, but is the slowest.
-
-        prune  This will analyze the Makefile and prune conditional blocks that
-               aren't relevant for the current configuration. The reduction
-               is conservative with what it eliminates, so the produced Makefile
-               should be functionally equivalent to the original. This performs
-               little optimization. It is useful if you are interested in more
-               readable Makefiles with unused code eliminated.
-
-    optimized  Produce a fully optimized Makefile build. This will perform deep
-               inspection of Makefiles and will move known constructs to a fully
-               derecursified Makefile. Unknown variables and rules will be
-               retained in the Makefile and will be called during building. This
-               produces the fastest builds and is the default choice.''')
+             build tree.'''
+)
 
 (options, args) = op.parse_args()
 

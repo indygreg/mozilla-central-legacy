@@ -137,7 +137,17 @@ class StatementCollection(object):
         Each returned item is a tuple of:
           ( name, value, token, is_conditional, location )
         '''
-        for (s, level) in self.statements:
+
+        # This is a workaround because filtering doesn't currently munge the
+        # statement level.
+        condition_count = 0
+
+        for s, level in self.statements:
+            if isinstance(s, pymake.parserdata.ConditionBlock):
+                condition_count += 1
+            elif isinstance(s, str) and s == 'EndConditionBlock':
+                condition_count -= 1
+
             if not isinstance(s, pymake.parserdata.SetVariable):
                 continue
 
@@ -149,7 +159,7 @@ class StatementCollection(object):
                 name,
                 s.value,
                 s.token,
-                level > 0,
+                condition_count > 0,
                 ( s.valueloc.path, s.valueloc.line, s.valueloc.column )
             )
 
@@ -162,7 +172,7 @@ class StatementCollection(object):
           ( name, value, token, location )
         '''
 
-        for (name, value, token, conditional, location) in self.variable_assignments:
+        for name, value, token, conditional, location in self.variable_assignments:
             if conditional:
                 continue
 
@@ -226,44 +236,13 @@ class StatementCollection(object):
         if current_rule is not None:
             yield current_rule
 
+    @property
     def lines(self):
         '''Emit lines that constitute a Makefile for this collection.'''
-        conditional_stack = []
-        last_level = 0
-
         for (statement, level) in self.statements:
-            print (level, statement)
-            if (isinstance(statement, pymake.parserdata.ConditionBlock)):
-                continue
-
-            if level < last_level:
-                for i in range(last_level - level):
-                    record = conditional_stack.pop()
-
-                    if record == 'ifdef':
-                        yield 'endef\n'
-                    elif record == 'ifeq':
-                        yield 'endif\n'
-                    else:
-                        raise Exception('Unhandled conditional type in implementation: %s' % record)
-
-            elif level > last_level:
-                assert(isinstance(statement, pymake.parserdata.Condition))
-
-                if isinstance(statement, pymake.parserdata.IfdefCondition):
-                    conditional_stack.append('ifdef')
-                elif isinstance(statement, pymake.parserdata.EqCondition):
-                    conditional_stack.append('ifeq')
-                else:
-                    raise Exception('Unhandled condition: %s' % statement)
-
-            last_level = level
-
             s = self.statement_to_string((statement, level))
-            if s is None:
-                continue
-
-            yield s
+            if s is not None:
+                yield s
 
     def include_includes(self):
         '''Follow file includes and insert remote statements into this
@@ -297,19 +276,49 @@ class StatementCollection(object):
         currently_defined = set()
         filter_level = None
 
+        # Tuple of (statement_tuple, evaluated, first_branch_taken)
+        condition_block_stack = []
+
         # Conditionals are expanded immediately, during the first pass, so it
         # is safe to linearly traverse and prune as we go.
         for s, level in self.statements:
-            #print (s, level)
-            if filter_level is not None and level >= filter_level:
+            if filter_level is not None:
+                if level > filter_level:
+                    continue
+                elif level <= filter_level:
+                    filter_level = None
+
+            if isinstance(s, pymake.parserdata.ConditionBlock):
+                condition_block_stack.append([(s, level), False, False])
                 continue
 
             if isinstance(s, pymake.parserdata.IfdefCondition):
                 name = self.expansion_to_string(s.exp)
                 defined = name in currently_defined
 
-                if (defined and not expected) or (not defined and expected):
+                # We were able to evaluate the conditional
+                condition_block_stack[-1][1] = True
+
+                if (defined and not s.expected) or (not defined and s.expected):
                     filter_level = level
+                    continue
+
+                # Mark the primary branch as being taken
+                condition_block_stack[-1][2] = True
+
+            elif isinstance(s, pymake.parserdata.ElseCondition):
+                top_condition = condition_block_stack[-1]
+
+                # If we were able to evaluate the condition and we took the
+                # first branch, filter the else branch.
+                if top_condition[1] and top_condition[2]:
+                    filter_level = level
+                    continue
+
+                # If we were able to evaluate, but we didn't take the first
+                # branch, that leaves us as the sole branch. Remove the
+                # else statement.
+                if top_condition[1]:
                     continue
 
             elif isinstance(s, pymake.parserdata.Include):
@@ -320,6 +329,7 @@ class StatementCollection(object):
                 filename = self.expansion_to_string(s, error_on_function=True)
 
                 included = StatementCollection(filename)
+                included.include_includes()
                 included.strip_false_conditionals() # why not?
 
                 raise Exception('TODO')
@@ -328,11 +338,28 @@ class StatementCollection(object):
                 # At the worst, we are in a conditional that we couldn't
                 # evaluate, so there is no harm in marking as defined even if
                 # it might not be. make will do the right thing at run-time.
-                currently_defined.add(self.expansion_to_string(s.vnameexp))
+                if len(s.value) > 0:
+                    currently_defined.add(self.expansion_to_string(s.vnameexp))
+
+            elif isinstance(s, str):
+                # If we evaluated the condition block, we have an active branch
+                # and can remove this semaphore.
+                if s in ('EndDefCondition', 'EndEqCondition', 'EndElseCondition'):
+                    if condition_block_stack[-1][1]:
+                        continue
+                elif s == 'EndConditionBlock':
+                    # If we evaluated the condition, we can remove this
+                    # semaphore statement.
+                    popped = condition_block_stack.pop()
+                    if popped[1]:
+                        continue
+                else:
+                    raise Exception('Unhandled semaphore statement: %s' % s)
 
             statements.append((s, level))
 
         self.clear_caches()
+        self.statements = statements
 
     def clear_caches(self):
         '''During normal operation, this object caches some data. This clears
@@ -425,6 +452,9 @@ class StatementCollection(object):
                 self.expansion_to_string(ex._arguments[1])
             )
 
+        elif isinstance(ex, pymake.functions.FirstWordFunction):
+            return '$(firstword %s)' % self.expansion_to_string(ex._arguments[0])
+
         elif isinstance(ex, pymake.functions.ForEachFunction):
             return '$(foreach %s, %s, %s)' % (
                 self.expansion_to_string(ex._arguments[0]),
@@ -435,6 +465,10 @@ class StatementCollection(object):
         elif isinstance(ex, pymake.functions.IfFunction):
             return '$(if %s)' % ','.join([
                 self.expansion_to_string(e) for e in ex._arguments])
+
+        elif isinstance(ex, pymake.functions.OrFunction):
+            return '$(or %s)' % ','.join(
+                [self.expansion_to_string(e) for e in ex._arguments])
 
         elif isinstance(ex, pymake.functions.PatSubstFunction):
             return '$(patsubst %s, %s, %s)' % (
@@ -530,11 +564,11 @@ class StatementCollection(object):
             if s.doublecolon:
                 sep = '::'
 
-            return '%s%s %s' % (
+            return ('%s%s %s' % (
                 self.expansion_to_string(s.targetexp),
                 sep,
-                self.expansion_to_string(s.depexp)
-            )
+                self.expansion_to_string(s.depexp).lstrip()
+            )).strip()
         elif isinstance(s, pymake.parserdata.SetVariable):
             # TODO what is targetexp used for?
             return '%s %s %s' % (
@@ -555,6 +589,13 @@ class StatementCollection(object):
             )
         elif isinstance(s, pymake.parserdata.VPathDirective):
             return 'vpath %s' % self.expansion_to_string(s.exp)
+        elif isinstance(s, str):
+            if s  == 'EndConditionBlock':
+                return 'endif'
+            elif s in ('EndEqCondition', 'EndDefCondition', 'EndElseCondition'):
+                return None
+            else:
+                raise Exception('Unhandled semaphore statement: %s' % s)
         else:
             raise Exception('Unhandled statement type: %s' % s)
 
@@ -580,9 +621,20 @@ class StatementCollection(object):
 
                         # Recursively add these conditional statements at the
                         # next level.
-                        examine(l, level + 2)
+                        for t in examine(l, level + 2):
+                            yield t
 
-                        yield ('EndConditional', level + 1)
+                        name = None
+                        if isinstance(condition, pymake.parserdata.IfdefCondition):
+                            name = 'EndDefCondition'
+                        elif isinstance(condition, pymake.parserdata.EqCondition):
+                            name = 'EndEqCondition'
+                        elif isinstance(condition, pymake.parserdata.ElseCondition):
+                            name = 'EndElseCondition'
+                        else:
+                            raise Exception('Unhandled condition type: %s' % condition)
+
+                        yield (name, level + 1)
 
                     yield ('EndConditionBlock', level)
                 else:
@@ -635,10 +687,11 @@ class Makefile(object):
     def statements(self):
         '''Obtain the StatementCollection for this Makefile.'''
         if self._statements is None:
+            buf = None
             if self._lines is not None:
-                self._statements = StatementCollection(buf=''.join(self._lines))
-            else:
-                self._statements = StatementCollection(filename=self.filename)
+                buf = ''.join(self._lines)
+
+            self._statements = StatementCollection(filename=self.filename, buf=buf)
 
         return self._statements
 
@@ -653,6 +706,20 @@ class Makefile(object):
             self._makefile.finishparsing()
 
         return self._makefile
+
+    @property
+    def lines(self):
+        '''Returns a list of lines making up this file.'''
+
+        if self._statements:
+            for line in self._statements.lines:
+                yield line
+        elif self._lines is not None:
+            for line in self._lines:
+                yield line.rstrip('\n')
+        else:
+            # TODO this could come from file, no?
+            raise('No source of lines available')
 
     def perform_substitutions(self, mapping, raise_on_missing=False,
                               error_on_missing=False, callback_on_missing=None):
@@ -708,8 +775,6 @@ class Makefile(object):
         self._makefile   = None
         self._statements = None
         self._lines      = lines
-
-        return lines
 
     def variable_defined(self, name, search_includes=False):
         '''Returns whether a variable is defined in the Makefile.
