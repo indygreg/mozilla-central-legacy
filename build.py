@@ -224,8 +224,7 @@ if options.print_statement_collection is not None:
         filename=options.print_statement_collection)
 
     for statement in statements.statements:
-        if statement.has_str:
-            print statement
+        print statement.__repr__()
 
     other_action_taken = True
 

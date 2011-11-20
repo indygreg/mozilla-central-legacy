@@ -52,6 +52,7 @@ import pymake.data
 import pymake.parser
 import pymake.parserdata
 import re
+import StringIO
 
 class Statement(object):
     '''Holds information about an individual PyMake statement.
@@ -129,6 +130,23 @@ class Statement(object):
             raise Exception('Cannot convert end conditions to strings. Did you forget to check .has_str?')
         else:
             raise Exception('Unhandled statement type: %s' % self.statement)
+
+    def __repr__(self):
+        loc = self.location
+        indent = ' ' * self.level
+
+        if self.is_semaphore:
+            return '<%s%s>' % ( indent, self.statement )
+        else:
+            s = None
+            if self.is_condition:
+                s = str(self.statement)
+            else:
+                fd = StringIO.StringIO()
+                self.statement.dump(fd, indent)
+                s = fd.getvalue()
+
+            return '<%s>' % s
 
     @property
     def has_str(self):
@@ -267,7 +285,7 @@ class Statement(object):
         if e is not None:
             return e.loc
 
-        raise Exception('Unable to find expansion: %s' % self.statement)
+        return None
 
     @property
     def expected_condition(self):
