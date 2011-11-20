@@ -127,14 +127,15 @@ class BuildSystem(object):
     def __init__(self, conf, callback=None):
         '''Construct an instance from a source and target directory.'''
         assert(isinstance(conf, config.BuildConfig))
-        self.config = conf
-        self.callback = callback
 
-        self.configure_state = {
-            'files': {}
-        }
+        self.config          = conf
+        self.callback        = callback
+        self.autoconfs       = None
+        self.configure_state = None
 
-        self.refresh_state()
+    @property
+    def have_state(self):
+        return self.autoconfs is not None and self.configure_state is not None
 
     def build(self):
         if not self.is_configured:
@@ -145,6 +146,10 @@ class BuildSystem(object):
 
     def refresh_state(self):
         self.autoconfs = {}
+        if self.configure_state is None:
+            self.configure_state = {
+                'files': {}
+            }
 
         def get_variable_map(filename):
             d = {}
@@ -189,6 +194,9 @@ class BuildSystem(object):
 
     def configure(self):
         '''Runs configure on the build system.'''
+
+        if not self.have_state:
+            self.refresh_state()
 
         # TODO regenerate configure's from configure.in's if needed
 
@@ -272,6 +280,9 @@ class BuildSystem(object):
 
     def generate_makefiles(self):
         '''Generate Makefile's into configured object tree.'''
+
+        if not self.have_state:
+            self.refresh_state()
 
         if not self.is_configured:
             self.configure()

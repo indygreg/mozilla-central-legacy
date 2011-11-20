@@ -53,6 +53,439 @@ import pymake.parser
 import pymake.parserdata
 import re
 
+class Statement(object):
+    '''Holds information about an individual PyMake statement.
+
+    This is a wrapper around classes in pymake.parserdata that provides
+    useful features for low-level statement inspection and interaction.'''
+
+    __slots__ = (
+        # The actual statement
+        'statement',
+
+        # Numeric level statement appears in. 0 is the top level. Conditional
+        # blocks increase the numeric level. All statements in the same branch
+        # of a conditional occur at the same level.
+        'level',
+
+        # Numeric condition index for this condition's branch. For a
+        # conditional with many branches, the first branch will be 0,
+        # the second 1, etc.
+        'condition_index',
+    )
+
+    SINGLE_EXPANSION_CLASSES = (
+        pymake.parserdata.Command,
+        pymake.parserdata.EmptyDirective,
+        pymake.parserdata.ExportDirective,
+        pymake.parserdata.IfdefCondition,
+        pymake.parserdata.Include
+    )
+
+    def __init__(self, statement, level, condition_index=None):
+        self.statement       = statement
+        self.level           = level
+        self.condition_index = condition_index
+
+    def __str__(self):
+        '''Convert this statement back to its Makefile representation.'''
+        s = self.statement
+
+        if self.is_command:
+            return '\t%s' % self.expansion_string
+        elif self.is_condition:
+            return Statement.condition_to_string(self.statement)
+        elif self.is_empty_directive:
+            return self.expansion_string
+        elif self.is_export:
+            return 'export %s' % self.expansion_string
+        elif self.is_include:
+            return 'include %s' % self.expansion_string
+        elif self.is_rule:
+            s = self.statement
+            sep = ':'
+            if s.doublecolon:
+                sep = '::'
+
+            return ('%s%s %s' % (
+                Statement.expansion_to_string(s.targetexp),
+                sep,
+                Statement.expansion_to_string(s.depexp).lstrip()
+            )).strip()
+        elif self.is_setvariable:
+            # TODO what is targetexp used for?
+            return '%s %s %s' % (
+                self.vname_expansion_string, self.token, self.value
+            )
+        elif isinstance(self.statement, pymake.parserdata.StaticPatternRule):
+            sep = ':'
+            if s.doublecolon:
+                sep = '::'
+
+            return '%s%s %s : %s' % (
+                Statement.expansion_to_string(s.targetexp),
+                sep,
+                Statement.expansion_to_string(s.patternexp),
+                Statement.expansion_to_string(s.depexp)
+            )
+        elif isinstance(s, pymake.parserdata.VPathDirective):
+            return 'vpath %s' % Statement.expansion_to_string(s.exp)
+        elif self.is_condition_block:
+            raise Exception('Cannot convert condition block to string. Did you forget to check .has_str?')
+        elif self.is_condition_block_end:
+            return 'endif'
+        elif self.is_ifeq_end or self.is_ifdef_end or self.is_else_end:
+            raise Exception('Cannot convert end conditions to strings. Did you forget to check .has_str?')
+        else:
+            raise Exception('Unhandled statement type: %s' % s)
+
+    @property
+    def has_str(self):
+        if self.is_condition_block:
+            return False
+
+        if self.is_ifdef_end or self.is_else_end or self.is_ifeq_end:
+            return False
+
+        return True
+
+    @property
+    def is_condition_block(self):
+        return isinstance(self.statement, pymake.parserdata.ConditionBlock)
+
+    @property
+    def is_condition_block_end(self):
+        return self.is_semaphore and self.statement == 'EndConditionBlock'
+
+    @property
+    def is_condition(self):
+        return isinstance(self.statement, pymake.parserdata.Condition)
+
+    @property
+    def is_condition_end(self):
+        return self.is_ifdef_end or self.is_else_end or self.is_ifeq_end
+
+    @property
+    def is_command(self):
+        return isinstance(self.statement, pymake.parserdata.Command)
+
+    @property
+    def is_else(self):
+        return isinstance(self.statement, pymake.parserdata.ElseCondition)
+
+    @property
+    def is_else_end(self):
+        return isinstance(self.statement, str) and self.statement == 'EndElseCondition'
+
+    @property
+    def is_empty_directive(self):
+        return isinstance(self.statement, pymake.parserdata.EmptyDirective)
+
+    @property
+    def is_export(self):
+        return isinstance(self.statement, pymake.parserdata.ExportDirective)
+
+    @property
+    def is_ifdef(self):
+        return isinstance(self.statement, pymake.parserdata.IfdefCondition)
+
+    @property
+    def is_ifdef_end(self):
+        return isinstance(self.statement, str) and self.statement == 'EndDefCondition'
+
+    @property
+    def is_ifeq(self):
+        return isinstance(self.statement, pymake.parserdata.IfeqCondition)
+
+    @property
+    def is_ifeq_end(self):
+        return isinstance(self.statement, str) and self.statement == 'EndEqCondition'
+
+    @property
+    def is_include(self):
+        return isinstance(self.statement, pymake.parserdata.Include)
+
+    @property
+    def is_rule(self):
+        return isinstance(self.statement, pymake.parserdata.Rule)
+
+    @property
+    def is_setvariable(self):
+        return isinstance(self.statement, pymake.parserdata.SetVariable)
+
+    @property
+    def is_semaphore(self):
+        return isinstance(self.statement, str)
+
+    @property
+    def location(self):
+        '''Returns the best pymake.parserdata.Location instance for this
+        instance.
+
+        May return None if a suitable location is not available.
+        '''
+        e = self.first_expansion
+        if e is not None:
+            return e.loc
+
+        raise Exception('Unable to find expansion: %s' % self.statement)
+
+    @property
+    def expected_condition(self):
+        '''For condition statements, returns the expected condition of the test
+        for the branch under the statement to be executed.'''
+        assert(isinstance(
+            self.statement,
+            (pymake.parserdata.IfdefCondition, pymake.parserdata.EqCondition))
+        )
+
+        return self.statement.expected
+
+    @property
+    def expansion(self):
+        '''Returns the single expansion in this statement.
+
+        If the statement has no expansions or multiple expansions, this errors.
+        '''
+        if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
+            return self.statement.exp
+        else:
+            raise Exception('Current statement does not have a single expansion: %s' % self.statement)
+
+    @property
+    def expansion_string(self):
+        '''Returns the single expansion in this statement formatted to a string.'''
+
+        return Statement.expansion_to_string(self.expansion)
+
+    @property
+    def first_expansion(self):
+        '''Returns the first expansion in this statement or None if no
+        expansions are present.'''
+
+        if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
+            return self.statement.exp
+        elif self.is_setvariable:
+            return self.statement.vnameexp
+        else:
+            return None
+
+    @property
+    def token(self):
+        '''Returns the token for this statement.'''
+        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+
+        return self.statement.token
+
+    @property
+    def value(self):
+        '''Returns the value of this statement.'''
+        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+
+        return self.statement.value
+
+    @property
+    def vname_expansion(self):
+        '''Returns the vname expansion for this statement.
+
+        If the statement doesn't have a vname expansion, this raises.
+        '''
+        if isinstance(self.statement, pymake.parserdata.SetVariable):
+            return self.statement.vnameexp
+        else:
+            raise Exception('Statement does not have a vname expansion: %s' % self.statement)
+
+    @property
+    def vname_expansion_string(self):
+        '''Returns the vname expansion as a string.'''
+        return Statement.expansion_to_string(self.vname_expansion)
+
+    @property
+    def vname_expansion_is_string_expansion(self):
+        '''Returns whether the vname expansion for this statement is a
+        String Expansions.'''
+
+        return isinstance(self.vname_expansion, pymake.data.StringExpansion)
+
+    @staticmethod
+    def expansion_to_string(e, error_on_function=False):
+        '''Convert an expansion to a string.
+
+        This effectively converts a string back to the form it was defined as
+        in the Makefile. This is different from the resolvestr() method on
+        Expansion classes because it doesn't actually expand variables.
+
+        TODO consider adding this logic on the appropriate PyMake classes.
+        '''
+        if isinstance(e, pymake.data.StringExpansion):
+            return e.s
+        elif isinstance(e, pymake.data.Expansion):
+            parts = []
+            for ex, is_func in e:
+                if is_func:
+                    if error_on_function:
+                        raise Exception('Unable to perform expansion due to function presence')
+
+                    parts.append(Statement.function_to_string(ex))
+                else:
+                    parts.append(ex)
+
+            return ''.join(parts)
+        else:
+            raise Exception('Unhandled expansion type: %s' % e)
+
+    @staticmethod
+    def expansion_to_list(e):
+        '''Convert an expansion to a list.
+
+        This is similar to expansion_to_string() except it returns a list.'''
+        s = Statement.expansion_to_string(e).strip()
+
+        if s == '':
+            return []
+        else:
+            return s.split(' ')
+
+    @staticmethod
+    def function_to_string(ex):
+        '''Convert a PyMake function instance to a string.'''
+        if isinstance(ex, pymake.functions.AddPrefixFunction):
+            return '$(addprefix %s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.AddSuffixFunction):
+            return '$(addsuffix %s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.BasenameFunction):
+            return '$(basename %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.CallFunction):
+            return '$(call %s)' % ','.join(
+                [Statement.expansion_to_string(e) for e in ex._arguments])
+
+        elif isinstance(ex, pymake.functions.DirFunction):
+            return '$(dir %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.ErrorFunction):
+            return '$(error %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.EvalFunction):
+            return '$(eval %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.FilterFunction):
+            return '$(filter %s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FilteroutFunction):
+            return '$(filter-out %s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FindstringFunction):
+            return '$(findstring %s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FirstWordFunction):
+            return '$(firstword %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.ForEachFunction):
+            return '$(foreach %s,%s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1]),
+                Statement.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.IfFunction):
+            return '$(if %s)' % ','.join(
+                [Statement.expansion_to_string(e) for e in ex._arguments])
+
+        elif isinstance(ex, pymake.functions.OrFunction):
+            return '$(or %s)' % ','.join(
+                [Statement.expansion_to_string(e) for e in ex._arguments])
+
+        elif isinstance(ex, pymake.functions.PatSubstFunction):
+            return '$(patsubst %s,%s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1]),
+                Statement.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.ShellFunction):
+            return '$(shell %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.SortFunction):
+            return '$(sort %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.StripFunction):
+            return '$(strip %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.SubstitutionRef):
+            return '$(%s:%s=%s)' % (
+                Statement.expansion_to_string(ex.vname),
+                Statement.expansion_to_string(ex.substfrom),
+                Statement.expansion_to_string(ex.substto)
+            )
+
+        elif isinstance(ex, pymake.functions.SubstFunction):
+            return '$(subst %s,%s,%s)' % (
+                Statement.expansion_to_string(ex._arguments[0]),
+                Statement.expansion_to_string(ex._arguments[1]),
+                Statement.expansion_to_string(ex._arguments[2])
+            )
+
+        elif isinstance(ex, pymake.functions.WarningFunction):
+            return '$(warning %s' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.WildcardFunction):
+            return '$(wildcard %s)' % Statement.expansion_to_string(ex._arguments[0])
+
+        elif isinstance(ex, pymake.functions.VariableRef):
+            if isinstance(ex.vname, pymake.data.StringExpansion):
+                return '$(%s)' % ex.vname.s
+            else:
+                return Statement.expansion_to_string(ex.vname)
+
+        else:
+            raise Exception('Unhandled function type: %s' % ex)
+
+    @staticmethod
+    def condition_to_string(c):
+        '''Convert a condition to a string representation.'''
+
+        if isinstance(c, pymake.parserdata.IfdefCondition):
+            s = Statement.expansion_to_string(c.exp)
+
+            if c.expected:
+                return 'ifdef %s' % s
+            else:
+                return 'ifndef %s' % s
+
+        elif isinstance(c, pymake.parserdata.EqCondition):
+            s = ','.join([
+                Statement.expansion_to_string(c.exp1).strip(),
+                Statement.expansion_to_string(c.exp2).strip()
+            ])
+
+            if c.expected:
+                return 'ifeq (%s)' % s
+            else:
+                return 'ifneq (%s)' % s
+
+        elif isinstance(c, pymake.parserdata.ElseCondition):
+            return 'else'
+        else:
+            raise Exception('Unhandled condition type: %s' % c)
+
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
 
@@ -60,15 +493,7 @@ class StatementCollection(object):
         # List of tuples describing ifdefs
         '_ifdefs',
 
-        # List of our normalized statement tuples.
-        #
-        # Each tuple is of the form:
-        #  ( obj, level )
-        #
-        # Where obj is a class from pymake.parserdata, typically something
-        # derived from Statement or Condition. obj could also be a string
-        # semaphore value. These semaphores were inserted by this class
-        # to make linear examination of the statement stream easier.
+        # List of our normalized statements. Each element is a Statement.
         'statements',
 
         # Dictionary of variable names defined unconditionally. Keys are
@@ -102,15 +527,15 @@ class StatementCollection(object):
         '''
         if self._ifdefs is None:
             self._ifdefs = []
-            for (s, level) in self.statements:
-                if not isinstance(s, pymake.parserdata.IfdefCondition):
+            for s in self.statements:
+                if not s.is_ifdef:
                     continue
 
                 self._ifdefs.append((
-                    self.expansion_to_string(s.exp),
-                    s.expected,
-                    level > 0,
-                    (s.exp.loc.path, s.exp.loc.line, s.exp.loc.column)
+                    s.expansion_string,
+                    s.expected_condition,
+                    s.level > 0,
+                    s.location
                 ))
 
         return self._ifdefs
@@ -122,12 +547,12 @@ class StatementCollection(object):
         Each returned item is a tuple of
           ( path, is_conditional, location )
         '''
-        for (s, level) in self.statements:
-            if isinstance(s, pymake.parserdata.Include):
+        for s in self.statements:
+            if s.is_include:
                 yield (
-                    self.expansion_to_string(s.exp),
-                    level > 0,
-                    (s.exp.loc.path, s.exp.loc.line, s.exp.loc.column)
+                    s.expansion_string,
+                    s.level > 0,
+                    s.location
                 )
 
     @property
@@ -142,25 +567,23 @@ class StatementCollection(object):
         # statement level.
         condition_count = 0
 
-        for s, level in self.statements:
-            if isinstance(s, pymake.parserdata.ConditionBlock):
+        for s in self.statements:
+            if s.is_condition_block:
                 condition_count += 1
-            elif isinstance(s, str) and s == 'EndConditionBlock':
+            elif s.is_condition_block_end:
                 condition_count -= 1
 
-            if not isinstance(s, pymake.parserdata.SetVariable):
+            if not s.is_setvariable:
                 continue
 
-            assert(isinstance(s.vnameexp, pymake.data.StringExpansion))
-
-            name = s.vnameexp.s
+            assert(s.vname_expansion_is_string_expansion)
 
             yield (
-                name,
+                s.vname_expansion_string,
                 s.value,
                 s.token,
                 condition_count > 0,
-                ( s.valueloc.path, s.valueloc.line, s.valueloc.column )
+                s.location
             )
 
     @property
@@ -239,10 +662,9 @@ class StatementCollection(object):
     @property
     def lines(self):
         '''Emit lines that constitute a Makefile for this collection.'''
-        for (statement, level) in self.statements:
-            s = self.statement_to_string((statement, level))
-            if s is not None:
-                yield s
+        for statement in self.statements:
+            if statement.has_str:
+                yield str(statement)
 
     def include_includes(self):
         '''Follow file includes and insert remote statements into this
@@ -281,38 +703,38 @@ class StatementCollection(object):
 
         # Conditionals are expanded immediately, during the first pass, so it
         # is safe to linearly traverse and prune as we go.
-        for s, level in self.statements:
+        for s in self.statements:
             if filter_level is not None:
-                if level > filter_level:
+                if s.level > filter_level:
                     continue
-                elif level <= filter_level:
+                else:
                     filter_level = None
 
-            if isinstance(s, pymake.parserdata.ConditionBlock):
-                condition_block_stack.append([(s, level), False, False])
+            if s.is_condition_block:
+                condition_block_stack.append([s, False, False])
                 continue
 
-            if isinstance(s, pymake.parserdata.IfdefCondition):
-                name = self.expansion_to_string(s.exp)
+            if s.is_ifdef:
+                name = s.expansion_string
                 defined = name in currently_defined
 
                 # We were able to evaluate the conditional
                 condition_block_stack[-1][1] = True
 
-                if (defined and not s.expected) or (not defined and s.expected):
-                    filter_level = level
+                if (defined and not s.expected_condition) or (not defined and s.expected_condition):
+                    filter_level = s.level
                     continue
 
                 # Mark the primary branch as being taken
                 condition_block_stack[-1][2] = True
 
-            elif isinstance(s, pymake.parserdata.ElseCondition):
+            elif s.is_else:
                 top_condition = condition_block_stack[-1]
 
                 # If we were able to evaluate the condition and we took the
                 # first branch, filter the else branch.
                 if top_condition[1] and top_condition[2]:
-                    filter_level = level
+                    filter_level = s.level
                     continue
 
                 # If we were able to evaluate, but we didn't take the first
@@ -321,12 +743,12 @@ class StatementCollection(object):
                 if top_condition[1]:
                     continue
 
-            elif isinstance(s, pymake.parserdata.Include):
+            elif s.is_include:
                 # The error on function is an arbitrary restriction. We could
                 # possibly work around it, but that would be harder since
                 # functions possibly require more context to operate on than
                 # the simple parser data.
-                filename = self.expansion_to_string(s, error_on_function=True)
+                filename = Statement.expansion_to_string(s.expansion, error_on_function=True)
 
                 included = StatementCollection(filename)
                 included.include_includes()
@@ -334,29 +756,27 @@ class StatementCollection(object):
 
                 raise Exception('TODO')
 
-            elif isinstance(s, pymake.parserdata.SetVariable):
+            elif s.is_setvariable:
                 # At the worst, we are in a conditional that we couldn't
                 # evaluate, so there is no harm in marking as defined even if
                 # it might not be. make will do the right thing at run-time.
                 if len(s.value) > 0:
-                    currently_defined.add(self.expansion_to_string(s.vnameexp))
+                    currently_defined.add(s.vname_expansion_string)
 
-            elif isinstance(s, str):
+            elif s.is_condition_end:
                 # If we evaluated the condition block, we have an active branch
                 # and can remove this semaphore.
-                if s in ('EndDefCondition', 'EndEqCondition', 'EndElseCondition'):
-                    if condition_block_stack[-1][1]:
-                        continue
-                elif s == 'EndConditionBlock':
-                    # If we evaluated the condition, we can remove this
-                    # semaphore statement.
-                    popped = condition_block_stack.pop()
-                    if popped[1]:
-                        continue
-                else:
-                    raise Exception('Unhandled semaphore statement: %s' % s)
+                if condition_block_stack[-1][1]:
+                    continue
 
-            statements.append((s, level))
+            elif s.is_condition_block_end:
+                # If we evaluated the condition, we can remove this
+                # semaphore statement.
+                popped = condition_block_stack.pop()
+                if popped[1]:
+                    continue
+
+            statements.append(s)
 
         self.clear_caches()
         self.statements = statements
@@ -366,243 +786,8 @@ class StatementCollection(object):
         those caches.'''
         self._ifdefs = None
 
-
-    def expansion_to_string(self, e, error_on_function=False):
-        '''Convert an expansion to a string.
-
-        This effectively converts a string back to the form it was defined as
-        in the Makefile. This is different from the resolvestr() method on
-        Expansion classes because it doesn't actually expand variables.
-
-        TODO consider adding this logic on the appropriate PyMake classes.
-        '''
-        if isinstance(e, pymake.data.StringExpansion):
-            return e.s
-        elif isinstance(e, pymake.data.Expansion):
-            parts = []
-            for ex, is_func in e:
-                if is_func:
-                    if error_on_function:
-                        raise Exception('Unable to perform expansion due to function presence')
-
-                    parts.append(self.function_to_string(ex))
-                else:
-                    parts.append(ex)
-
-            return ''.join(parts)
-        else:
-            raise Exception('Unhandled expansion type: %s' % e)
-
-    def expansion_to_list(self, e):
-        '''Convert an expansion to a list.
-
-        This is similar to expansion_to_string() except it returns a list.'''
-        s = self.expansion_to_string(e).strip()
-
-        if s == '':
-            return []
-        else:
-            return s.split(' ')
-
-    def function_to_string(self, ex):
-        '''Convert a PyMake function instance to a string.'''
-        if isinstance(ex, pymake.functions.AddPrefixFunction):
-            return '$(addprefix %s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1])
-            )
-
-        elif isinstance(ex, pymake.functions.AddSuffixFunction):
-            return '$(addsuffix %s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1])
-            )
-
-        elif isinstance(ex, pymake.functions.BasenameFunction):
-            return '$(basename %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.CallFunction):
-            return '$(call %s)' % ','.join(
-                [self.expansion_to_string(e) for e in ex._arguments])
-
-        elif isinstance(ex, pymake.functions.DirFunction):
-            return '$(dir %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.ErrorFunction):
-            return '$(error %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.EvalFunction):
-            return '$(eval %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.FilterFunction):
-            return '$(filter %s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FilteroutFunction):
-            return '$(filter-out %s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FindstringFunction):
-            return '$(findstring %s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FirstWordFunction):
-            return '$(firstword %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.ForEachFunction):
-            return '$(foreach %s,%s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1]),
-                self.expansion_to_string(ex._arguments[2])
-            )
-
-        elif isinstance(ex, pymake.functions.IfFunction):
-            return '$(if %s)' % ','.join([
-                self.expansion_to_string(e) for e in ex._arguments])
-
-        elif isinstance(ex, pymake.functions.OrFunction):
-            return '$(or %s)' % ','.join(
-                [self.expansion_to_string(e) for e in ex._arguments])
-
-        elif isinstance(ex, pymake.functions.PatSubstFunction):
-            return '$(patsubst %s,%s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1]),
-                self.expansion_to_string(ex._arguments[2])
-            )
-
-        elif isinstance(ex, pymake.functions.ShellFunction):
-            return '$(shell %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.SortFunction):
-            return '$(sort %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.StripFunction):
-            return '$(strip %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.SubstitutionRef):
-            return '$(%s:%s=%s)' % (
-                self.expansion_to_string(ex.vname),
-                self.expansion_to_string(ex.substfrom),
-                self.expansion_to_string(ex.substto)
-            )
-
-        elif isinstance(ex, pymake.functions.SubstFunction):
-            return '$(subst %s,%s,%s)' % (
-                self.expansion_to_string(ex._arguments[0]),
-                self.expansion_to_string(ex._arguments[1]),
-                self.expansion_to_string(ex._arguments[2])
-            )
-
-        elif isinstance(ex, pymake.functions.WarningFunction):
-            return '$(warning %s' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.WildcardFunction):
-            return '$(wildcard %s)' % self.expansion_to_string(ex._arguments[0])
-
-        elif isinstance(ex, pymake.functions.VariableRef):
-            if isinstance(ex.vname, pymake.data.StringExpansion):
-                return '$(%s)' % ex.vname.s
-            else:
-                return self.expansion_to_string(ex.vname)
-
-        else:
-            raise Exception('Unhandled function type: %s' % ex)
-
-    def condition_to_string(self, c):
-        '''Convert a condition to a string representation.'''
-
-        if isinstance(c, pymake.parserdata.IfdefCondition):
-            s = self.expansion_to_string(c.exp)
-
-            if c.expected:
-                return 'ifdef %s' % s
-            else:
-                return 'ifndef %s' % s
-
-        elif isinstance(c, pymake.parserdata.EqCondition):
-            s = ','.join([
-                self.expansion_to_string(c.exp1).strip(),
-                self.expansion_to_string(c.exp2).strip()
-            ])
-
-            if c.expected:
-                return 'ifeq (%s)' % s
-            else:
-                return 'ifneq (%s)' % s
-
-        elif isinstance(c, pymake.parserdata.ElseCondition):
-            return 'else'
-        else:
-            raise Exception('Unhandled condition type: %s' % c)
-
-    def statement_to_string(self, statement):
-        '''Convert a statement to its string representation.'''
-
-        (s, level) = statement
-
-        if isinstance(s, pymake.parserdata.Command):
-            return '\t%s' % self.expansion_to_string(s.exp)
-        elif isinstance(s, pymake.parserdata.Condition):
-            return self.condition_to_string(s)
-        elif isinstance(s, pymake.parserdata.ConditionBlock):
-            return None
-        elif isinstance(s, pymake.parserdata.EmptyDirective):
-            return self.expansion_to_string(s.exp)
-        elif isinstance(s, pymake.parserdata.ExportDirective):
-            return 'export %s' % self.expansion_to_string(s.exp)
-        elif isinstance(s, pymake.parserdata.Include):
-            return 'include %s' % self.expansion_to_string(s.exp)
-        elif isinstance(s, pymake.parserdata.Rule):
-            sep = ':'
-            if s.doublecolon:
-                sep = '::'
-
-            return ('%s%s %s' % (
-                self.expansion_to_string(s.targetexp),
-                sep,
-                self.expansion_to_string(s.depexp).lstrip()
-            )).strip()
-        elif isinstance(s, pymake.parserdata.SetVariable):
-            # TODO what is targetexp used for?
-            return '%s %s %s' % (
-                self.expansion_to_string(s.vnameexp),
-                s.token,
-                s.value
-            )
-        elif isinstance(s, pymake.parserdata.StaticPatternRule):
-            sep = ':'
-            if s.doublecolon:
-                sep = '::'
-
-            return '%s%s %s : %s' % (
-                self.expansion_to_string(s.targetexp),
-                sep,
-                self.expansion_to_string(s.patternexp),
-                self.expansion_to_string(s.depexp)
-            )
-        elif isinstance(s, pymake.parserdata.VPathDirective):
-            return 'vpath %s' % self.expansion_to_string(s.exp)
-        elif isinstance(s, str):
-            if s  == 'EndConditionBlock':
-                return 'endif'
-            elif s in ('EndEqCondition', 'EndDefCondition', 'EndElseCondition'):
-                return None
-            else:
-                raise Exception('Unhandled semaphore statement: %s' % s)
-        else:
-            raise Exception('Unhandled statement type: %s' % s)
-
     def _load_raw_statements(self, statements):
         '''Loads PyMake's parser output into this container.'''
-
-        last_statement = None
 
         # This converts PyMake statements into our internal representation.
         # We add a nested level marker to each statement. We also expand
@@ -615,14 +800,16 @@ class StatementCollection(object):
                 # and a set of statements to be executed when that condition
                 # is satisfied.
                 if isinstance(statement, pymake.parserdata.ConditionBlock):
-                    yield (statement, level)
+                    yield Statement(statement, level=level)
+
+                    index = 0
                     for condition, l in statement:
-                        yield (condition, level + 1)
+                        yield Statement(condition, level + 1, condition_index=index)
 
                         # Recursively add these conditional statements at the
                         # next level.
-                        for t in examine(l, level + 2):
-                            yield t
+                        for s in examine(l, level + 2):
+                            yield s
 
                         name = None
                         if isinstance(condition, pymake.parserdata.IfdefCondition):
@@ -634,13 +821,12 @@ class StatementCollection(object):
                         else:
                             raise Exception('Unhandled condition type: %s' % condition)
 
-                        yield (name, level + 1)
+                        yield Statement(name, level + 1, condition_index=index)
+                        index += 1
 
-                    yield ('EndConditionBlock', level)
+                    yield Statement('EndConditionBlock', level)
                 else:
-                    yield (statement, level)
-
-                    last_statement = statement
+                    yield Statement(statement, level)
 
         self.statements = [s for s in examine(statements, 0)]
 
