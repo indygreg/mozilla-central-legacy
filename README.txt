@@ -1,3 +1,4 @@
+===============================
 The Build Splendid Build System
 ===============================
 
@@ -55,7 +56,9 @@ Derecursified Makefile Generation
 This build system is capable of producing a fully-derecursified Makefile. It
 accomplishes this by parsing existing Makefiles for variables that have
 rules from rules.mk (like CPPSRCS or EXPORTS) and dynamically produces a new
-Makefile with individual rules for these. See the technical overview below.
+Makefile with individual rules for these. The old Makefiles are stripped of
+the extracted data and are written to the normal locations. See the technical
+details below for more.
 
 BXR - The Build Cross Reference
 -------------------------------
@@ -83,8 +86,55 @@ both working from the same source directory.
 Changes to Existing Files
 -------------------------
 
-* configure.in's updated to allow optional suppression of Makefile.in
-  conversion. Build Splendid can perform this conversion itself.
+configure.in's were updated to allow optional suppression of Makefile.in
+conversion. Build Splendid can perform this conversion itself. The change
+should be transparent to people on the old system.
+
+Technical Details
+=================
+
+Most of the code lives as Python modules under build/buildparser. I've
+implemented things such that the components should be reusable from other
+tools. The coupling is tighter than I would prefer, but it gets the job
+done.
+
+The code is conceptualized in 3 components: parsing/extraction,
+representation, and transformation.
+
+In the parsing/extraction component, data from our existing build system
+is read or inferred from existing files, mainly Makefiles. This component
+contains all the logic for inferring how our build system works today. It
+looks at a Makefile and says "it is producing a static library from input
+files X and Y," "it is exporting an IDL I," "it defines some JavaScript
+modules J," etc.
+
+The parsing/extraction component converts existing data into unified and
+rather generic data structures. These data structures can be thought of as
+the data-centric components of the Makefiles. In other words, they are
+Makefiles without targets and rules.
+
+The third component is transformation. Transformation components take the
+data representations from the previous component and transform them into
+something. For example, it could take all the libraries and produce Visual
+Studio projects for them. Or, you could produce a derecursified Makefile.
+
+To visualize, data moves through the system thus:
+
+  |------------|           |---------------|           |----------------|
+  |            |           |               |           |                |
+  | Extraction | -->-->--> |Representation | -->-->--> | Transformation |
+  |            |           |               |           |                |
+  |------------|           |---------------|           |----------------|
+                                                               |
+                                            |--------|         |
+                                            |        |         |
+                                            | Output | <---<---|
+                                            |        |
+                                            |--------|
+
+Currently, the only Transformation stage implemented in the branch is Visual
+Studio.
+
 
 FAQ
 ===
@@ -94,8 +144,8 @@ Is this a full build system replacement?
 
 No. There is lots of functionality in the original build system (PGO, i10n,
 packaging, etc) that is not yet implemented in this build system. However,
-functionality that I think is used by 95% of people is included. So, for
-most developers, this build system should suffice.
+common functionality is included. So, for most developers, this build system
+should suffice.
 
 We should care about making this build system more robust because it builds
 much, much faster.
@@ -136,7 +186,10 @@ When can this get checked in?
 -----------------------------
 
 I don't know. It is a lot of code that needs to be reviewed. And, some test
-code likely needs written.
+code likely needs written. Since it can safely exist side-by-side with the
+existing build system, I'm hoping that lowers the barrier to checkin and leads
+to more users to find and help squash bugs. Maybe this will require moving
+things like build.py out of the root directory. I'm cool with that.
 
 Why did you reinvent parts of PyMake?
 -------------------------------------
@@ -153,50 +206,23 @@ its parser from its higher-level API. Most of the work I've done is
 interfacing with PyMake's parser-level API. Since it is so low level,
 some reinvention was bound to happen.
 
+You Didn't Do X Properly!
+-------------------------
 
+Yes, there is likely lots of subtle functionality that hasn't been ported
+completely and/or properly. If you find something, please chime in. Or,
+offer a patch.
 
-Technical Overview
-==================
+The current build system has had 10+ years to bake and catch corner cases.
+This one, while it is built on top of the existing one, is effectively a
+rewrite. There will be bugs. But, for the speed and usability improvements,
+I'm willing to sacrifice some setback for features. Keep in mind, we have
+the existing build system to fall back on, so if BS doesn't provide what you
+need, just go back to the way you've been doing things for years.
 
-Most new code is located in build/buildparser and is defined as Python
-modules for reusability.
-
-The code is conceptualized in 3 components: parsing/extraction,
-representation, and transformation.
-
-In the parsing/extraction component, data from our existing build system
-is read or inferred from existing files, mainly Makefiles. This component
-contains all the logic for inferring how our build system works today. It
-looks at a Makefile and says "it is producing a static library from input
-files X and Y," "it is exporting an IDL I," "it defines some JavaScript
-modules J," etc.
-
-The parsing/extraction component converts existing data into unified and
-rather generic data structures. These data structures can be thought of as
-the data-centric components of the Makefiles. In other words, they are
-Makefiles without targets and rules.
-
-The third component is transformation. Transformation components take the
-data representations from the previous component and transform them into
-something. For example, it could take all the libraries and produce Visual
-Studio projects for them. Or, you could produce a derecursified Makefile.
-
-To visualize, data moves through the system thus:
-
-  |------------|           |---------------|           |----------------|
-  |            |           |               |           |                |
-  | Extraction | -->-->--> |Representation | -->-->--> | Transformation |
-  |            |           |               |           |                |
-  |------------|           |---------------|           |----------------|
-                                                               |
-                                            |--------|         |
-                                            |        |         |
-                                            | Output | <---<---|
-                                            |        |
-                                            |--------|
-
-Currently, the only Transformation stage implemented in the branch is Visual
-Studio.
+====================
+CONTENT BELOW IS OLD
+====================
 
 Visual Studio Generation
 ========================
@@ -295,6 +321,83 @@ The following doesn't work yet:
 * .exe generation
 * DLL generation
 * Proper dependencies
+
+Project History
+===============
+
+This project started as a way to provide automatically generated Visual Studio
+projects for developers to consume. The project has since undergone numerous
+"a ha" moments.
+
+The first idea was to capture all the commands being executed during a clobber
+build and convert these to a Visual Studio/MSBuild/NMake file. Code was written
+to add tracing support to PyMake to capture a forensic log of every command
+executed during the build. The tracing code was pretty cool and it serves as
+an excellent reference for debugging what's going on in builds (this code
+hasn't landed in PyMake's tree yet). The tracing provided me (still a young
+Mozillian) a good insight into what the build system is actually doing without
+me having to read Makefiles.
+
+After exploring the build system in more detail, I realized that most of our
+Makefiles were data-driven: they declare variables and Makefile magic in
+rules.mk converts these variables to rules and things happen. Using the
+existing PyMake Makefile API (pymake.data.Makefile), I wrote a tool that
+scoured over a pre-configured object directory. It started at the root
+Makefile and expanded the directory variables and assembles the set of
+"relevant" Makefiles. For each of these Makefiles, it parsed them and looked
+for key named variables, like CPPSRCS, EXPORTS, XPIPDLSRCS, CLFAGS, etc.
+It converted these into Visual Studio projects, even going as far as to
+convert each CFLAG into a native Visual Studio project option.
+
+The Visual Studio projects were kinda cool. They had all the source and header
+files defined. I even got IDL header file generation working. However,
+dependencies were non-existent. And, there was no master state to keep track
+of global dependencies between projects.
+
+There were also issues running the tool on Windows. The PyMake APIs on the
+built-in Makefile class were very high-level and geared towards running make.
+If you instantiated a Makefile instance on a file that had a $(shell), PyMake
+would try to run the shell. This is not cool when all you are trying to do is
+simple inspection!
+
+I evaluated PyMake's internals and decided that refactoring the classes to
+do what I wanted would be too large of an undertaking. In all honesty, the code
+isn't documented very well and it is very fragile, partly due to the use of
+the multiprocess module. I attempted some modifications, but after seeing
+Python fork and resume parallel execution in another process without any way
+to control it, I gave up on manipulating the high-level PyMake APIs.
+
+At this point, I started authoring APIs for interfacing with PyMake's lower
+level parser output. Here, I have access to the parsed Makefile statements.
+Using this API, I was able to pull out very raw details about Makefiles without
+having to worry about execution logic. I could iterate over a file and see
+where all the variable assignments were happening, for example. Before, the
+variable namespace would be polluted by variables defined in included files.
+
+At the same time I was refactoring to use the lower-level APIs, I was building
+a more robust data extraction component. One problem with the initial Visual
+Studio work was it was extremely fragile and very hacky. There really wasn't
+an API anywhere - it was just a bunch of code to extract data for the purposes
+of outputting to Visual Studio. I realized that an extraction API had use
+beyond Visual Studio, so I began to build a separate extraction API.
+
+When the data extraction API started to come together, I realized I was on to
+something special. I could literally point a Python method at a directory path
+and it was generate a series of objects describing individual bits of the build
+system as it discovered them. "Here's an IDL file," "here's a shared library,"
+"here's a JAR manifest," etc. At this point, I had built a pretty good data
+extraction API. The data coming out of it was so much more pleasant than trying
+to parse Makefiles in my head. I thought, "wow, this data is very useful. I
+should publish it somewhere!" So, BXR was born. Since one of my personal metras
+is "everything is a library," BXR exists as a module inside the Python code
+I've been writing. So, anybody can produce a BXR instance just by running a
+single command.
+
+One feature of my Makefile data extractor is that it keeps track of which
+variables are consulted when extracting metadata. This means that once I have
+extracted all data from a specific Makefile, I'm able to see which files
+remain and still have data presumably not captured by the extractor. Looking
+at the build system as a whole, the set of unhandled variables was daunting.
 
 Ramble on Data Driven Building
 ==============================
