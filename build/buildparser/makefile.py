@@ -84,6 +84,9 @@ class Statement(object):
         pymake.parserdata.VPathDirective,
     )
 
+    '''Variables that are automatically available in Makefiles.'''
+    AUTOMATIC_VARIABLES = set(['@', '%', '<', '?', '^', '+', '|', '*'])
+
     def __init__(self, statement, level, condition_index=None):
         self.statement       = statement
         self.level           = level
@@ -93,7 +96,7 @@ class Statement(object):
         '''Convert this statement back to its Makefile representation.'''
 
         if self.is_command:
-            return '\t%s' % self.expansion_string
+            return self.command_string
         elif self.is_condition:
             return self.condition_string
         elif self.is_empty_directive:
@@ -235,6 +238,27 @@ class Statement(object):
         return isinstance(self.statement, pymake.parserdata.VPathDirective)
 
     @property
+    def command_string(self):
+        '''Converts a command expansion back into its string form.
+
+        Commands are interesting beasts. For a couple of reasons.
+
+        For one, they can be multi-line.
+
+        There also might be variable references inside the command.
+        To the shell, $foo is correct. However, to Makefiles, we need
+        $$foo.
+
+        This all means that conversion back to a string is somewhat
+        challenging. But, it isn't impossible.
+        '''
+
+        s = Statement.expansion_to_string(self.expansion,
+                                          escape_variables=True)
+
+        return '\n'.join(['\t%s' % line for line in s.split('\n')])
+
+    @property
     def condition_string(self):
         '''Convert a condition to a string representation.'''
 
@@ -373,16 +397,26 @@ class Statement(object):
         return isinstance(self.vname_expansion, pymake.data.StringExpansion)
 
     @staticmethod
-    def expansion_to_string(e, error_on_function=False):
+    def expansion_to_string(e, error_on_function=False, escape_variables=False):
         '''Convert an expansion to a string.
 
         This effectively converts a string back to the form it was defined as
         in the Makefile. This is different from the resolvestr() method on
         Expansion classes because it doesn't actually expand variables.
 
+        If error_on_function is True, an Exception will be raised if a
+        function is encountered. This provides an easy mechanism to
+        conditionally convert expansions only if they contain static data.
+
+        If escape_variables is True, individual variable sigil elements will
+        be escaped (i.e. '$' -> '$$').
+
         TODO consider adding this logic on the appropriate PyMake classes.
         '''
         if isinstance(e, pymake.data.StringExpansion):
+            if escape_variables and e.s == '$':
+                return '$$'
+
             return e.s
         elif isinstance(e, pymake.data.Expansion):
             parts = []
@@ -393,7 +427,10 @@ class Statement(object):
 
                     parts.append(Statement.function_to_string(ex))
                 else:
-                    parts.append(ex)
+                    if escape_variables and ex == '$':
+                        parts.append('$$')
+                    else:
+                        parts.append(ex)
 
             return ''.join(parts)
         else:
@@ -516,6 +553,12 @@ class Statement(object):
 
         elif isinstance(ex, pymake.functions.VariableRef):
             if isinstance(ex.vname, pymake.data.StringExpansion):
+                # AFAICT, there is no way to determine if a variable ref is
+                # special and doesn't have parens. So, we need to hard code
+                # this manually.
+                if ex.vname.s in Statement.AUTOMATIC_VARIABLES:
+                    return '$%s' % ex.vname.s
+
                 return '$(%s)' % ex.vname.s
             else:
                 return Statement.expansion_to_string(ex.vname)
