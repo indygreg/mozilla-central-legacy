@@ -435,11 +435,11 @@ class Statement(object):
         elif self.is_setvariable:
             return self.setvariable_string
         elif self.is_static_pattern_rule:
-            return ('\n%s%s %s : %s' % (
+            return ('\n%s%s %s: %s' % (
                 Expansion.to_str(self.statement.targetexp),
                 self.target_separator,
-                Expansion.to_str(self.statement.patternexp),
-                Expansion.to_str(self.statement.depexp)
+                Expansion.to_str(self.statement.patternexp).strip(),
+                Expansion.to_str(self.statement.depexp).strip()
             )).rstrip()
         elif self.is_vpath:
             return 'vpath %s' % self.expansion_string
@@ -572,7 +572,7 @@ class Statement(object):
         '''
 
         s = Expansion.to_str(self.expansion,
-                                          escape_variables=True)
+                             escape_variables=True)
 
         return '\n'.join(['\t%s' % line for line in s.split('\n')])
 
@@ -706,7 +706,7 @@ class Statement(object):
 
         assert(self.is_setvariable)
 
-        value = self.value
+        value = self.value.replace('#', '\\#')
 
         if self.statement.targetexp is not None:
             return '%s: %s %s %s' % (
