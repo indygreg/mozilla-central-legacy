@@ -571,6 +571,9 @@ class Statement(object):
             return '$(if %s)' % ','.join(
                 [Statement.expansion_to_string(e) for e in ex._arguments])
 
+        elif isinstance(ex, pymake.functions.NotDirFunction):
+            return '$(notdir %s)' % Statement.expansion_to_string(ex[0])
+
         elif isinstance(ex, pymake.functions.OrFunction):
             return '$(or %s)' % ','.join(
                 [Statement.expansion_to_string(e) for e in ex._arguments])
