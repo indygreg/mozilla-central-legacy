@@ -159,7 +159,7 @@ class BuildSystem(object):
                 if conditional:
                     raise Exception(
                         'Conditional variable assignment encountered (%s) in autoconf file: %s' % (
-                            name, location[0] ))
+                            name, location ))
 
                 if name in d:
                     if token not in ('=', ':='):
@@ -398,8 +398,7 @@ class BuildSystem(object):
         m.perform_substitutions(mapping, callback_on_missing=missing_callback)
 
         if strip_false_conditionals:
-            #m.statements.strip_false_conditionals()
-            lines = m.statements.lines
+            m.statements.strip_false_conditionals()
         elif apply_rewrite:
             # This has the side-effect of populating the StatementCollection,
             # which will cause lines to come from it.
