@@ -202,8 +202,8 @@ class Expansion(object):
         TODO consider adding this logic on the appropriate PyMake classes.
         '''
         if isinstance(e, pymake.data.StringExpansion):
-            if escape_variables and e.s == '$':
-                return '$$'
+            if escape_variables:
+                return e.s.replace('$', '$$')
 
             return e.s
         elif isinstance(e, pymake.data.Expansion):
@@ -215,8 +215,8 @@ class Expansion(object):
 
                     parts.append(Expansion.function_to_string(ex))
                 else:
-                    if escape_variables and ex == '$':
-                        parts.append('$$')
+                    if escape_variables:
+                        parts.append(ex.replace('$','$$'))
                     else:
                         parts.append(ex)
 
