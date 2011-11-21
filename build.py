@@ -187,9 +187,9 @@ def action_callback(action, params, formatter, important=False, error=False):
 
     if options.verbose or important or error:
         if options.print_json:
-            json.dump(json_obj, sys.stdout)
+            json.dump(json_obj, sys.stderr)
         else:
-            print '%4.2f %s' % ( elapsed, formatter.format(**params) )
+            print >>sys.stderr, '%4.2f %s' % ( elapsed, formatter.format(**params) )
 
 config = buildparser.config.BuildConfig()
 
