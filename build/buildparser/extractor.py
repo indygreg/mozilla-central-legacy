@@ -394,14 +394,16 @@ class BuildSystem(object):
                 'Missing source variable for substitution: {var} in {path}',
                 error=True)
 
-        m = makefile.Makefile(input_path)
+        m = makefile.Makefile(input_path, directory=output_directory)
         m.perform_substitutions(mapping, callback_on_missing=missing_callback)
 
-        if apply_rewrite:
+        if strip_false_conditionals:
+            #m.statements.strip_false_conditionals()
             lines = m.statements.lines
-
-        #if strip_false_conditionals:
-        #    m.statements.strip_false_conditionals()
+        elif apply_rewrite:
+            # This has the side-effect of populating the StatementCollection,
+            # which will cause lines to come from it.
+            lines = m.statements.lines
 
         with open(output_path, 'wb') as output:
             for line in m.lines:

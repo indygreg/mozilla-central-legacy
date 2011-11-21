@@ -47,6 +47,334 @@ import pymake.parserdata
 import re
 import StringIO
 
+class Expansion(object):
+    '''Represents an individual Makefile/PyMake expansion.
+
+    An expansion is a parsed representation of Makefile text. It contains
+    pointers to string literals, functions, other variables, etc.
+    '''
+
+    # Classes in this set are for functions which are deterministic. i.e.
+    # for a given set of input arguments, the output will always be the same
+    # regardless of the state of the computer, the filesystem, etc. This list
+    # is used for static analysis and false condition elimination.
+    DETERMINISTIC_FUNCTION_CLASSES = (
+        pymake.functions.SubstFunction,
+        pymake.functions.PatSubstFunction,
+        pymake.functions.StripFunction,
+        pymake.functions.FindstringFunction,
+        pymake.functions.FilterFunction,
+        pymake.functions.FilteroutFunction,
+        pymake.functions.SortFunction,
+        pymake.functions.WordFunction,
+        pymake.functions.WordlistFunction,
+        pymake.functions.WordsFunction,
+        pymake.functions.FirstWordFunction,
+        pymake.functions.LastWordFunction,
+        pymake.functions.DirFunction,
+        pymake.functions.NotDirFunction,
+        pymake.functions.SuffixFunction,
+        pymake.functions.BasenameFunction,
+        pymake.functions.AddSuffixFunction,
+        pymake.functions.AddPrefixFunction,
+        pymake.functions.JoinFunction,
+        pymake.functions.IfFunction,
+        pymake.functions.OrFunction,
+        pymake.functions.AndFunction,
+        pymake.functions.ForEachFunction,
+        pymake.functions.ErrorFunction,
+        pymake.functions.WarningFunction,
+        pymake.functions.InfoFunction,
+    )
+
+    # Classes in this set rely on the filesystem and thus may not be
+    # idempotent.
+    FILESYSTEM_FUNCTION_CLASSES = (
+        pymake.functions.WildcardFunction,
+        pymake.functions.RealpathFunction,
+        pymake.functions.AbspathFunction
+    )
+
+    NONDETERMINISTIC_FUNCTION_CLASSES = (
+        # This /might/ be safe depending on the circumstances, but it would be
+        # too difficult to implement.
+        pymake.functions.CallFunction,
+
+        # This is a weird one because the value inside might be non-idempotent.
+        # We could probably support it, but it would require work.
+        pymake.functions.ValueFunction,
+
+        # This transforms the Makefile. We aren't willing to support this for
+        # static analysis yet.
+        pymake.functions.EvalFunction,
+
+        # Run-time deterministic.
+        pymake.functions.OriginFunction,
+
+        # Variables could come from environment. Therefore it is a run-time
+        # deterministic.
+        pymake.functions.FlavorFunction,
+
+        # For obvious reasons.
+        pymake.functions.ShellFunction,
+
+        # variable references aren't always deterministic because the variable
+        # behind it might not be deterministic.
+        pymake.functions.VariableRef,
+        pymake.functions.SubstitutionRef,
+    )
+
+    __slots__ = (
+        # Holds the low-level expansion
+        'expansion',
+    )
+
+    def __init__(self, expansion=None, s=None):
+        '''Initialize from an existing PyMake expansion or text'''
+
+        if expansion and s:
+            raise Exception('Both expansion and string value must not be defined.')
+
+        if expansion is not None:
+            assert(isinstance(expansion,
+                   (pymake.data.Expansion, pymake.data.StringExpansion)))
+            self.expansion = expansion
+        elif s is not None:
+            raise Exception('TODO Create from string')
+        else:
+            raise Exception('One of expansion or s must be passed')
+
+    def __str__(self):
+        return Expansion.to_str(self.expansion)
+
+    def is_deterministic(self, variables=None):
+        '''Returns whether the expansion is determinstic.
+
+        A deterministic expansion is one whose value is always guaranteed.
+        If variables are not provided, a deterministic expansion is one that
+        consists of only string data or transformations on strings. If any
+        variables are encounted, the expansion will be non-deterministic.
+        '''
+
+        # The simple case is a single string
+        if isinstance(self.expansion, pymake.data.StringExpansion):
+            return True
+
+        assert(isinstance(self.expansion, pymake.data.Expansion))
+
+        for e, is_func in self.expansion:
+            # A simple string is always deterministic.
+            if not is_func:
+                continue
+
+            if isinstance(e, Expansion.DETERMINISTIC_FUNCTION_CLASSES):
+                for i in range(0, len(e)):
+                    child = Expansion(expansion=e[i])
+                    if not child.is_deterministic(variables=variables):
+                        return False
+
+                # If we got here, all child expansions were evaluated, so we
+                # are deterministic.
+                continue
+
+            # It wasn't a deterministic function. We could do more here. For
+            # now, we abort.
+
+            return False
+
+        return True
+
+    @staticmethod
+    def to_str(e, error_on_function=False, escape_variables=False):
+        '''Convert an expansion to a string.
+
+        This effectively converts a string back to the form it was defined as
+        in the Makefile. This is different from the resolvestr() method on
+        Expansion classes because it doesn't actually expand variables.
+
+        If error_on_function is True, an Exception will be raised if a
+        function is encountered. This provides an easy mechanism to
+        conditionally convert expansions only if they contain static data.
+
+        If escape_variables is True, individual variable sigil elements will
+        be escaped (i.e. '$' -> '$$').
+
+        TODO consider adding this logic on the appropriate PyMake classes.
+        '''
+        if isinstance(e, pymake.data.StringExpansion):
+            if escape_variables and e.s == '$':
+                return '$$'
+
+            return e.s
+        elif isinstance(e, pymake.data.Expansion):
+            parts = []
+            for ex, is_func in e:
+                if is_func:
+                    if error_on_function:
+                        raise Exception('Unable to perform expansion due to function presence: %s' % ex)
+
+                    parts.append(Expansion.function_to_string(ex))
+                else:
+                    if escape_variables and ex == '$':
+                        parts.append('$$')
+                    else:
+                        parts.append(ex)
+
+            return ''.join(parts)
+        else:
+            raise Exception('Unhandled expansion type: %s' % e)
+
+    @staticmethod
+    def to_list(e):
+        '''Convert an expansion to a list.
+
+        This is similar to expansion_to_string() except it returns a list.'''
+        s = Expansion.to_str(e).strip()
+
+        if s == '':
+            return []
+        else:
+            return s.split(' ')
+
+    @staticmethod
+    def is_static_string(e):
+        '''Returns whether the expansion consists of only string data.'''
+
+        if isinstance(e, pymake.data.StringExpansion):
+            return True
+        elif isinstance(e, pymake.data.Expansion):
+            for ex, is_func in e:
+                if is_func:
+                    return False
+
+                assert(isinstance(ex, str))
+
+            return True
+        else:
+            raise Exception('Unhandled expansion type: %s' % e)
+
+    @staticmethod
+    def function_to_string(ex):
+        '''Convert a PyMake function instance to a string.'''
+        if isinstance(ex, pymake.functions.AddPrefixFunction):
+            return '$(addprefix %s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1])
+            )
+
+        elif isinstance(ex, pymake.functions.AddSuffixFunction):
+            return '$(addsuffix %s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1])
+            )
+
+        elif isinstance(ex, pymake.functions.BasenameFunction):
+            return '$(basename %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.CallFunction):
+            return '$(call %s)' % ','.join(
+                [Expansion.to_str(e) for e in ex])
+
+        elif isinstance(ex, pymake.functions.DirFunction):
+            return '$(dir %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.ErrorFunction):
+            return '$(error %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.EvalFunction):
+            return '$(eval %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.FilterFunction):
+            return '$(filter %s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FilteroutFunction):
+            return '$(filter-out %s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FindstringFunction):
+            return '$(findstring %s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1])
+            )
+
+        elif isinstance(ex, pymake.functions.FirstWordFunction):
+            return '$(firstword %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.ForEachFunction):
+            return '$(foreach %s,%s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1]),
+                Expansion.to_str(ex[2])
+            )
+
+        elif isinstance(ex, pymake.functions.IfFunction):
+            return '$(if %s)' % ','.join(
+                [Expansion.to_str(e) for e in ex])
+
+        elif isinstance(ex, pymake.functions.NotDirFunction):
+            return '$(notdir %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.OrFunction):
+            return '$(or %s)' % ','.join(
+                [Expansion.to_str(e) for e in ex])
+
+        elif isinstance(ex, pymake.functions.PatSubstFunction):
+            return '$(patsubst %s,%s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1]),
+                Expansion.to_str(ex[2])
+            )
+
+        elif isinstance(ex, pymake.functions.ShellFunction):
+            return '$(shell %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.SortFunction):
+            return '$(sort %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.StripFunction):
+            return '$(strip %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.SubstitutionRef):
+            return '$(%s:%s=%s)' % (
+                Expansion.to_str(ex.vname),
+                Expansion.to_str(ex.substfrom),
+                Expansion.to_str(ex.substto)
+            )
+
+        elif isinstance(ex, pymake.functions.SubstFunction):
+            return '$(subst %s,%s,%s)' % (
+                Expansion.to_str(ex[0]),
+                Expansion.to_str(ex[1]),
+                Expansion.to_str(ex[2])
+            )
+
+        elif isinstance(ex, pymake.functions.WarningFunction):
+            return '$(warning %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.WildcardFunction):
+            return '$(wildcard %s)' % Expansion.to_str(ex[0])
+
+        elif isinstance(ex, pymake.functions.VariableRef):
+            if isinstance(ex.vname, pymake.data.StringExpansion):
+                # AFAICT, there is no way to determine if a variable ref is
+                # special and doesn't have parens. So, we need to hard code
+                # this manually.
+                if ex.vname.s in Statement.AUTOMATIC_VARIABLES:
+                    return '$%s' % ex.vname.s
+
+                return '$(%s)' % ex.vname.s
+            else:
+                return Expansion.to_str(ex.vname)
+
+        else:
+            raise Exception('Unhandled function type: %s' % ex)
+
+
 class Statement(object):
     '''Holds information about an individual PyMake statement.
 
@@ -100,18 +428,18 @@ class Statement(object):
             return 'include %s' % self.expansion_string
         elif self.is_rule:
             return ('\n%s%s %s' % (
-                Statement.expansion_to_string(self.statement.targetexp),
+                Expansion.to_str(self.statement.targetexp),
                 self.target_separator,
-                Statement.expansion_to_string(self.statement.depexp).lstrip()
+                Expansion.to_str(self.statement.depexp).lstrip()
             )).rstrip()
         elif self.is_setvariable:
             return self.setvariable_string
         elif self.is_static_pattern_rule:
             return ('\n%s%s %s : %s' % (
-                Statement.expansion_to_string(self.statement.targetexp),
+                Expansion.to_str(self.statement.targetexp),
                 self.target_separator,
-                Statement.expansion_to_string(self.statement.patternexp),
-                Statement.expansion_to_string(self.statement.depexp)
+                Expansion.to_str(self.statement.patternexp),
+                Expansion.to_str(self.statement.depexp)
             )).rstrip()
         elif self.is_vpath:
             return 'vpath %s' % self.expansion_string
@@ -243,10 +571,20 @@ class Statement(object):
         challenging. But, it isn't impossible.
         '''
 
-        s = Statement.expansion_to_string(self.expansion,
+        s = Expansion.to_str(self.expansion,
                                           escape_variables=True)
 
         return '\n'.join(['\t%s' % line for line in s.split('\n')])
+
+    @property
+    def condition_is_deterministic(self):
+        '''Returns whether the condition can be evaluated deterministically.
+
+        For a condition to be fully deterministic, it must be composed of
+        expansions that are deterministic. For an expansion to be
+        deterministic, it can't rely on the run-time environment, only
+        preconfigured defaults.'''
+        pass
 
     @property
     def condition_string(self):
@@ -267,8 +605,8 @@ class Statement(object):
 
         elif self.is_ifeq:
             s = ','.join([
-                Statement.expansion_to_string(self.statement.exp1).strip(),
-                Statement.expansion_to_string(self.statement.exp2).strip()
+                Expansion.to_str(self.statement.exp1).strip(),
+                Expansion.to_str(self.statement.exp2).strip()
             ])
 
             if self.expected_condition:
@@ -327,7 +665,7 @@ class Statement(object):
     def expansion_string(self):
         '''Returns the single expansion in this statement formatted to a string.'''
 
-        return Statement.expansion_to_string(self.expansion)
+        return Expansion.to_str(self.expansion)
 
     @property
     def first_expansion(self):
@@ -372,7 +710,7 @@ class Statement(object):
 
         if self.statement.targetexp is not None:
             return '%s: %s %s %s' % (
-                    Statement.expansion_to_string(self.statement.targetexp),
+                    Expansion.to_str(self.statement.targetexp),
                     self.vname_expansion_string,
                     self.token,
                     value
@@ -423,7 +761,7 @@ class Statement(object):
     @property
     def vname_expansion_string(self):
         '''Returns the vname expansion as a string.'''
-        return Statement.expansion_to_string(self.vname_expansion)
+        return Expansion.to_str(self.vname_expansion)
 
     @property
     def vname_expansion_is_string_expansion(self):
@@ -432,200 +770,21 @@ class Statement(object):
 
         return isinstance(self.vname_expansion, pymake.data.StringExpansion)
 
-    @staticmethod
-    def expansion_is_string(e):
-        '''Returns whether the expansion consists of only string data.'''
-
-        if isinstance(e, pymake.data.StringExpansion):
-            return True
-        elif isinstance(e, pymake.data.Expansion):
-            for ex, is_func in e:
-                if is_func:
-                    return False
-
-                assert(isinstance(ex, str))
-
-            return True
-        else:
-            raise Exception('Unhandled expansion type: %s' % e)
-
-    @staticmethod
-    def expansion_to_string(e, error_on_function=False, escape_variables=False):
-        '''Convert an expansion to a string.
-
-        This effectively converts a string back to the form it was defined as
-        in the Makefile. This is different from the resolvestr() method on
-        Expansion classes because it doesn't actually expand variables.
-
-        If error_on_function is True, an Exception will be raised if a
-        function is encountered. This provides an easy mechanism to
-        conditionally convert expansions only if they contain static data.
-
-        If escape_variables is True, individual variable sigil elements will
-        be escaped (i.e. '$' -> '$$').
-
-        TODO consider adding this logic on the appropriate PyMake classes.
-        '''
-        if isinstance(e, pymake.data.StringExpansion):
-            if escape_variables and e.s == '$':
-                return '$$'
-
-            return e.s
-        elif isinstance(e, pymake.data.Expansion):
-            parts = []
-            for ex, is_func in e:
-                if is_func:
-                    if error_on_function:
-                        raise Exception('Unable to perform expansion due to function presence: %s' % ex)
-
-                    parts.append(Statement.function_to_string(ex))
-                else:
-                    if escape_variables and ex == '$':
-                        parts.append('$$')
-                    else:
-                        parts.append(ex)
-
-            return ''.join(parts)
-        else:
-            raise Exception('Unhandled expansion type: %s' % e)
-
-    @staticmethod
-    def expansion_to_list(e):
-        '''Convert an expansion to a list.
-
-        This is similar to expansion_to_string() except it returns a list.'''
-        s = Statement.expansion_to_string(e).strip()
-
-        if s == '':
-            return []
-        else:
-            return s.split(' ')
-
-    @staticmethod
-    def function_to_string(ex):
-        '''Convert a PyMake function instance to a string.'''
-        if isinstance(ex, pymake.functions.AddPrefixFunction):
-            return '$(addprefix %s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1])
-            )
-
-        elif isinstance(ex, pymake.functions.AddSuffixFunction):
-            return '$(addsuffix %s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1])
-            )
-
-        elif isinstance(ex, pymake.functions.BasenameFunction):
-            return '$(basename %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.CallFunction):
-            return '$(call %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex])
-
-        elif isinstance(ex, pymake.functions.DirFunction):
-            return '$(dir %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.ErrorFunction):
-            return '$(error %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.EvalFunction):
-            return '$(eval %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.FilterFunction):
-            return '$(filter %s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FilteroutFunction):
-            return '$(filter-out %s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FindstringFunction):
-            return '$(findstring %s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1])
-            )
-
-        elif isinstance(ex, pymake.functions.FirstWordFunction):
-            return '$(firstword %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.ForEachFunction):
-            return '$(foreach %s,%s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1]),
-                Statement.expansion_to_string(ex[2])
-            )
-
-        elif isinstance(ex, pymake.functions.IfFunction):
-            return '$(if %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex])
-
-        elif isinstance(ex, pymake.functions.NotDirFunction):
-            return '$(notdir %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.OrFunction):
-            return '$(or %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex])
-
-        elif isinstance(ex, pymake.functions.PatSubstFunction):
-            return '$(patsubst %s,%s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1]),
-                Statement.expansion_to_string(ex[2])
-            )
-
-        elif isinstance(ex, pymake.functions.ShellFunction):
-            return '$(shell %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.SortFunction):
-            return '$(sort %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.StripFunction):
-            return '$(strip %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.SubstitutionRef):
-            return '$(%s:%s=%s)' % (
-                Statement.expansion_to_string(ex.vname),
-                Statement.expansion_to_string(ex.substfrom),
-                Statement.expansion_to_string(ex.substto)
-            )
-
-        elif isinstance(ex, pymake.functions.SubstFunction):
-            return '$(subst %s,%s,%s)' % (
-                Statement.expansion_to_string(ex[0]),
-                Statement.expansion_to_string(ex[1]),
-                Statement.expansion_to_string(ex[2])
-            )
-
-        elif isinstance(ex, pymake.functions.WarningFunction):
-            return '$(warning %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.WildcardFunction):
-            return '$(wildcard %s)' % Statement.expansion_to_string(ex[0])
-
-        elif isinstance(ex, pymake.functions.VariableRef):
-            if isinstance(ex.vname, pymake.data.StringExpansion):
-                # AFAICT, there is no way to determine if a variable ref is
-                # special and doesn't have parens. So, we need to hard code
-                # this manually.
-                if ex.vname.s in Statement.AUTOMATIC_VARIABLES:
-                    return '$%s' % ex.vname.s
-
-                return '$(%s)' % ex.vname.s
-            else:
-                return Statement.expansion_to_string(ex.vname)
-
-        else:
-            raise Exception('Unhandled function type: %s' % ex)
-
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
 
     __slots__ = (
+         # String filename we loaded from. A filename must be associated with
+         # a Makefile for things to work properly.
+        'filename',
+
+        # Directory the Makefile runs in. By default, this is set to the
+        # directory of the filename. However, it is completely valid for
+        # instantiators to override this with something else. A use case would
+        # be if the contents are being read from one location but should
+        # appear as if it is loaded from elsewhere.
+        'directory',
+
         # List of tuples describing ifdefs
         '_ifdefs',
 
@@ -637,7 +796,7 @@ class StatementCollection(object):
         'top_level_variables',
     )
 
-    def __init__(self, filename=None, buf=None):
+    def __init__(self, filename=None, buf=None, directory=None):
         '''Construct a set of statements.
 
         If buf is defined, filename must all be defined. If buf is defined,
@@ -653,6 +812,13 @@ class StatementCollection(object):
             self._load_raw_statements(pymake.parser.parsefile(filename))
         else:
             raise Exception('Invalid arguments given to constructor')
+
+        self.filename  = filename
+
+        if directory is not None:
+            self.directory = directory
+        else:
+            self.directory = os.path.dirname(filename)
 
     @property
     def ifdefs(self):
@@ -829,12 +995,33 @@ class StatementCollection(object):
         self.clear_caches()
 
     def strip_false_conditionals(self):
-        '''Rewrite the raw statement list with raw conditionals filtered out.'''
+        '''Rewrite the raw statement list with false conditional branches
+        filtered out.'''
+
+        variables = pymake.data.Variables()
+
+        def callback(action, name, value=None):
+            if action != pymake.data.ExpansionContext.GET_ATTRIBUTE:
+                raise AttributeError('Non-get action not supported')
+
+            if name == 'workdir':
+                return self.directory
+            elif name == 'parsingfinished':
+                # In theory we could mark this is False, but then the parser
+                # might try to call into the Makefile. A true value will cause
+                # $(eval) as it is currently implemented to raise.
+                return True
+            elif name == 'variables':
+                return variables
+            else:
+                raise AttributeError('Unhandled attribute get: %s' % name)
+
+        context = pymake.data.ExpansionContext(callback)
+
         statements = []
-        currently_defined = set()
         filter_level = None
 
-        # List of (statement_tuple, evaluated, branch_taken)
+        # List of (Statement, evaluated, branch_taken)
         condition_block_stack = []
 
         # Conditionals are expanded immediately, during the first pass, so it
@@ -851,18 +1038,20 @@ class StatementCollection(object):
                 continue
 
             if s.is_ifdef:
-                name = s.expansion_string
-                defined = name in currently_defined
+                result = s.statement.evaluate(context)
 
                 # We were able to evaluate the conditional
                 condition_block_stack[-1][1] = True
 
-                if (defined and not s.expected_condition) or (not defined and s.expected_condition):
+                if result:
+                    # We took this branch
+                    condition_block_stack[-1][2] = True
+
+                    # Fall through
+                else:
+                    # Set the filter on this branch and ignore this statement.
                     filter_level = s.level
                     continue
-
-                # Mark the primary branch as being taken
-                condition_block_stack[-1][2] = True
 
             elif s.is_else:
                 top_condition = condition_block_stack[-1]
@@ -884,20 +1073,19 @@ class StatementCollection(object):
                 # possibly work around it, but that would be harder since
                 # functions possibly require more context to operate on than
                 # the simple parser data.
-                filename = Statement.expansion_to_string(s.expansion, error_on_function=True)
+                filename = s.expansion.resolvestr(context, variables)
 
-                included = StatementCollection(filename)
+                expanded = os.path.join(self.directory, filename)
+                print expanded
+
+                included = StatementCollection(expanded)
                 included.include_includes()
                 included.strip_false_conditionals() # why not?
 
                 raise Exception('TODO')
 
             elif s.is_setvariable:
-                # At the worst, we are in a conditional that we couldn't
-                # evaluate, so there is no harm in marking as defined even if
-                # it might not be. make will do the right thing at run-time.
-                if len(s.value) > 0:
-                    currently_defined.add(s.vname_expansion_string)
+                s.statement.execute(context, None)
 
             elif s.is_condition_end:
                 # If we evaluated the condition block, we have an active branch
@@ -977,21 +1165,25 @@ class Makefile(object):
     '''
     __slots__ = (
         'filename',      # Filename of the Makefile
-        'dir',           # Directory holding the Makefile
-        '_makefile',      # PyMake Makefile instance
+        'directory',     # Directory holding the Makefile
+        '_makefile',     # PyMake Makefile instance
         '_statements',   # StatementCollection for this file.
         '_lines',        # List of lines containing (modified) Makefile lines
     )
 
     RE_SUB = re.compile(r"@([a-z0-9_]+?)@")
 
-    def __init__(self, filename):
+    def __init__(self, filename, directory=None):
         '''Construct a Makefile from a file'''
         if not os.path.exists(filename):
             raise Exception('Path does not exist: %s' % filename)
 
-        self.filename = filename
-        self.dir      = os.path.dirname(filename)
+        self.filename  = filename
+
+        if directory is not None:
+            self.directory = directory
+        else:
+            self.directory = os.path.dirname(filename)
 
         # Each Makefile instance can look at two sets of data, the low-level
         # statements or the high-level Makefile from PyMake. Each data set is
@@ -1013,7 +1205,9 @@ class Makefile(object):
             if self._lines is not None:
                 buf = ''.join(self._lines)
 
-            self._statements = StatementCollection(filename=self.filename, buf=buf)
+            self._statements = StatementCollection(filename=self.filename,
+                                                   buf=buf,
+                                                   directory=self.directory)
 
         return self._statements
 
@@ -1023,7 +1217,7 @@ class Makefile(object):
             if self._lines is not None:
                 raise Exception('Cannot load Makefile from modified content at this time')
 
-            self._makefile = pymake.data.Makefile(workdir=self.dir)
+            self._makefile = pymake.data.Makefile(workdir=self.directory)
             self._makefile.include(self.filename)
             self._makefile.finishparsing()
 
