@@ -112,24 +112,7 @@ class Statement(object):
                 Statement.expansion_to_string(self.statement.depexp).lstrip()
             )).rstrip()
         elif self.is_setvariable:
-            if self.statement.targetexp is not None:
-                return '%s: %s %s %s' % (
-                    Statement.expansion_to_string(self.statement.targetexp),
-                    self.vname_expansion_string,
-                    self.token,
-                    self.value
-                )
-            else:
-                value = self.value
-
-                s = '%s %s %s' % (
-                    self.vname_expansion_string, self.token, value
-                )
-
-                if not len(value):
-                    return s.rstrip()
-                return s
-
+            return self.setvariable_string
         elif self.is_static_pattern_rule:
             return ('\n%s%s %s : %s' % (
                 Statement.expansion_to_string(self.statement.targetexp),
@@ -381,24 +364,46 @@ class Statement(object):
         return self.statement.token
 
     @property
+    def setvariable_string(self):
+        '''Converts a SetVariable statement to a string.
+
+        SetVariable statements are a little funky. In the common case, they
+        have the form "foo = bar". If they have a target expression, there
+        is the form "targ: foo = bar". And, for multi-line variables, you
+        use the define directive. It ia all pretty funky.
+        '''
+
+        assert(self.is_setvariable)
+
+        value = self.value
+
+        if self.statement.targetexp is not None:
+            return '%s: %s %s %s' % (
+                    Statement.expansion_to_string(self.statement.targetexp),
+                    self.vname_expansion_string,
+                    self.token,
+                    value
+                )
+
+        # Now we have the common case. But, it could be multiline.
+        multiline = value.count('\n') > 0
+
+        if multiline:
+            # According to 6.8 of the Make manual, the equals is optional.
+            return 'define %s\n%s\nendef\n' % (
+                self.vname_expansion_string, value
+            )
+        else:
+            return ('%s %s %s' % (
+                    self.vname_expansion_string, self.token, value
+                )).rstrip()
+
+    @property
     def value(self):
         '''Returns the value of this statement.'''
         assert(isinstance(self.statement, pymake.parserdata.SetVariable))
 
-        # This assumes we are dealing with variables, which can have multiple
-        # lines.
-        lines = self.statement.value.split('\n')
-
-        if len(lines) < 2:
-            return self.statement.value
-
-        newlines = ['%s \\' % lines[0]]
-        for line in lines[1:-1]:
-            newlines.append('  %s \\' % line)
-
-        newlines.append('  %s\n' % lines[-1])
-
-        return '\n'.join(newlines)
+        return self.statement.value
 
     @property
     def vname_expansion(self):
