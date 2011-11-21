@@ -120,9 +120,16 @@ class Statement(object):
                     self.value
                 )
             else:
-                return '%s %s %s' % (
-                    self.vname_expansion_string, self.token, self.value
+                value = self.value
+
+                s = '%s %s %s' % (
+                    self.vname_expansion_string, self.token, value
                 )
+
+                if not len(value):
+                    return s.rstrip()
+                return s
+
         elif self.is_static_pattern_rule:
             return ('\n%s%s %s : %s' % (
                 Statement.expansion_to_string(self.statement.targetexp),
@@ -378,7 +385,20 @@ class Statement(object):
         '''Returns the value of this statement.'''
         assert(isinstance(self.statement, pymake.parserdata.SetVariable))
 
-        return self.statement.value
+        # This assumes we are dealing with variables, which can have multiple
+        # lines.
+        lines = self.statement.value.split('\n')
+
+        if len(lines) < 2:
+            return self.statement.value
+
+        newlines = ['%s \\' % lines[0]]
+        for line in lines[1:-1]:
+            newlines.append('  %s \\' % line)
+
+        newlines.append('  %s\n' % lines[-1])
+
+        return '\n'.join(newlines)
 
     @property
     def vname_expansion(self):
