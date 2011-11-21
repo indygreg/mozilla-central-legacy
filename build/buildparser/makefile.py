@@ -996,26 +996,34 @@ class StatementCollection(object):
 
     def strip_false_conditionals(self):
         '''Rewrite the raw statement list with false conditional branches
-        filtered out.'''
+        filtered out.
+
+        This is very dangerous and is prone to breakage if not used properly.
+        The underlying problem is conditionals in Makefiles are very
+        non-deterministic. Even if you are simply testing ifdef, that
+        variable could be provided as an environment variable or command
+        line argument. So, not even these could get eliminated.
+
+        This function assumes that no extra variables will be provided at
+        run-time and that the state passed in is what will be there when the
+        Makefile actually runs.
+
+        Even then, we still take a conservatime approach. Currently, we only
+        remove ifdefs. ifeq are not even evaluated for elimination.
+        '''
 
         variables = pymake.data.Variables()
 
         def callback(action, name, value=None):
             if action != pymake.data.ExpansionContext.GET_ATTRIBUTE:
-                raise AttributeError('Non-get action not supported')
+                raise Exception('Non-get action not supported')
 
-            if name == 'workdir':
-                return self.directory
-            elif name == 'parsingfinished':
-                # In theory we could mark this is False, but then the parser
-                # might try to call into the Makefile. A true value will cause
-                # $(eval) as it is currently implemented to raise.
-                return True
-            elif name == 'variables':
+            if name == 'variables':
                 return variables
-            else:
-                raise AttributeError('Unhandled attribute get: %s' % name)
 
+            # We should never get here because we should detect
+            # non-deterministic functions before we ever resolve a variable.
+            raise AttributeError('If you see these, we have failed')
         context = pymake.data.ExpansionContext(callback)
 
         statements = []
@@ -1035,19 +1043,22 @@ class StatementCollection(object):
 
             if s.is_condition_block:
                 condition_block_stack.append([s, False, False])
-                continue
+
+                # We keep the statement in the list in case we don't take a
+                # branch.
 
             if s.is_ifdef:
+                # There are risks with this naive approach. See the method
+                # docs.
                 result = s.statement.evaluate(context)
 
                 # We were able to evaluate the conditional
                 condition_block_stack[-1][1] = True
 
+                # We take this branch
                 if result:
-                    # We took this branch
                     condition_block_stack[-1][2] = True
-
-                    # Fall through
+                    continue
                 else:
                     # Set the filter on this branch and ignore this statement.
                     filter_level = s.level
@@ -1075,10 +1086,7 @@ class StatementCollection(object):
                 # the simple parser data.
                 filename = s.expansion.resolvestr(context, variables)
 
-                expanded = os.path.join(self.directory, filename)
-                print expanded
-
-                included = StatementCollection(expanded)
+                included = StatementCollection(self.directory)
                 included.include_includes()
                 included.strip_false_conditionals() # why not?
 
@@ -1094,10 +1102,18 @@ class StatementCollection(object):
                     continue
 
             elif s.is_condition_block_end:
-                # If we evaluated the condition, we can remove this
-                # semaphore statement.
+                # Grab the start event from the stack
                 popped = condition_block_stack.pop()
+
+                # If we evaluated the condition, we have a branch and can
+                # eliminate the begin and end statements.
                 if popped[1]:
+                    for i in range(len(statements)-1, 0, -1):
+                        s = statements[i]
+                        if s.is_condition_block:
+                            del statements[i]
+                            break
+
                     continue
 
             statements.append(s)
