@@ -129,7 +129,7 @@ class Expansion(object):
         'expansion',
     )
 
-    def __init__(self, expansion=None, s=None):
+    def __init__(self, expansion=None, s=None, location=None):
         '''Initialize from an existing PyMake expansion or text'''
 
         if expansion and s:
@@ -140,20 +140,29 @@ class Expansion(object):
                    (pymake.data.Expansion, pymake.data.StringExpansion)))
             self.expansion = expansion
         elif s is not None:
-            raise Exception('TODO Create from string')
+            assert(location is not None)
+
+            data = pymake.parser.Data.fromstring(s, location)
+            self.expansion = pymake.parser.parsemakesyntax(
+                data, 0, (), pymake.parser.iterdata)[0]
         else:
             raise Exception('One of expansion or s must be passed')
 
     def __str__(self):
         return Expansion.to_str(self.expansion)
 
-    def is_deterministic(self, variables=None):
+    def is_deterministic(self, variables=None, missing_is_deterministic=True):
         '''Returns whether the expansion is determinstic.
 
         A deterministic expansion is one whose value is always guaranteed.
         If variables are not provided, a deterministic expansion is one that
         consists of only string data or transformations on strings. If any
-        variables are encounted, the expansion will be non-deterministic.
+        variables are encounted, the expansion will be non-deterministic by
+        the nature of Makefiles, since they variables could come from the
+        execution environment or command line arguments. But, we assume
+        the current state as defined by the arguments is what will occur
+        during real execution. If you wish to override this, set the
+        appropriate arguments.
         '''
 
         # The simple case is a single string
@@ -173,12 +182,45 @@ class Expansion(object):
                     if not child.is_deterministic(variables=variables):
                         return False
 
-                # If we got here, all child expansions were evaluated, so we
+                # If we got here, all child expansions were evaluated and we
                 # are deterministic.
                 continue
 
-            # It wasn't a deterministic function. We could do more here. For
-            # now, we abort.
+            # We don't have a deterministic function. So, we perform deeper
+            # inspection on some of these.
+
+            if isinstance(e, pymake.functions.VariableRef) and variables is not None:
+                if isinstance(e.vname, pymake.data.StringExpansion):
+                    name = e.vname.s
+
+                    flavor, source, value = variables.get(name, expand=True)
+
+                    # The variable wasn't defined.
+                    if flavor is None:
+                        if missing_is_deterministic:
+                            continue
+                        else:
+                            return False
+
+                    # We found a variable! If it is simple, that means it
+                    # depends on nothing else. And, the variable should be
+                    # captured by the current context, so we can assume it is
+                    # deterministic.
+                    if flavor == pymake.data.Variables.FLAVOR_SIMPLE:
+                        continue
+
+                    # Else, we evaluate the expansion on its own.
+                    v_exp = Expansion(expansion=value)
+                    if not v_exp.is_deterministic(variables=variables,
+                            missing_is_deterministic=missing_is_deterministic):
+                        return False
+
+                    continue
+
+                # We don't bother with more complicated expansions.
+                else:
+                    return False
+
 
             return False
 
@@ -668,6 +710,33 @@ class Statement(object):
         return Expansion.to_str(self.expansion)
 
     @property
+    def expansions(self):
+        '''Returns an iterator over all expansions in this statement.'''
+
+        if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
+            yield Expansion(expansion=self.statement.exp)
+        elif self.is_ifeq:
+            yield Expansion(expansion=self.statement.exp1)
+            yield Expansion(expansion=self.statement.exp2)
+        elif self.is_rule:
+            yield Expansion(expansion=self.statement.targetexp)
+            yield Expansion(expansion=self.statement.depexp)
+        elif self.is_static_pattern_rule:
+            yield Expansion(expansion=self.statement.targetexp)
+            yield Expansion(expansion=self.statement.patternexp)
+            yield Expansion(expansion=self.statement.depexp)
+        elif self.is_setvariable:
+            if self.statement.targetexp is not None:
+                yield Expansion(expansion=self.statement.targetexp)
+
+            yield Expansion(expansion=self.statement.vnameexp)
+            yield Expansion(s=self.statement.value, location=self.statement.valueloc)
+        elif self.is_semaphore:
+            yield
+        else:
+            raise Exception('Unhandled statement type: %s' % self)
+
+    @property
     def first_expansion(self):
         '''Returns the first expansion in this statement or None if no
         expansions are present.'''
@@ -676,6 +745,10 @@ class Statement(object):
             return self.statement.exp
         elif self.is_setvariable:
             return self.statement.vnameexp
+        elif self.is_rule:
+            return self.statement.targetexp
+        elif self.is_static_pattern_rule:
+            return self.statement.targetexp
         else:
             return None
 
@@ -745,7 +818,8 @@ class Statement(object):
         assert(isinstance(self.statement, pymake.parserdata.SetVariable))
 
         data = pymake.parser.Data.fromstring(self.statement.value, self.statement.valueloc)
-        return pymake.parser.parsemakesyntax(data, 0, (), pymake.parser.iterdata)[0]
+        return Expansion(expansion=pymake.parser.parsemakesyntax(data, 0, (),
+                         pymake.parser.iterdata)[0])
 
     @property
     def vname_expansion(self):
@@ -769,6 +843,21 @@ class Statement(object):
         String Expansions.'''
 
         return isinstance(self.vname_expansion, pymake.data.StringExpansion)
+
+    def are_expansions_deterministic(self, variables=None):
+        '''Determines whether the expansions in this statement are
+        deterministic.'''
+
+        # TODO figure out what to do about target expansions. Resolving
+        # these expansions results in access to Makefile.gettarget()
+        if self.is_setvariable and self.statement.targetexp is not None:
+            return False
+
+        for e in self.expansions:
+            if not e.is_deterministic(variables=variables):
+                return False
+
+        return True
 
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
@@ -968,32 +1057,6 @@ class StatementCollection(object):
             if statement.has_str:
                 yield str(statement)
 
-    def include_includes(self):
-        '''Follow file includes and insert remote statements into this
-        collection.
-
-        For every Include statement in the original list, an IncludeBegin
-        semaphore statement will be inserted immediately before. All
-        statements from that include file will be inserted after it. After
-        all the statements are added, a IncludeEnd semaphore statement will
-        be inserted. All statements will appear on the same level.
-        '''
-        statements = []
-
-        for t in self.statements:
-            s = t[0]
-            if not isinstance(s, pymake.parserdata.Include):
-                statements.append(t)
-                continue
-
-            statements.append(('IncludeBegin', t[1]))
-            statements.append(t)
-            raise Exception('TODO implement')
-            statements.append(('IncludeEnd', t[1]))
-
-        self.statements = statements
-        self.clear_caches()
-
     def strip_false_conditionals(self):
         '''Rewrite the raw statement list with false conditional branches
         filtered out.
@@ -1023,101 +1086,132 @@ class StatementCollection(object):
 
             # We should never get here because we should detect
             # non-deterministic functions before we ever resolve a variable.
-            raise AttributeError('If you see these, we have failed')
+            raise AttributeError('Explicitly disallowed access to attribute: %s' % name)
+
         context = pymake.data.ExpansionContext(callback)
 
         statements = []
-        filter_level = None
 
         # List of (Statement, evaluated, branch_taken)
         condition_block_stack = []
 
-        # Conditionals are expanded immediately, during the first pass, so it
-        # is safe to linearly traverse and prune as we go.
-        for s in self.statements:
-            if filter_level is not None:
-                if s.level > filter_level:
-                    continue
-                else:
-                    filter_level = None
+        def parse_statements(input):
+            filter_level = None
 
-            if s.is_condition_block:
-                condition_block_stack.append([s, False, False])
+            # Conditionals are expanded immediately, during the first pass, so
+            # it is safe to linearly traverse and prune as we go.
+            for s in input:
+                if filter_level is not None:
+                    if s.level > filter_level:
+                        continue
+                    else:
+                        filter_level = None
 
-                # We keep the statement in the list in case we don't take a
-                # branch.
+                if s.is_condition_block:
+                    condition_block_stack.append([s, False, False])
 
-            if s.is_ifdef:
-                # There are risks with this naive approach. See the method
-                # docs.
-                result = s.statement.evaluate(context)
+                    # We keep the statement in the list in case we don't take a
+                    # branch.
 
-                # We were able to evaluate the conditional
-                condition_block_stack[-1][1] = True
+                if s.is_ifdef:
+                    # There are risks with this naive approach. See the method
+                    # docs.
+                    result = s.statement.evaluate(context)
 
-                # We take this branch
-                if result:
-                    condition_block_stack[-1][2] = True
-                    continue
-                else:
-                    # Set the filter on this branch and ignore this statement.
-                    filter_level = s.level
-                    continue
+                    # We were able to evaluate the conditional
+                    condition_block_stack[-1][1] = True
 
-            elif s.is_else:
-                top_condition = condition_block_stack[-1]
+                    # We take this branch
+                    if result:
+                        condition_block_stack[-1][2] = True
+                        continue
+                    else:
+                        # Set the filter on this branch and ignore this statement.
+                        filter_level = s.level
+                        continue
 
-                # If we were able to evaluate the condition and we took the
-                # first branch, filter the else branch.
-                if top_condition[1] and top_condition[2]:
-                    filter_level = s.level
-                    continue
+                elif s.is_ifeq:
+                    # ifeq's are a little more complicated than ifdefs. The details
+                    # are buried in called methods. The gist is we see if the
+                    # conditions are deterministic. If they are, we evaluate.
+                    if s.are_expansions_deterministic(variables=variables):
+                        result = s.statement.evaluate(context)
 
-                # If we were able to evaluate, but we didn't take the first
-                # branch, that leaves us as the sole branch. Remove the
-                # else statement.
-                if top_condition[1]:
-                    continue
+                        condition_block_stack[-1][1] = True
 
-            elif s.is_include:
-                # The error on function is an arbitrary restriction. We could
-                # possibly work around it, but that would be harder since
-                # functions possibly require more context to operate on than
-                # the simple parser data.
-                filename = s.expansion.resolvestr(context, variables)
+                        if result:
+                            condition_block_stack[-1][2] = True
+                            continue
+                        else:
+                            filter_level = s.level
+                            continue
 
-                included = StatementCollection(self.directory)
-                included.include_includes()
-                included.strip_false_conditionals() # why not?
+                    # Else fall through
 
-                raise Exception('TODO')
+                elif s.is_else:
+                    top_condition = condition_block_stack[-1]
 
-            elif s.is_setvariable:
-                s.statement.execute(context, None)
+                    # If we were able to evaluate the condition and we took another
+                    # branch, filter the else branch.
+                    if top_condition[1] and top_condition[2]:
+                        filter_level = s.level
+                        continue
 
-            elif s.is_condition_end:
-                # If we evaluated the condition block, we have an active branch
-                # and can remove this semaphore.
-                if condition_block_stack[-1][1]:
-                    continue
+                    # If we were able to evaluate, but haven't taken a branch
+                    # yet, that leaves us as the sole branch. Remove the else
+                    # statement.
+                    if top_condition[1]:
+                        continue
 
-            elif s.is_condition_block_end:
-                # Grab the start event from the stack
-                popped = condition_block_stack.pop()
+                elif s.is_include:
+                    filename = s.expansion.resolvestr(context, variables).strip()
 
-                # If we evaluated the condition, we have a branch and can
-                # eliminate the begin and end statements.
-                if popped[1]:
-                    for i in range(len(statements)-1, 0, -1):
-                        s = statements[i]
-                        if s.is_condition_block:
-                            del statements[i]
-                            break
+                    # The directory to included files is the (possibly virtual)
+                    # directory of the current file plus the path from the
+                    # Makefile
+                    expanded = os.path.join(self.directory, filename)
 
-                    continue
+                    if os.path.exists(expanded):
+                        included = StatementCollection(filename=expanded,
+                                                       directory=self.directory)
+                    elif s.statement.required:
+                        raise Exception('Required include file not found: %s' % expanded)
 
-            statements.append(s)
+                elif s.is_setvariable:
+                    if not s.are_expansions_deterministic(variables=variables):
+                        # TODO Mark the variable as non-deterministic and poison
+                        # future tests
+                        return
+                    else:
+                        s.statement.execute(context, None)
 
+                elif s.is_condition_end:
+                    # If we evaluated the condition block, we have an active branch
+                    # and can remove this statement.
+                    if condition_block_stack[-1][1]:
+                        continue
+
+                elif s.is_condition_block_end:
+                    # Grab the start event from the stack
+                    popped = condition_block_stack.pop()
+
+                    # If we evaluated the condition, we have a branch and can
+                    # eliminate the begin and end statements.
+                    if popped[1]:
+                        # Find the start condition statement and kill it.
+                        for i in range(len(statements)-1, 0, -1):
+                            s = statements[i]
+                            if s.is_condition_block:
+                                del statements[i]
+                                break
+
+                        continue
+
+                    # Else, we didn't evaluate the condition, so we leave it alone.
+
+                statements.append(s)
+
+        parse_statements(self.statements)
         self.clear_caches()
         self.statements = statements
 
