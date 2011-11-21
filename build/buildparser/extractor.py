@@ -439,7 +439,7 @@ class BuildSystem(object):
             self.callback(action, params, formatter,
                           important=important, error=error)
 
-class MozillaMakefile(Makefile):
+class MozillaMakefile(makefile.Makefile):
     '''A Makefile with knowledge of Mozilla's build system.'''
 
     '''Traits that can identify a Makefile'''
