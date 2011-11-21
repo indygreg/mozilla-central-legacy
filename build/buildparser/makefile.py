@@ -513,86 +513,86 @@ class Statement(object):
         '''Convert a PyMake function instance to a string.'''
         if isinstance(ex, pymake.functions.AddPrefixFunction):
             return '$(addprefix %s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1])
             )
 
         elif isinstance(ex, pymake.functions.AddSuffixFunction):
             return '$(addsuffix %s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1])
             )
 
         elif isinstance(ex, pymake.functions.BasenameFunction):
-            return '$(basename %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(basename %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.CallFunction):
             return '$(call %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex._arguments])
+                [Statement.expansion_to_string(e) for e in ex])
 
         elif isinstance(ex, pymake.functions.DirFunction):
-            return '$(dir %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(dir %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.ErrorFunction):
-            return '$(error %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(error %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.EvalFunction):
-            return '$(eval %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(eval %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.FilterFunction):
             return '$(filter %s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1])
             )
 
         elif isinstance(ex, pymake.functions.FilteroutFunction):
             return '$(filter-out %s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1])
             )
 
         elif isinstance(ex, pymake.functions.FindstringFunction):
             return '$(findstring %s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1])
             )
 
         elif isinstance(ex, pymake.functions.FirstWordFunction):
-            return '$(firstword %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(firstword %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.ForEachFunction):
             return '$(foreach %s,%s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1]),
-                Statement.expansion_to_string(ex._arguments[2])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1]),
+                Statement.expansion_to_string(ex[2])
             )
 
         elif isinstance(ex, pymake.functions.IfFunction):
             return '$(if %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex._arguments])
+                [Statement.expansion_to_string(e) for e in ex])
 
         elif isinstance(ex, pymake.functions.NotDirFunction):
             return '$(notdir %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.OrFunction):
             return '$(or %s)' % ','.join(
-                [Statement.expansion_to_string(e) for e in ex._arguments])
+                [Statement.expansion_to_string(e) for e in ex])
 
         elif isinstance(ex, pymake.functions.PatSubstFunction):
             return '$(patsubst %s,%s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1]),
-                Statement.expansion_to_string(ex._arguments[2])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1]),
+                Statement.expansion_to_string(ex[2])
             )
 
         elif isinstance(ex, pymake.functions.ShellFunction):
-            return '$(shell %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(shell %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.SortFunction):
-            return '$(sort %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(sort %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.StripFunction):
-            return '$(strip %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(strip %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.SubstitutionRef):
             return '$(%s:%s=%s)' % (
@@ -603,16 +603,16 @@ class Statement(object):
 
         elif isinstance(ex, pymake.functions.SubstFunction):
             return '$(subst %s,%s,%s)' % (
-                Statement.expansion_to_string(ex._arguments[0]),
-                Statement.expansion_to_string(ex._arguments[1]),
-                Statement.expansion_to_string(ex._arguments[2])
+                Statement.expansion_to_string(ex[0]),
+                Statement.expansion_to_string(ex[1]),
+                Statement.expansion_to_string(ex[2])
             )
 
         elif isinstance(ex, pymake.functions.WarningFunction):
-            return '$(warning %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(warning %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.WildcardFunction):
-            return '$(wildcard %s)' % Statement.expansion_to_string(ex._arguments[0])
+            return '$(wildcard %s)' % Statement.expansion_to_string(ex[0])
 
         elif isinstance(ex, pymake.functions.VariableRef):
             if isinstance(ex.vname, pymake.data.StringExpansion):
