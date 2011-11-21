@@ -406,6 +406,17 @@ class Statement(object):
         return self.statement.value
 
     @property
+    def value_expansion(self):
+        '''Returns the value of this SetVariable statement as an expansion.
+
+        By default, variable values are stored as strings. They can be
+        upgraded to expansions upon request.'''
+        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+
+        data = pymake.parser.Data.fromstring(self.statement.value, self.statement.valueloc)
+        return pymake.parser.parsemakesyntax(data, 0, (), pymake.parser.iterdata)[0]
+
+    @property
     def vname_expansion(self):
         '''Returns the vname expansion for this statement.
 
@@ -427,6 +438,23 @@ class Statement(object):
         String Expansions.'''
 
         return isinstance(self.vname_expansion, pymake.data.StringExpansion)
+
+    @staticmethod
+    def expansion_is_string(e):
+        '''Returns whether the expansion consists of only string data.'''
+
+        if isinstance(e, pymake.data.StringExpansion):
+            return True
+        elif isinstance(e, pymake.data.Expansion):
+            for ex, is_func in e:
+                if is_func:
+                    return False
+
+                assert(isinstance(ex, str))
+
+            return True
+        else:
+            raise Exception('Unhandled expansion type: %s' % e)
 
     @staticmethod
     def expansion_to_string(e, error_on_function=False, escape_variables=False):
@@ -455,7 +483,7 @@ class Statement(object):
             for ex, is_func in e:
                 if is_func:
                     if error_on_function:
-                        raise Exception('Unable to perform expansion due to function presence')
+                        raise Exception('Unable to perform expansion due to function presence: %s' % ex)
 
                     parts.append(Statement.function_to_string(ex))
                 else:
@@ -810,7 +838,7 @@ class StatementCollection(object):
         currently_defined = set()
         filter_level = None
 
-        # Tuple of (statement_tuple, evaluated, first_branch_taken)
+        # List of (statement_tuple, evaluated, branch_taken)
         condition_block_stack = []
 
         # Conditionals are expanded immediately, during the first pass, so it
