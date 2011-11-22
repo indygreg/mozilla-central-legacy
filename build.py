@@ -133,6 +133,12 @@ def get_option_parser():
         metavar='FILE', default=None,
         help='Print a Makefile reformatted through the StatementCollection class.'
     )
+    op_group_debug.add_option(
+        '--print-pruned-makefile',
+        dest='print_pruned_makefile',
+        metavar='FILE', default=None,
+        help='Print a Makefile pruned of false conditionals.'
+    )
     op.add_option_group(op_group_debug)
 
     op.set_usage(USAGE)
@@ -231,6 +237,18 @@ if options.print_statement_collection is not None:
 if options.print_reformatted_statements is not None:
     statements = buildparser.makefile.StatementCollection(
         filename=options.print_reformatted_statements)
+
+    for line in statements.lines:
+        print line
+
+    other_action_taken = True
+
+if options.print_pruned_makefile is not None:
+    statements = buildparser.makefile.StatementCollection(
+        filename=options.print_pruned_makefile
+    )
+
+    statements.strip_false_conditionals()
 
     for line in statements.lines:
         print line

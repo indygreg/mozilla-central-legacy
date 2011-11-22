@@ -1075,6 +1075,9 @@ class StatementCollection(object):
         remove ifdefs. ifeq are not even evaluated for elimination.
         '''
 
+        # TODO Implement this properly, with variable tainting, etc.
+        return
+
         variables = pymake.data.Variables()
 
         def callback(action, name, value=None):
@@ -1090,78 +1093,70 @@ class StatementCollection(object):
 
         context = pymake.data.ExpansionContext(callback)
 
-        statements = []
-
-        # List of (Statement, evaluated, branch_taken)
+        # List of ([evaluations], taken_branch_index)
+        # Each evaluation is True if it evaluated to true, False if
+        # it evaluated to False, or None if it could not be evaluated
+        # or was not evaluated because a previous branch was taken.
         condition_block_stack = []
 
-        def parse_statements(input):
-            filter_level = None
-
+        def parse_statements(input, output):
             # Conditionals are expanded immediately, during the first pass, so
             # it is safe to linearly traverse and prune as we go.
             for s in input:
-                if filter_level is not None:
-                    if s.level > filter_level:
-                        continue
-                    else:
-                        filter_level = None
-
                 if s.is_condition_block:
-                    condition_block_stack.append([s, False, False])
+                    condition_block_stack.append([[], None])
+                    output.append(s)
+                    continue
 
-                    # We keep the statement in the list in case we don't take a
-                    # branch.
+                # Perform common actions when we arrive at a new conditional.
+                if s.is_ifdef or s.is_ifeq or s.is_else:
+                    top = condition_block_stack[-1]
+
+                    # If we have marked a branch as active, say we didn't
+                    # evaluate the current one and move on.
+                    if top[1] is not None:
+                        top[0].append(None)
+                        output.append(s)
+                        continue
 
                 if s.is_ifdef:
                     # There are risks with this naive approach. See the method
                     # docs.
                     result = s.statement.evaluate(context)
 
+                    top = condition_block_stack[-1]
+
                     # We were able to evaluate the conditional
-                    condition_block_stack[-1][1] = True
+                    top[0].append(result)
 
                     # We take this branch
                     if result:
-                        condition_block_stack[-1][2] = True
-                        continue
-                    else:
-                        # Set the filter on this branch and ignore this statement.
-                        filter_level = s.level
-                        continue
+                        top[1] = s.condition_index
 
                 elif s.is_ifeq:
+                    top = condition_block_stack[-1]
+
                     # ifeq's are a little more complicated than ifdefs. The details
                     # are buried in called methods. The gist is we see if the
                     # conditions are deterministic. If they are, we evaluate.
                     if s.are_expansions_deterministic(variables=variables):
                         result = s.statement.evaluate(context)
 
-                        condition_block_stack[-1][1] = True
+                        top[0].append(result)
 
                         if result:
-                            condition_block_stack[-1][2] = True
-                            continue
-                        else:
-                            filter_level = s.level
-                            continue
+                            top[1] = s.condition_index
 
-                    # Else fall through
+                    else:
+                        top[0].append(None)
 
                 elif s.is_else:
-                    top_condition = condition_block_stack[-1]
-
-                    # If we were able to evaluate the condition and we took another
-                    # branch, filter the else branch.
-                    if top_condition[1] and top_condition[2]:
-                        filter_level = s.level
-                        continue
-
-                    # If we were able to evaluate, but haven't taken a branch
-                    # yet, that leaves us as the sole branch. Remove the else
-                    # statement.
-                    if top_condition[1]:
-                        continue
+                    # We would be filtered out by the catch-all above if we
+                    # weren't relevant. So, we assume we are the active
+                    # branch.
+                    top = condition_block_stack[-1]
+                    top[0].append(True)
+                    top[1] = s.condition_index
 
                 elif s.is_include:
                     filename = s.expansion.resolvestr(context, variables).strip()
@@ -1169,51 +1164,78 @@ class StatementCollection(object):
                     # The directory to included files is the (possibly virtual)
                     # directory of the current file plus the path from the
                     # Makefile
-                    expanded = os.path.join(self.directory, filename)
 
-                    if os.path.exists(expanded):
-                        included = StatementCollection(filename=expanded,
-                                                       directory=self.directory)
+                    normalized = os.path.join(self.directory, filename)
+
+                    if os.path.exists(normalized):
+                        included = StatementCollection(
+                            filename=normalized,
+                            directory=self.directory)
+
+                        #temp = []
+                        #parse_statements(included.statements, temp)
                     elif s.statement.required:
-                        raise Exception('Required include file not found: %s' % expanded)
+                        print 'DOES NOT EXISTS: %s' % normalized
 
                 elif s.is_setvariable:
                     if not s.are_expansions_deterministic(variables=variables):
                         # TODO Mark the variable as non-deterministic and poison
                         # future tests
-                        return
+                        output.append(s)
+                        continue
                     else:
                         s.statement.execute(context, None)
 
-                elif s.is_condition_end:
-                    # If we evaluated the condition block, we have an active branch
-                    # and can remove this statement.
-                    if condition_block_stack[-1][1]:
-                        continue
-
                 elif s.is_condition_block_end:
-                    # Grab the start event from the stack
+                    # Grab the state from the stack
                     popped = condition_block_stack.pop()
 
-                    # If we evaluated the condition, we have a branch and can
-                    # eliminate the begin and end statements.
-                    if popped[1]:
-                        # Find the start condition statement and kill it.
-                        for i in range(len(statements)-1, 0, -1):
-                            s = statements[i]
-                            if s.is_condition_block:
-                                del statements[i]
-                                break
+                    active_branch = popped[1]
 
+                    # If we didn't take a branch, there isn't much we can do
+                    if active_branch is None:
+                        output.append(s)
                         continue
 
-                    # Else, we didn't evaluate the condition, so we leave it alone.
+                    # We took a branch. So, we play back the statements,
+                    # filtering out the ones that aren't relevant. First, we
+                    # need to find the start of this conditional block.
+                    start_index = None
+                    for i in range(len(output)-1, 0, -1):
+                        if output[i].is_condition_block:
+                            start_index = i
+                            break
 
-                statements.append(s)
+                    assert(start_index is not None)
 
-        parse_statements(self.statements)
+                    # Get rid of the beginning condition block before we begin.
+                    replay = output[start_index + 1:]
+                    del output[start_index:]
+
+                    for s in replay:
+                        # Don't include statements for non-taken branches.
+                        if s.condition_index != active_branch:
+                            continue
+
+                        # Remove the condition statements, as they
+                        # have no meaning now.
+                        if s.is_condition or s.is_condition_end:
+                            continue
+
+                        # Rewrite condition info
+                        s.condition_index = None
+                        s.level -= 2
+
+                        output.append(s)
+
+                    continue
+
+                output.append(s)
+
+        out = []
+        parse_statements(self.statements, out)
         self.clear_caches()
-        self.statements = statements
+        self.statements = out
 
     def clear_caches(self):
         '''During normal operation, this object caches some data. This clears
