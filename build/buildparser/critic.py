@@ -34,7 +34,7 @@
 #
 # ***** END LICENSE BLOCK *****
 
-'''This file contains the critic classes.
+"""This file contains the critic classes.
 
 A critic is an entity that analyzes something and issues complaints, or
 critiques. Each complaint has a severity and metadata associated with it.
@@ -43,11 +43,11 @@ ever. In the real world, changes are made which upset the critics and they
 get angry.
 
 Critics exist to enforce best practices.
-'''
+"""
 
 class Critic(object):
-    '''The following are critique severity levels ordered from worse to
-    most tolerable.'''
+    """The following are critique severity levels ordered from worse to
+    most tolerable."""
     SEVERE = 1
     STERN  = 2
     HARSH  = 3
@@ -55,12 +55,12 @@ class Critic(object):
     BRUTAL = 5
 
 class TreeCritic(Critic):
-    '''A critic for a build tree.
+    """A critic for a build tree.
 
     The tree critic is the master critic. It scours a build directory looking
     for everything it and its fellow critics know about. You point it at a
     directory and it goes.
-    '''
+    """
 
     def __init__(self):
         pass
@@ -80,7 +80,7 @@ class TreeCritic(Critic):
                 yield critique
 
 class MakefileCritic(Critic):
-    '''A critic for Makefiles.
+    """A critic for Makefiles.
 
     It performs analysis of Makefiles and gives criticisms on what it doesn't
     like. Its job is to complain so Makefiles can be better.
@@ -90,7 +90,7 @@ class MakefileCritic(Critic):
 
     TODO someone on PyMake said only srcdir and topsrcdir should be valid
     substitutions
-    '''
+    """
     CRITIC_ERROR = ( 'CRITIC_ERROR', Critic.HARSH )
     UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', Critic.STERN )
 
@@ -150,7 +150,7 @@ class MakefileCritic(Critic):
                 #pass
 
     def critique_variable_names(self, state):
-        '''Critique variable names.'''
+        """Critique variable names."""
         for name in state['variable_names']:
             # UPPERCASE names cannot begin with an underscore
             if name.isupper() and name[0] == '_':

@@ -44,7 +44,7 @@ import mako
 import mako.template
 import uuid
 
-HTML_TEMPLATE = '''
+HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
   <head>
@@ -313,10 +313,10 @@ HTML_TEMPLATE = '''
     %>
     ${uri}
 </%def>
-'''
+"""
 
 def generate_bxr(c, fh):
-    '''Generate the BXR HTML and write to the specified file handle.'''
+    """Generate the BXR HTML and write to the specified file handle."""
     assert(isinstance(c, config.BuildConfig))
 
     parser = extractor.ObjectDirectoryParser(c.object_directory)

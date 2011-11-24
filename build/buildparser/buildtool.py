@@ -38,6 +38,7 @@
 # This module provides functionality for the command-line build tool
 # (build.py). It is packaged as a module just because.
 
+from . import buildsystem
 from . import config
 from . import extractor
 from . import makefile
@@ -49,23 +50,24 @@ import pymake.parser
 import sys
 import time
 
+# TODO use decorators to make dispatching and documentation live closer to
+# methods.
 class BuildTool(object):
-    '''This class contains code for the command-line build.py interface.'''
+    """Contains code for the command-line build.py interface."""
 
     ACTIONS = {
         'actions': 'Show all actions that can be performed.',
         'build': 'Performs all steps necessary to perform a build.',
         'bxr': 'Generate Build Cross Reference HTML file describing the build system.',
         'configure': 'Run autoconf and ensure your build environment is proper.',
+        'format-makefile': 'Print a make file (re)formatted.',
         'help': 'Show full help documentation.',
-        'makefile-pymake': 'Print PyMake-parsed Makefile statement list.',
-        'makefile-reformat': 'Print a Makefile reformatted from the parsed statement list.',
-        'makefiles': 'Perform generation of Makefiles used to build.',
+        'makefiles': 'Generate Makefiles to build the project.',
         'settings': 'Sets up your build settings.',
         'wipe': 'Wipe your output directory and force a full rebuild.',
     }
 
-    USAGE = '''%(prog)s action [arguments]
+    USAGE = """%(prog)s action [arguments]
 
     This program is your main control point for interfacing with the Mozilla build
     system.
@@ -76,12 +78,11 @@ class BuildTool(object):
       %(prog)s build       Build the source tree.
       %(prog)s settings    Launch a wizard to guide you through build setup.
       %(prog)s help        Show additional command information.
-    '''
+    """
 
     __slots__ = (
         'cwd',
         'log_handler',
-        'bs',
     )
 
     def __init__(self, cwd):
@@ -89,7 +90,6 @@ class BuildTool(object):
 
         self.cwd = cwd
         self.log_handler = None
-        self.bs = None
 
     def run(self, argv):
         parser = self.get_argument_parser()
@@ -105,11 +105,11 @@ class BuildTool(object):
 
         def action_callback(action, params, formatter,
                                                important=False, error=False):
-            '''Our logging/reporting callback. It takes an enumerated string
+            """Our logging/reporting callback. It takes an enumerated string
             action, a dictionary of parameters describing that action, a
             formatting string for producing human readable text of that event,
             and some flags indicating if the message is important or represents
-            an error.'''
+            an error."""
             now = time.time()
 
             elapsed = now - start_time
@@ -149,31 +149,37 @@ class BuildTool(object):
                                 'Saved config file to {file}', important=True)
 
         # Now that we have the config squared away, we start doing stuff.
-        self.bs = extractor.BuildSystem(conf, callback=self.log_handler)
+        bs = buildsystem.BuildSystem(conf, callback=self.log_handler)
 
-        method = getattr(self, args.method)
-        method(args)
+        method_name = args.method
+        stripped = vars(args)
+        # TODO these should come automatically from the parser object
+        for strip in ['settings_file', 'no_save_settings', 'verbose', 'print_json', 'logfile', 'method', 'action']:
+            del stripped[strip]
+
+        method = getattr(self, method_name)
+        method(bs, **stripped)
 
         action_callback('finished', {}, 'Build action finished', important=True)
 
-    def build(self, args):
-        self.bs.build()
+    def build(self, bs):
+        bs.build()
 
-    def bxr(self, args):
+    def bxr(self, bs, output_filename):
         # We lazy import because we don't want a dependency on Mako. If that
         # package is every included with the source tree, we can change this.
         from . import bxr
-        with open(args.output, 'wb') as fh:
+        with open(output_filename, 'wb') as fh:
             buildparser.bxr.generate_bxr(config, fh)
 
-    def configure(self, args):
-        self.bs.configure()
+    def configure(self, bs):
+        bs.configure()
 
-    def makefiles(self, args):
-        self.bs.generate_makefiles()
+    def makefiles(self, bs):
+        bs.generate_makefiles()
 
-    def wipe(self, args):
-        self.bs.wipe()
+    def wipe(self, bs):
+        bs.wipe()
 
     # TODO convert makefile actions to methods
     ## The debug and power user options take precedence over explicit actions.
@@ -213,13 +219,13 @@ class BuildTool(object):
     #    other_action_taken = True
 
     def get_settings_file(self, args):
-        '''Get the settings file for the current environment.
+        """Get the settings file for the current environment.
 
         We determine the settings file in order of:
           1) Command line argument
           2) Environment variable MOZ_BUILD_CONFIG
           3) Default path
-        '''
+        """
 
         p = os.path.join(self.cwd, 'build.ini')
 
@@ -231,7 +237,7 @@ class BuildTool(object):
         return p
 
     def get_argument_parser(self):
-        '''Returns an argument parser for the command-line interface.'''
+        """Returns an argument parser for the command-line interface."""
 
         parser = argparse.ArgumentParser(usage=BuildTool.USAGE)
 
@@ -288,21 +294,19 @@ class BuildTool(object):
 
         #action_help = subparser.add_parser('help', help=BuildTool.ACTIONS['help'])
 
-        action_makefile_pymake = subparser.add_parser('makefile-pymake',
-                                                      help=BuildTool.ACTIONS['makefile-pymake'])
-        action_makefile_pymake.set_defaults(method='makefile_pymake')
-        action_makefile_pymake.add_argument('filename',
+        action_format_makefile = subparser.add_parser('format-makefile',
+                                                      help=BuildTool.ACTIONS['format-makefile'])
+
+        action_format_makefile.set_defaults(method='makefile_format')
+        action_format_makefile.add_argument('filename',
                                             metavar='FILENAME',
                                             type=argparse.FileType('r'),
                                             help='Makefile to parse.')
 
-        action_makefile_reformat = subparser.add_parser('makefile-reformat',
-                                                        help=BuildTool.ACTIONS['makefile-reformat'])
-        action_makefile_reformat.set_defaults(method='makefile_reformat')
-        action_makefile_reformat.add_argument('filename',
-                                              metavar='FILENAME',
-                                              type=argparse.FileType('r'),
-                                              help='Makefile to reformat.')
+        format_choices = set(['raw', 'pymake', 'substitute', 'reformat', 'prune'])
+        action_format_makefile.add_argument('format', default='raw',
+                                            choices=format_choices,
+                                            help='How to format the Makefile')
 
         action_makefiles = subparser.add_parser('makefiles',
                                                 help=BuildTool.ACTIONS['makefiles'])

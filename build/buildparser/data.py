@@ -40,7 +40,7 @@
 import os.path
 
 class TreeInfo(object):
-    '''This class represents an entire build tree.'''
+    """This class represents an entire build tree."""
 
     __slots__ = (
         'exports',                 # Dictionary of path/namespace to set of filenames
@@ -68,7 +68,7 @@ class TreeInfo(object):
         self.xpidl_modules        = {}
 
 class MakefileDerivedObject(object):
-    '''Abstract class for something that was derived from a Makefile.'''
+    """Abstract class for something that was derived from a Makefile."""
 
     __slots__ = (
         'directory',        # Directory containing this Makefile
@@ -99,7 +99,7 @@ class MakefileDerivedObject(object):
             self.vpath = makefile.get_variable_split('VPATH')
 
     def add_used_variable(self, name):
-        '''Register a variable as used to create the object.
+        """Register a variable as used to create the object.
 
         This is strictly an optional feature. It can be used to keep track
         of which variables are relevant to an object. If you add all the
@@ -107,17 +107,17 @@ class MakefileDerivedObject(object):
         together, you can also see which variables were never used. This can
         be used to eliminate dead code or improve the Makefile parsing
         process.
-        '''
+        """
         self.used_variables.add(name)
 
     def get_used_variables(self):
         return self.used_variables
 
 class LibraryInfo(MakefileDerivedObject):
-    '''Represents a library in the Mozilla build system.
+    """Represents a library in the Mozilla build system.
 
     A library is likely a C or C++ static or shared library.
-    '''
+    """
 
     __slots__ = (
         'c_flags',             # C compiler_flags
@@ -141,7 +141,7 @@ class LibraryInfo(MakefileDerivedObject):
     )
 
     def __init__(self, makefile):
-        '''Create a new library instance.'''
+        """Create a new library instance."""
         MakefileDerivedObject.__init__(self, makefile)
 
         self.c_flags             = set()
@@ -161,7 +161,7 @@ class LibraryInfo(MakefileDerivedObject):
 
 
 class ExportsInfo(MakefileDerivedObject):
-    '''Represents a set of objects to export, typically headers.'''
+    """Represents a set of objects to export, typically headers."""
 
     __slots__ = (
         'exports', # dict of str -> set of namespace to filenames
@@ -173,10 +173,10 @@ class ExportsInfo(MakefileDerivedObject):
         self.exports = {}
 
     def add_export(self, name, namespace=None):
-        '''Adds an export for the library.
+        """Adds an export for the library.
 
         Exports can belong to namespaces. If no namespace is passed, exports
-        will belong to the global/default namespace.'''
+        will belong to the global/default namespace."""
 
         key = namespace
         if key is None:
@@ -187,7 +187,7 @@ class ExportsInfo(MakefileDerivedObject):
         self.exports[key] = d
 
 class XPIDLInfo(MakefileDerivedObject):
-    '''Holds information related to XPIDL files.'''
+    """Holds information related to XPIDL files."""
 
     __slots__ = (
         'module',      # Name of XPIDL module
@@ -201,7 +201,7 @@ class XPIDLInfo(MakefileDerivedObject):
         self.sources = set()
 
 class TestInfo(MakefileDerivedObject):
-    '''Represents info relevant to testing.'''
+    """Represents info relevant to testing."""
 
     __slots__ = (
         'browser_test_files',   # Set of files used for browser tests
@@ -219,16 +219,16 @@ class TestInfo(MakefileDerivedObject):
         self.xpcshell_test_dirs = set()
 
 class UsedVariableInfo(MakefileDerivedObject):
-    '''Non-abstract version of MakefileDerivedObject.
+    """Non-abstract version of MakefileDerivedObject.
 
     This is used simply for variable tracking purposes.
-    '''
+    """
 
     def __init__(self, makefile):
         MakefileDerivedObject.__init__(self, makefile)
 
 class MiscInfo(MakefileDerivedObject):
-    '''Used to track misc info that isn't captured well anywhere else.'''
+    """Used to track misc info that isn't captured well anywhere else."""
 
     __slots__ = (
         'chrome_dependencies', # Set of extra dependencies for the chrome target

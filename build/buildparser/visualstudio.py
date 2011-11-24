@@ -79,7 +79,7 @@ class VisualStudioBuilder(object):
         self.RE_INCLUDE = re.compile('-I(.*)$')
 
     def build_project_for_library(self, library, module, version='2008'):
-        '''Takes a library info dict and converts to a project file'''
+        """Takes a library info dict and converts to a project file"""
 
         type = 'custom'
 
@@ -115,11 +115,11 @@ class VisualStudioBuilder(object):
         )
 
     def build_project_for_generic(self, makefile, version='2008'):
-        '''Takes a MozillaMakefile and produces a project file
+        """Takes a MozillaMakefile and produces a project file
 
         This version is called when we don't know how to process the Makefile.
         It simply calls out to PyMake.
-        '''
+        """
 
         return self.build_project(
             version=version,
@@ -147,7 +147,7 @@ class VisualStudioBuilder(object):
                       linker_generate_manifest=True,
                       linker_link_library_dependency_inputs=False,
                       ):
-        '''Convert parameters into a Visual Studio Project File string.
+        """Convert parameters into a Visual Studio Project File string.
 
         Arguments:
 
@@ -222,7 +222,7 @@ class VisualStudioBuilder(object):
           linker_link_dependency_inputs  bool
                                          If true, links inputs to dependencies
                                          instead of output
-        '''
+        """
 
         if not version:
             raise Exception('version must be specified')
@@ -554,7 +554,7 @@ class VisualStudioBuilder(object):
         return (s, id, name)
 
     def build_visual_studio_files(self, python=None, version='2008', pymake=None):
-        '''Build Visual Studio files for the tree
+        """Build Visual Studio files for the tree
 
         Calling this will result in a bunch of files being written to
         objdir/msvc.
@@ -573,7 +573,7 @@ class VisualStudioBuilder(object):
           python - Path to python executable that is runnable from Visual
                    Studio. Currently, this must be specified. In the future, we
                    might auto-discover it.
-        '''
+        """
         if pymake is None:
             pymake = join(self.get_top_source_directory(), 'build', 'pymake', 'make.py')
 

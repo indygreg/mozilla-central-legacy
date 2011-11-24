@@ -51,11 +51,11 @@ import re
 import StringIO
 
 class Expansion(object):
-    '''Represents an individual Makefile/PyMake expansion.
+    """Represents an individual Makefile/PyMake expansion.
 
     An expansion is a parsed representation of Makefile text. It contains
     pointers to string literals, functions, other variables, etc.
-    '''
+    """
 
     # Classes in this set are for functions which are deterministic. i.e.
     # for a given set of input arguments, the output will always be the same
@@ -135,9 +135,9 @@ class Expansion(object):
     )
 
     def __init__(self, expansion=None, s=None, location=None):
-        '''Initialize from an existing PyMake expansion or text'''
+        """Initialize from an existing PyMake expansion or text"""
 
-        self._is_static_string is None
+        self._is_static_string = None
 
         if expansion and s:
             raise Exception('Both expansion and string value must not be defined.')
@@ -159,11 +159,16 @@ class Expansion(object):
         return Expansion.to_str(self.expansion)
 
     @property
+    def location(self):
+        """Obtain the pymake.parserdata.Location for this expansion."""
+        return self.expansion.loc
+
+    @property
     def is_static_string(self):
-        '''Indicates whether the expansion is a static string.
+        """Indicates whether the expansion is a static string.
 
         A static string is defined as an expansion that consists of no elements
-        beside strongly typed strings.'''
+        beside strongly typed strings."""
         if self._is_static_string is None:
             if isinstance(self.expansion, pymake.data.StringExpansion):
                 self._is_static_string = True
@@ -181,8 +186,8 @@ class Expansion(object):
         return self._is_static_string
 
     def is_filesystem_dependent(self):
-        '''Indicates whether this expansion is dependent on the state of the
-        filesystem.'''
+        """Indicates whether this expansion is dependent on the state of the
+        filesystem."""
         for f in self.functions():
             if isinstance(f, Expansion.FILESYSTEM_FUNCTION_CLASSES):
                 return True
@@ -190,8 +195,8 @@ class Expansion(object):
         return False
 
     def is_shell_dependent(self):
-        '''Indicates whether this expansion is dependent on the output of a
-        shell command.'''
+        """Indicates whether this expansion is dependent on the output of a
+        shell command."""
         for f in self.functions():
             if isinstance(f, pymake.data.ShellFunction):
                 return True
@@ -199,17 +204,17 @@ class Expansion(object):
         return False
 
     def functions(self):
-        '''A generator for functions in this expansion.
+        """A generator for functions in this expansion.
 
         Each returned item is a pymake.functions.Function instance.
-        '''
+        """
         if isinstance(self.expansion, pymake.data.Expansion):
             for e, is_func in self.expansion:
                 if is_func:
                     yield e
 
     def is_deterministic(self, variables=None, missing_is_deterministic=True):
-        '''Returns whether the expansion is determinstic.
+        """Returns whether the expansion is determinstic.
 
         A deterministic expansion is one whose value is always guaranteed.
         If variables are not provided, a deterministic expansion is one that
@@ -220,7 +225,7 @@ class Expansion(object):
         the current state as defined by the arguments is what will occur
         during real execution. If you wish to override this, set the
         appropriate arguments.
-        '''
+        """
 
         # The simple case is a single string
         if isinstance(self.expansion, pymake.data.StringExpansion):
@@ -285,7 +290,7 @@ class Expansion(object):
 
     @staticmethod
     def to_str(e, error_on_function=False, escape_variables=False):
-        '''Convert an expansion to a string.
+        """Convert an expansion to a string.
 
         This effectively converts a string back to the form it was defined as
         in the Makefile. This is different from the resolvestr() method on
@@ -297,7 +302,7 @@ class Expansion(object):
 
         If escape_variables is True, individual variable sigil elements will
         be escaped (i.e. '$' -> '$$').
-        '''
+        """
         if isinstance(e, pymake.data.StringExpansion):
             if escape_variables:
                 return e.s.replace('$', '$$')
@@ -323,9 +328,9 @@ class Expansion(object):
 
     @staticmethod
     def to_list(e):
-        '''Convert an expansion to a list.
+        """Convert an expansion to a list.
 
-        This is similar to expansion_to_string() except it returns a list.'''
+        This is similar to expansion_to_string() except it returns a list."""
         s = Expansion.to_str(e).strip()
 
         if s == '':
@@ -335,7 +340,7 @@ class Expansion(object):
 
     @staticmethod
     def is_static_string(e):
-        '''Returns whether the expansion consists of only string data.'''
+        """Returns whether the expansion consists of only string data."""
 
         if isinstance(e, pymake.data.StringExpansion):
             return True
@@ -352,7 +357,7 @@ class Expansion(object):
 
     @staticmethod
     def function_to_string(ex):
-        '''Convert a PyMake function instance to a string.'''
+        """Convert a PyMake function instance to a string."""
         if isinstance(ex, pymake.functions.AddPrefixFunction):
             return '$(addprefix %s,%s)' % (
                 Expansion.to_str(ex[0]),
@@ -473,7 +478,7 @@ class Expansion(object):
 
 
 class Statement(object):
-    '''Holds information about an individual PyMake statement.
+    """Holds information about an individual PyMake statement.
 
     This is a wrapper around classes in pymake.parserdata that provides
     useful features for low-level statement inspection and interaction.
@@ -485,7 +490,7 @@ class Statement(object):
     model would be better if each statement type stood in its own class. The
     main reason it wasn't done this way is laziness. Consumers should not rely
     on many classes being rolled into the generic Statement class forever.
-    '''
+    """
 
     __slots__ = (
         # The actual statement
@@ -525,10 +530,11 @@ class Statement(object):
 
     def __init__(self, statement):
         assert(isinstance(statement, Statement.ALL_PARSERDATA_STATEMENT_CLASSES))
+
         self.statement = statement
 
     def __eq__(self, other):
-        '''Determines if this statement is equivalent to another.
+        """Determines if this statement is equivalent to another.
 
         We define equivalence to mean the composition of the statement is
         equivalent. We do not test things like locations or the expanded value
@@ -537,7 +543,7 @@ class Statement(object):
         Practically speaking, if two statement appears on consecutive lines
         and the first does not have any side-effects, then the two statements
         are equivalent.
-        '''
+        """
         if not isinstance(other, Statement):
             return False
 
@@ -558,25 +564,25 @@ class Statement(object):
         return True
 
     def __str__(self):
-        '''Convert this statement back to its Makefile representation.'''
+        """Convert this statement back to its Makefile representation."""
 
         if self.is_command:
             return self.command_string
         elif self.is_condition:
             return self.condition_str()
         elif self.is_empty_directive:
-            return str(self.expansions[0])
+            return str(Expansion(self.statement.exp))
         elif self.is_export:
-            return 'export %s' % self.expansions[0]
+            return 'export %s' % Expansion(self.statement.exp)
         elif self.is_include:
-            return 'include %s' % self.expansions[0]
+            return 'include %s' % Expansion(self.statement.exp)
         elif self.is_rule:
             return ('\n%s%s %s' % (
                 Expansion.to_str(self.statement.targetexp),
                 self.target_separator,
                 Expansion.to_str(self.statement.depexp).lstrip()
             )).rstrip()
-        elif self.is_setvariable:
+        elif self.is_set_variable:
             return self.setvariable_string
         elif self.is_static_pattern_rule:
             return ('\n%s%s %s: %s' % (
@@ -596,7 +602,7 @@ class Statement(object):
             s = str(self.statement)
         else:
             fd = StringIO.StringIO()
-            self.statement.dump(fd, indent)
+            self.statement.dump(fd, '')
             s = fd.getvalue()
 
         return '<%s>' % s
@@ -661,26 +667,27 @@ class Statement(object):
 
     # Accessors available to all statements
     def lines(self):
-        '''Returns an iterator of str representing the statement transformed
-        to Makefile syntax.'''
+        """Returns an iterator of str representing the statement transformed
+        to Makefile syntax."""
         yield str(self)
 
     @property
     def location(self):
-        '''Returns the best pymake.parserdata.Location instance for this
+        """Returns the best pymake.parserdata.Location instance for this
         instance.
 
         May return None if a suitable location is not available.
-        '''
-        e = self.expansions[0]
-        if e is not None:
-            return e.loc
+        """
+
+        # Expansions is a generator, so we can't subscript.
+        for e in self.expansions:
+            return e.location
 
         return None
 
     @property
     def expansions(self):
-        '''Returns an iterator over all expansions in this statement.'''
+        """Returns an iterator over all expansions in this statement."""
 
         if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
             yield Expansion(expansion=self.statement.exp)
@@ -694,7 +701,7 @@ class Statement(object):
             yield Expansion(expansion=self.statement.targetexp)
             yield Expansion(expansion=self.statement.patternexp)
             yield Expansion(expansion=self.statement.depexp)
-        elif self.is_setvariable:
+        elif self.is_set_variable:
             if self.statement.targetexp is not None:
                 yield Expansion(expansion=self.statement.targetexp)
 
@@ -704,12 +711,12 @@ class Statement(object):
             raise Exception('Unhandled statement type: %s' % self)
 
     def are_expansions_deterministic(self, variables=None):
-        '''Determines whether the expansions in this statement are
-        deterministic.'''
+        """Determines whether the expansions in this statement are
+        deterministic."""
 
         # TODO figure out what to do about target expansions. Resolving
         # these expansions results in access to Makefile.gettarget()
-        if self.is_setvariable and self.statement.targetexp is not None:
+        if self.is_set_variable and self.statement.targetexp is not None:
             return False
 
         for e in self.expansions:
@@ -723,7 +730,7 @@ class Statement(object):
 
     @property
     def command_string(self):
-        '''Converts a command expansion back into its string form.
+        """Converts a command expansion back into its string form.
 
         Commands are interesting beasts for a couple of reasons.
 
@@ -733,7 +740,7 @@ class Statement(object):
         There also might be variable references inside the command.
         To the shell, $foo is correct. However, to Makefiles, we need
         $$foo.
-        '''
+        """
         assert(self.is_command)
 
         s = Expansion.to_str(self.expansions[0],
@@ -744,34 +751,34 @@ class Statement(object):
 
     @property
     def has_doublecolon(self):
-        '''Returns whether the rule has a double-colon.'''
+        """Returns whether the rule has a double-colon."""
         assert(self.is_rule or self.is_static_pattern_rule)
 
         return self.statement.doublecolon
 
     @property
     def target(self):
-        '''The expansion for the rule target.'''
+        """The expansion for the rule target."""
         assert(self.is_rule or self.is_static_pattern_rule)
 
         return Expansion(self.statement.targetexp)
 
     @property
     def pattern(self):
-        '''The expansion for this static rule pattern.'''
+        """The expansion for this static rule pattern."""
         assert(self.is_static_pattern_rule);
 
         return Expansion(self.statement.patternexp)
 
     def prerequisites(self):
-        '''The expansion for the rule prerequisites.'''
+        """The expansion for the rule prerequisites."""
         assert(self.is_rule or self.is_static_pattern_rule);
 
         return Expansion(self.statement.depexp)
 
     @property
     def target_separator(self):
-        '''Returns the colon separator after the target for rules.'''
+        """Returns the colon separator after the target for rules."""
         assert(self.is_rule or self.is_static_pattern_rule)
 
         if self.has_doublecolon:
@@ -781,30 +788,30 @@ class Statement(object):
 
     @property
     def expected_condition(self):
-        '''For condition statements, returns the expected condition of the test
-        for the branch under the statement to be executed.'''
+        """For condition statements, returns the expected condition of the test
+        for the branch under the statement to be executed."""
         assert(self.is_ifeq or self.is_ifdef)
 
         return self.statement.expected
 
     @property
     def token(self):
-        '''Returns the token for this statement.'''
+        """Returns the token for this statement."""
         assert(self.is_set_variable)
 
         return self.statement.token
 
     @property
     def setvariable_string(self):
-        '''Converts a SetVariable statement to a string.
+        """Converts a SetVariable statement to a string.
 
         SetVariable statements are a little funky. In the common case, they
         have the form "foo = bar". If they have a target expression, there
         is the form "targ: foo = bar". And, for multi-line variables, you
         use the define directive. It ia all pretty funky.
-        '''
+        """
 
-        assert(self.is_setvariable)
+        assert(self.is_set_variable)
 
         value = self.value.replace('#', '\\#')
 
@@ -821,27 +828,23 @@ class Statement(object):
 
         if multiline:
             # According to 6.8 of the Make manual, the equals is optional.
-            return 'define %s\n%s\nendef\n' % (
-                self.vname_expansion_string, value
-            )
+            return 'define %s\n%s\nendef\n' % (self.vname, value)
         else:
-            return ('%s %s %s' % (
-                    self.vname_expansion_string, self.token, value
-                )).rstrip()
+            return ('%s %s %s' % (self.vname, self.token, value)).rstrip()
 
     @property
     def value(self):
-        '''Returns the value of this statement.'''
+        """Returns the value of this statement."""
         assert(self.is_set_variable)
 
         return self.statement.value
 
     @property
     def value_expansion(self):
-        '''Returns the value of this SetVariable statement as an expansion.
+        """Returns the value of this SetVariable statement as an expansion.
 
         By default, variable values are stored as strings. They can be
-        upgraded to expansions upon request.'''
+        upgraded to expansions upon request."""
         assert(self.is_set_variable)
 
         data = pymake.parser.Data.fromstring(self.statement.value, self.statement.valueloc)
@@ -850,18 +853,18 @@ class Statement(object):
 
     @property
     def vname(self):
-        '''Returns the variable name as an expansion.'''
+        """Returns the variable name as an expansion."""
         assert(self.is_set_variable)
 
         return Expansion(self.statement.vnameexp)
 
 class ConditionBlock(Statement):
-    '''Represents a condition block statement.
+    """Represents a condition block statement.
 
     The condition block is a collection of conditions and statements inside
     those conditions. The structure mimics that of
     pymake.parserdata.ConditionBlock. However, we provide some higher-level
-    APIs.'''
+    APIs."""
 
     __slots__ = (
         # Array of tuples of ( condition statement, [ statements ] )
@@ -876,12 +879,16 @@ class ConditionBlock(Statement):
         self.conditions = []
 
         for condition, statements in statement:
-            self.conditions.append(
-                (Statement(condition), [Statement(s) for s in statements])
-            )
+            wrapped = []
+            for s in statements:
+                if isinstance(s, pymake.parserdata.ConditionBlock):
+                    wrapped.append(ConditionBlock(s))
+                else:
+                    wrapped.append(Statement(s))
+            self.conditions.append((Statement(condition), wrapped))
 
     def __str__(self):
-        '''Convert the condition block back to its Makefile representation.'''
+        """Convert the condition block back to its Makefile representation."""
         return '\n'.join(self.lines())
 
     def __iter__(self):
@@ -897,33 +904,94 @@ class ConditionBlock(Statement):
     def is_condition_block(self):
         return True
 
+    @property
+    def is_ifdef_only(self):
+        """Is the condition block composed only of ifdef statements?"""
+        for condition, statements in self:
+            if condition.is_ifeq:
+                return False
+
+            assert(condition.is_ifdef or condition.is_else)
+
+        return True
+
+    @property
+    def has_ifeq(self):
+        """Does the condition block have any ifeq components?"""
+        return not self.is_ifdef_only
+
     def lines(self):
-        '''Returns an iterable of str representing the Makefile of lines
-        composing this condition block.'''
-        i = 0
+        """Returns an iterable of str representing the Makefile of lines
+        composing this condition block."""
+        index = 0
         for condition, statements in self:
             yield ConditionBlock.condition_str(condition, index)
+            index += 1
 
             for statement in statements:
                 yield str(statement)
 
         yield 'endif'
 
+    def determine_condition(self, makefile, allow_nondeterministic=False):
+        """Evaluate conditions in this block and determine which one executes.
+
+        Returns the index of the condition that evaluated to True or None
+        if a condition could not be determined. None will likely be returned
+        if a non-deterministic expansion is seen in a condition.
+
+        Arguments:
+
+        makefile -- Makefile context for execution.
+        allow_nondeterministic -- If a nondeterministic expansion is seen,
+                                  try to evaluate it. This is very dangerous.
+        """
+        for i in range(0, len(self)):
+            condition = self.conditions[i][0]
+
+            if condition.is_ifdef:
+                if condition.statement.evaluate(makefile):
+                    return i
+
+            elif condition.is_ifeq:
+                deterministic = condition.are_expansions_deterministic(makefile.variables)
+
+                if deterministic:
+                    return i
+
+                if not allow_nondeterministic:
+                    return None
+
+                # This is dangerous, but they asked for it.
+                if condition.statement.evaluate(makefile):
+                    return i
+
+            # If we get to the else condition, all other branches must have
+            # evaluated to False.
+            elif condition.is_else:
+                assert(i == len(self) - 1)
+                return i
+
+            else:
+                raise Exception('Unexpected condition type: %s' % type(condition.statement))
+
+        return None
+
     @staticmethod
     def condition_str(statement, index=None):
-        '''Convert a condition to a string representation.
+        """Convert a condition to a string representation.
 
         The index argument defines the index of this condition inside a
         condition block. If the index is greater than 0, an else will be
         added to the representation.
-        '''
+        """
 
         prefix = ''
         if (statement.is_ifdef or statement.is_ifeq) and index > 0:
             prefix = 'else '
 
         if statement.is_ifdef:
-            s = statement.expansion_string
+            s = Expansion(statement.statement.exp)
 
             if statement.expected_condition:
                 return '%sifdef %s' % ( prefix, s )
@@ -948,17 +1016,17 @@ class ConditionBlock(Statement):
 
     def evaluation_is_deterministic(self, variables=None,
                                     missing_is_deterministic=True):
-        '''Returns whether evaluation of this condition block is determinstic.
+        """Returns whether evaluation of this condition block is determinstic.
 
         Evaluation is considered deterministic if all conditions are
         deterministic. Note that an else condition is always determinstic, so
         for simple ifeq..else..end, if the ifeq is determinstic, the whole
         thing is deterministic.
-        '''
+        """
         pass
 
 class StatementCollection(object):
-    '''Mid-level API for interacting with Makefile statements.
+    """Mid-level API for interacting with Makefile statements.
 
     This is effectively a wrapper around PyMake's parser output. It can
     be used to extract data from low-level parser output. It can even perform
@@ -966,7 +1034,7 @@ class StatementCollection(object):
 
     If you want to perform static analysis of Makefiles or want to poke around
     at what's inside, this is the class to use or extend.
-    '''
+    """
 
     VARIABLE_ASSIGNMENT_SIMPLE = 1
     VARIABLE_ASSIGNMENT_RECURSIVE = 2
@@ -992,12 +1060,12 @@ class StatementCollection(object):
     )
 
     def __init__(self, filename=None, buf=None, directory=None):
-        '''Construct a set of statements.
+        """Construct a set of statements.
 
         If buf is defined, filename must all be defined. If buf is defined,
         statements will be read from that string. Else, statements will be
         read from the passed filename.
-        '''
+        """
         if buf is not None:
             assert(filename is not None)
             self._load_raw_statements(pymake.parser.parsestring(buf, filename))
@@ -1014,7 +1082,7 @@ class StatementCollection(object):
             self.directory = os.path.dirname(filename)
 
     def lines(self):
-        '''Emit lines that constitute a Makefile for this collection.
+        """Emit lines that constitute a Makefile for this collection.
 
         To generate the Makefile representation of this instance, simply:
 
@@ -1024,13 +1092,12 @@ class StatementCollection(object):
 
           for line in foo.lines():
             print >>fh, line
-        '''
+        """
         for statement in self._statements:
-            for line in statment.lines():
-                yield line
+            for line in statement.lines(): yield line
 
     def expanded_statements(self):
-        '''Returns an iterator over the statements in this collection.
+        """Returns an iterator over the statements in this collection.
 
         Each returned item is a tuple of:
 
@@ -1053,7 +1120,7 @@ class StatementCollection(object):
         is entered when entry[0].is_condition is True. The implementation of
         various methods in this class demonstrate this technique and can be
         used as a reference.
-        '''
+        """
         condition_stack = []
 
         def emit_statements(statements):
@@ -1069,10 +1136,10 @@ class StatementCollection(object):
 
                         condition_stack.pop()
 
-        emit_statements(self._statements)
+        for t in emit_statements(self._statements): yield t
 
     def expansions(self):
-        '''A generator for all Expansions in this collection.
+        """A generator for all Expansions in this collection.
 
         Each returned item is a tuple of:
 
@@ -1080,13 +1147,13 @@ class StatementCollection(object):
 
         Where expansion is an Expansion and statement is the Statement it
         belongs to.
-        '''
+        """
         for statement, conditions in self.expanded_statements:
             for expansion in statement.expansions:
                 yield (statement, conditions, expansion)
 
     def ifdefs(self):
-        '''A generator of ifdef metadata in this collection.
+        """A generator of ifdef metadata in this collection.
 
         Each returned item is a tuple of:
 
@@ -1103,7 +1170,7 @@ class StatementCollection(object):
 
         name and expected can be accessed from the underlying Statement, of
         course. They are provided explicitly for convenience.
-        '''
+        """
         for statement, conditions in self.expanded_statements():
             if not statement.is_ifdef:
                 pass
@@ -1114,7 +1181,7 @@ class StatementCollection(object):
                    statement.expected)
 
     def includes(self):
-        '''A generator of includes metadata.
+        """A generator of includes metadata.
 
         Each returned item is a tuple of:
 
@@ -1124,7 +1191,7 @@ class StatementCollection(object):
         of conditions that must be satisfied for this statement to be executed.
         Finally, we have the path Expansion for this statement. It is up
         to the caller to expand the expansion.
-        '''
+        """
         for statement, conditions in self.expanded_statements():
             if not statement.is_include:
                 pass
@@ -1132,7 +1199,7 @@ class StatementCollection(object):
             yield (statement, conditions, statement.expansions[0])
 
     def variable_assigments(self):
-        '''A generator of variable assignments.
+        """A generator of variable assignments.
 
         Each returned item is a tuple of:
 
@@ -1144,10 +1211,10 @@ class StatementCollection(object):
         value, as a str. The 5th is the type of variable assignment/reference.
         This will be one of the VARIABLE_ASSIGNMENT_* constants from this
         class.
-        '''
+        """
         for statement, conditions in self.expanded_statements():
             if not statement.is_set_variable:
-                pass
+                continue
 
             vname = statement.vname
 
@@ -1167,7 +1234,7 @@ class StatementCollection(object):
             yield (statement, conditions, str(vname), statement.value, type)
 
     def unconditional_variable_assignments(self):
-        '''This is a convenience method to return variables that are assigned
+        """This is a convenience method to return variables that are assigned
         to unconditionally. It is simply a filter over variable_assignments()
         which filters out entries where len(entry[1]) == 0.
 
@@ -1176,7 +1243,7 @@ class StatementCollection(object):
           ( statement, name, value, type )
 
         The members have the same meaning as variable_assignments().
-        '''
+        """
 
         for t in self.variable_assignments():
             if len(t) > 0:
@@ -1185,7 +1252,7 @@ class StatementCollection(object):
             yield (t[0], t[2], t[3], t[4])
 
     def rules(self):
-        '''A generator for rules in this instance.
+        """A generator for rules in this instance.
 
         Each returned item is a tuple of:
 
@@ -1202,7 +1269,7 @@ class StatementCollection(object):
 
         Please note this only returns regular rules and not static pattern
         rules.
-        '''
+        """
 
         # Commands are associated with rules until another rule comes along.
         # So, we keep track of the current rule and add commands to it as we
@@ -1229,14 +1296,14 @@ class StatementCollection(object):
             yield current_rule
 
     def static_pattern_rules(self):
-        '''A generator for static pattern rules.
+        """A generator for static pattern rules.
 
         Each returned item is a tuple of:
           ( statement, conditions, target, pattern, prerequisites, commands )
 
         The values have the same meaning as those in rule(). However, we have
         added pattern, which is an Expansion of the pattern for the rule.
-        '''
+        """
         current_rule = None
         for statement, conditions in self.expanded_statements():
             if statement.is_static_pattern_rule:
@@ -1259,13 +1326,13 @@ class StatementCollection(object):
     # analysis and modification.
 
     def filesystem_dependent_statements(self):
-        '''A generator for statements that directly depend on the state of
+        """A generator for statements that directly depend on the state of
         the filesystem.
 
         Each returned item is a tuple of:
 
           ( statement, conditions )
-        '''
+        """
         for statement, conditions in self.expanded_statements():
             for expansion in statement.expansions:
                 if expansion.is_filesystem_dependent:
@@ -1273,7 +1340,7 @@ class StatementCollection(object):
                     break
 
     def shell_dependent_statements(self):
-        '''A generator for statements that directly depend on the execution of
+        """A generator for statements that directly depend on the execution of
         a shell command.
 
         Each returned item is a tuple of:
@@ -1282,22 +1349,26 @@ class StatementCollection(object):
 
         This excludes rules, which are implicitly dependent on the output of
         an external command.
-        '''
+        """
         for statement, conditions in self.expanded_statements():
             for expansion in statement.expansions:
                 if expansion.is_shell_dependent:
                     yield (statement, conditions)
                     break
 
-    def strip_false_conditionals(self):
-        '''Rewrite the raw statement list with false conditional branches
+    def strip_false_conditionals(self, evaluate_ifeq=False):
+        """Rewrite the raw statement list with false conditional branches
         filtered out.
 
-        This is very dangerous and is prone to breakage if not used properly.
-        The underlying problem is conditionals in Makefiles are very
-        non-deterministic. Even if you are simply testing ifdef, that
-        variable could be provided as an environment variable or command
-        line argument. So, not even these could get eliminated.
+        This is very dangerous and is prone to unexpected behavior if not used
+        properly.
+
+        The underlying problem is Makefiles are strongly dependent on the
+        run-time environment. There are functions that inspect the filesystem
+        or call out to shells. The results of these functions could change
+        as a Makefile is being evaluated. Even if you are simply looking at
+        variable values, a variable could be provided by an environment
+        variable or command line argument.
 
         This function assumes that no extra variables will be provided at
         run-time and that the state passed in is what will be there when the
@@ -1307,7 +1378,10 @@ class StatementCollection(object):
         appropriate solution would involve variable tainting, where any
         detected modification in non-deterministic statements would taint
         future references, making them also non-deterministic.
-        '''
+
+        Arguments:
+        evaluate_ifeq  -- Test ifeq conditions
+        """
 
         variables = pymake.data.Variables()
 
@@ -1330,197 +1404,74 @@ class StatementCollection(object):
         # or was not evaluated because a previous branch was taken.
         condition_block_stack = []
 
-        def parse_statements(input, output):
-            # Conditionals are expanded immediately, during the first pass, so
-            # it is safe to linearly traverse and prune as we go.
-            for s in input:
-                if s.is_condition_block:
-                    condition_block_stack.append([[], None])
-                    output.append(s)
+        i = 0
+        while i < len(self._statements):
+            statement = self._statements[i]
+            if statement.is_condition_block:
+                branch = None
+
+                if statement.is_ifdef_only:
+                    branch = statement.determine_condition(context)
+                elif evaluate_ifeq:
+                    branch = statement.determine_condition(
+                        context, allow_nondeterministic=False)
+                # Else, we can't evaluate. Keep default branch of None.
+
+                if branch is None:
+                    i += 1
                     continue
 
-                # Perform common actions when we arrive at a new test.
-                if s.is_ifdef or s.is_ifeq or s.is_else:
-                    top = condition_block_stack[-1]
+                # We replace the condition block with the statements that
+                # are inside the active branch.
+                active, active_statements = statement[branch]
+                self._statements[i:i + 1] = active_statements
+                self._clear_caches()
 
-                    # If any of the branches before it could not be evaluated,
-                    # it is futile for us to test because that would preclude
-                    # the earlier branches from having an opportunity to run.
-                    all_evaluated = True
-                    for t in top[0]:
-                        if t is None:
-                            all_evaluated = False
-                            break
+                # We don't increment the index because the new statement at the
+                # current index (the first statement in the taken branch) could
+                # be condition block itself.
+                continue
 
-                    if not all_evaluated:
-                        output.append(s)
-                        continue
+            elif statement.is_set_variable:
+                if statement.are_expansions_deterministic(variables):
+                    statement.statement.execute(context, None)
+                else:
+                    # TODO we need a better implementation for dealing with
+                    # non-deterministic variables.
+                    pass
 
-                    # If we have marked a branch as active, say we didn't
-                    # evaluate the current one and move on.
-                    if top[1] is not None:
-                        top[0].append(None)
-                        output.append(s)
-                        continue
+                i += 1
+                continue
 
-                if s.is_ifdef:
-                    # There are risks with this naive approach. See the method
-                    # docs.
-                    result = s.statement.evaluate(context)
-
-                    top = condition_block_stack[-1]
-
-                    # We were able to evaluate the conditional
-                    top[0].append(result)
-
-                    # We take this branch
-                    if result:
-                        top[1] = s.condition_index
-
-                elif s.is_ifeq:
-                    top = condition_block_stack[-1]
-
-                    # We don't go down this rabbit hole right now. The code is
-                    # here, but it doesn't work properly. So, we just ignore
-                    # ifeq's.
-                    top[0].append(None)
-                    output.append(s)
-                    continue
-
-                    # ifeq's are a little more complicated than ifdefs. The details
-                    # are buried in called methods. The gist is we see if the
-                    # conditions are deterministic. If they are, we evaluate.
-                    if s.are_expansions_deterministic(variables=variables):
-                        result = s.statement.evaluate(context)
-
-                        top[0].append(result)
-
-                        if result:
-                            top[1] = s.condition_index
-
-                    else:
-                        top[0].append(None)
-
-                elif s.is_else:
-                    # We would be filtered out by the catch-all above if we
-                    # weren't relevant. So, we assume we are the active
-                    # branch.
-                    top = condition_block_stack[-1]
-                    top[0].append(True)
-                    top[1] = s.condition_index
-
-                elif s.is_include:
-                    filename = s.expansion.resolvestr(context, variables).strip()
+            elif statement.is_include:
+                # TODO evaluate data in included file
+                    #filename = s.expansion.resolvestr(context, variables).strip()
 
                     # The directory to included files is the (possibly virtual)
                     # directory of the current file plus the path from the
                     # Makefile
 
-                    normalized = os.path.join(self.directory, filename)
+                    #normalized = os.path.join(self.directory, filename)
 
-                    if os.path.exists(normalized):
-                        included = StatementCollection(
-                            filename=normalized,
-                            directory=self.directory)
+                    #if os.path.exists(normalized):
+                    #    included = StatementCollection(
+                    #        filename=normalized,
+                    #        directory=self.directory)
 
                         #temp = []
                         #parse_statements(included.statements, temp)
-                    elif s.statement.required:
-                        print 'DOES NOT EXISTS: %s' % normalized
+                    #elif s.statement.required:
+                    #    print 'DOES NOT EXISTS: %s' % normalized
 
-                elif s.is_setvariable:
-                    if not s.are_expansions_deterministic(variables=variables):
-                        # TODO Mark the variable as non-deterministic and poison
-                        # future tests
-                        output.append(s)
-                        continue
-                    else:
-                        s.statement.execute(context, None)
+                i += 1
+                continue
 
-                elif s.is_condition_block_end:
-                    # Grab the state from the stack
-                    popped = condition_block_stack.pop()
-
-                    active_branch = popped[1]
-
-                    # If we didn't take a branch, there isn't much we can do
-                    if active_branch is None:
-                        output.append(s)
-                        continue
-
-                    # We took a branch. So, we play back the statements,
-                    # filtering out the ones that aren't relevant. First, we
-                    # need to find the start of this conditional block.
-                    start_index = None
-                    for i in range(len(output)-1, 0, -1):
-                        s2 = output[i]
-                        if s2.is_condition_block and s2.level == s.level:
-                            start_index = i
-                            break
-
-                    assert(start_index is not None)
-
-                    # Get rid of the beginning condition block before we begin.
-                    replay = output[start_index + 1:]
-                    del output[start_index:]
-
-                    while len(replay) > 0:
-                        replay_current = replay[0]
-
-                        # Nested condition blocks get lifted wholesale
-                        if replay_current.is_condition_block:
-                            count = 1
-                            for s2 in replay[1:]:
-                                count += 1
-
-                                if s2.is_condition_block_end:
-                                    break
-
-                            output.extend(replay[0:count])
-                            del replay[0:count]
-                            print 'LIFTED CONDITION BLOCK: %s' % count
-                            continue
-
-                        assert(replay_current.is_condition)
-                        assert(replay_current.condition_index is not None)
-
-                        # If we are at a branch we didn't take, filter it out.
-                        if replay_current.condition_index != active_branch:
-                            count = 1
-                            for s2 in replay[1:]:
-                                count += 1
-
-                                if s2.is_condition_end:
-                                    break
-
-                            assert(count > 1)
-                            del replay[0:count]
-                            continue
-
-                        # We must be in the active branch. The current
-                        # statement, the condition, can be filtered. The
-                        # last should should be an end condition as well. But,
-                        # we verify that, just to be sure.
-                        assert(replay[-1].is_condition_end)
-
-                        for s2 in replay[1:-1]:
-                            s2.level -= 2
-                            output.append(s2)
-
-                        del replay[:]
-
-                    continue
-
-                output.append(s)
-
-        out = []
-        parse_statements(self.statements, out)
-        self.clear_caches()
-        self.statements = out
-
+            else:
+                i += 1
+                continue
 
     def _load_raw_statements(self, statements):
-        '''Loads PyMake's parser output into this container.'''
+        """Loads PyMake's parser output into this container."""
 
         self._statements = []
 
@@ -1530,15 +1481,19 @@ class StatementCollection(object):
             else:
                 self._statements.append(Statement(statement))
 
+    def _clear_caches(self):
+        """Clears the instance of any cached data."""
+        pass
+
 class Makefile(object):
-    '''A high-level API for a Makefile.
+    """A high-level API for a Makefile.
 
     This provides a convenient bridge between StatementCollection,
     pymake.data.Makefile, and raw file operations.
 
     From an API standpoint, interaction between the 3 is a bit fuzzy. Read
     the docs for caveats.
-    '''
+    """
     __slots__ = (
         'filename',      # Filename of the Makefile
         'directory',     # Directory holding the Makefile
@@ -1550,7 +1505,7 @@ class Makefile(object):
     RE_SUB = re.compile(r"@([a-z0-9_]+?)@")
 
     def __init__(self, filename, directory=None):
-        '''Construct a Makefile from a file'''
+        """Construct a Makefile from a file"""
         if not os.path.exists(filename):
             raise Exception('Path does not exist: %s' % filename)
 
@@ -1575,7 +1530,7 @@ class Makefile(object):
 
     @property
     def statements(self):
-        '''Obtain the StatementCollection for this Makefile.'''
+        """Obtain the StatementCollection for this Makefile."""
         if self._statements is None:
             buf = None
             if self._lines is not None:
@@ -1601,7 +1556,7 @@ class Makefile(object):
 
     @property
     def lines(self):
-        '''Returns a list of lines making up this file.'''
+        """Returns a list of lines making up this file."""
 
         if self._statements:
             for line in self._statements.lines:
@@ -1615,7 +1570,7 @@ class Makefile(object):
 
     def perform_substitutions(self, mapping, raise_on_missing=False,
                               error_on_missing=False, callback_on_missing=None):
-        '''Performs variable substitutions on the Makefile.
+        """Performs variable substitutions on the Makefile.
 
         A dictionary of variables is passed. Each "@key@" in the source
         Makefile will be substituted for the literal value in the dictionary.
@@ -1632,7 +1587,7 @@ class Makefile(object):
         to insert the empty string (''). If raise_on_missing is True, an
         exception will be thrown. If error_on_missing is True, an $(error)
         will be inserted.
-        '''
+        """
 
         lines = []
 
@@ -1669,10 +1624,10 @@ class Makefile(object):
         self._lines      = lines
 
     def variable_defined(self, name, search_includes=False):
-        '''Returns whether a variable is defined in the Makefile.
+        """Returns whether a variable is defined in the Makefile.
 
         By default, it only looks for variables defined in the current
-        file, not in included files.'''
+        file, not in included files."""
         if search_includes:
             v = self.makefile.variables.get(name, True)[2]
             return v is not None
@@ -1680,12 +1635,12 @@ class Makefile(object):
             return name in self.statements.defined_variables
 
     def get_variable_string(self, name, resolve=True):
-        '''Obtain a named variable as a string.
+        """Obtain a named variable as a string.
 
         If resolve is True, the variable's value will be resolved. If not,
         the Makefile syntax of the expansion is returned. In either case,
         if the variable is not defined, None is returned.
-        '''
+        """
         if resolve:
             v = self.makefile.variables.get(name, True)[2]
             if v is None:
@@ -1705,7 +1660,7 @@ class Makefile(object):
             return self.variable_assignments[name][0].value
 
     def get_variable_split(self, name):
-        '''Obtain a named variable as a list.'''
+        """Obtain a named variable as a list."""
         v = self.makefile.variables.get(name, True)[2]
         if v is None:
             return []
@@ -1713,12 +1668,12 @@ class Makefile(object):
         return v.resolvesplit(self.makefile, self.makefile.variables)
 
     def get_own_variable_names(self, include_conditionals=True):
-        '''Returns a set of variable names defined by the Makefile itself.
+        """Returns a set of variable names defined by the Makefile itself.
 
         include_conditionals can be used to filter out variables defined inside
         a conditional (e.g. #ifdef). By default, all variables are returned,
         even the ones inside conditionals that may not be evaluated.
-        '''
+        """
         names = set()
 
         for ( name, value, token, is_conditional, location ) in self.statements.variable_assignments:
@@ -1730,6 +1685,6 @@ class Makefile(object):
         return names
 
     def has_own_variable(self, name, include_conditionals=True):
-        '''Returns whether the specified variable is defined in the Makefile
-        itself (as opposed to being defined in an included file.'''
+        """Returns whether the specified variable is defined in the Makefile
+        itself (as opposed to being defined in an included file."""
         return name in self.get_own_variable_names(include_conditionals)

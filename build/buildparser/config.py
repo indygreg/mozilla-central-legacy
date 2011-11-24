@@ -41,45 +41,45 @@ import os.path
 import platform
 import sys
 
-PROMPT_DEFAULT = '''
+PROMPT_DEFAULT = """
 The default build options have been selected automatically:
 
   Application:      Firefox
   Type:             debug
   Source Directory: %s
   Object Directory: %s
-'''
+"""
 
-PROMPT_LACK_OF_WIZARD = '''
+PROMPT_LACK_OF_WIZARD = """
 Eventually the wizard will be interactive. For now, it is static and you must
 edit the produced config file manually to modify behavior. Stay tuned!
-'''
+"""
 
 MAKEFILE_CONVERSION_OPTIONS = {
-    'traditional': '''Performs simple conversion from .in files by replacing
+    'traditional': """Performs simple conversion from .in files by replacing
                       variable tokens (@var@). This is how Makefiles typically
-                      operate. It is the safest option, but is the slowest.''',
+                      operate. It is the safest option, but is the slowest.""",
 
-    'rewrite': '''Rewrite the Makefile using the PyMake API. This is mostly for
+    'rewrite': """Rewrite the Makefile using the PyMake API. This is mostly for
                   testing of the core conversion API. Unless you are a build
-                  developer, you probably don't care about this.''',
+                  developer, you probably don't care about this.""",
 
-    'prune': '''This will analyze the Makefile and prune conditional blocks that
+    'prune': """This will analyze the Makefile and prune conditional blocks that
                 aren't relevant for the current configuration. The reduction
                 is conservative with what it eliminates, so the produced Makefile
                 should be functionally equivalent to the original. This performs
                 little optimization. It is useful if you are interested in more
-                readable Makefiles with unused code eliminated.''',
+                readable Makefiles with unused code eliminated.""",
 
-    'optimized': '''Produce a fully optimized Makefile build. This will perform deep
+    'optimized': """Produce a fully optimized Makefile build. This will perform deep
                     inspection of Makefiles and will move known constructs to a fully
                     derecursified Makefile. Unknown variables and rules will be
                     retained in the Makefile and will be called during building. This
-                    produces the fastest builds and is the default choice.''',
+                    produces the fastest builds and is the default choice.""",
 }
 
 class BuildConfig(object):
-    '''Represents a configuration for building.'''
+    """Represents a configuration for building."""
 
     __slots__ = (
         'config',
@@ -107,7 +107,7 @@ class BuildConfig(object):
 
     @property
     def configure_args(self):
-        '''Returns list of configure arguments for this configuration.'''
+        """Returns list of configure arguments for this configuration."""
         args = []
 
         # TODO this should be configurable
@@ -117,12 +117,12 @@ class BuildConfig(object):
 
     @property
     def makefile_conversion(self):
-        '''Returns the type of Makefile generation to perform.'''
+        """Returns the type of Makefile generation to perform."""
         return self.get_value('makefile', 'conversion')
 
     @makefile_conversion.setter
     def makefile_conversion(self, value):
-        '''Set the type of makefile conversion that will be performed.'''
+        """Set the type of makefile conversion that will be performed."""
         assert(value in MAKEFILE_CONVERSION_OPTIONS.keys())
         self.config.set('makefile', 'conversion', value)
 
@@ -136,12 +136,12 @@ class BuildConfig(object):
         self.config.read(filename)
 
     def save(self, filename):
-        '''Saves the build configuration to a file.'''
+        """Saves the build configuration to a file."""
         with open(filename, 'wb') as f:
             self.config.write(f)
 
     def run_commandline_wizard(self, source_directory, fh=None):
-        '''Runs a command-line wizard to obtain config options.'''
+        """Runs a command-line wizard to obtain config options."""
         assert(os.path.isabs(source_directory))
         assert(os.path.isdir(source_directory))
 

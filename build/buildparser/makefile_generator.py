@@ -42,8 +42,8 @@ from . import data
 import os.path
 
 class MakefileGenerator(object):
-    '''This class contains logic for taking a build representation and
-    converting it into a giant Makefile.'''
+    """This class contains logic for taking a build representation and
+    converting it into a giant Makefile."""
 
     __slots__ = (
         'tree',
@@ -55,8 +55,8 @@ class MakefileGenerator(object):
         self.tree = tree
 
     def get_converted_path(self, path):
-        '''Convert a string filesystem path into its Makefile equivalent, with
-        appropriate variable substitution.'''
+        """Convert a string filesystem path into its Makefile equivalent, with
+        appropriate variable substitution."""
         if path[0:len(self.tree.object_directory)] == self.tree.object_directory:
             return '$(OBJECT_DIR)%s' % path[len(self.tree.object_directory):]
         elif path[0:len(self.tree.top_source_directory)] == self.tree.top_source_directory:
@@ -65,7 +65,7 @@ class MakefileGenerator(object):
             return path
 
     def generate_makefile(self, fh):
-        '''Convert the tree info into a Makefile'''
+        """Convert the tree info into a Makefile"""
 
         state = {
             'fh':      fh,
@@ -115,7 +115,7 @@ class MakefileGenerator(object):
         print >>fh, '.PHONY: %s\n' % ' \\\n  '.join(state['phonies'])
 
     def _print_idl_rules(self, state):
-        '''Prints all the IDL rules.'''
+        """Prints all the IDL rules."""
 
         fh = state['fh']
 
@@ -174,7 +174,7 @@ class MakefileGenerator(object):
         state['phonies'] |= set(['idl_install_idls', 'idl_generate_headers', 'idl'])
 
     def _print_file_exports(self, state):
-        '''Prints targets for exporting files.'''
+        """Prints targets for exporting files."""
 
         fh = state['fh']
 
@@ -213,7 +213,7 @@ class MakefileGenerator(object):
         state['phonies'].add('file_exports')
 
     def _print_libraries(self, state):
-        '''Prints library targets.'''
+        """Prints library targets."""
 
         fh = state['fh']
 
