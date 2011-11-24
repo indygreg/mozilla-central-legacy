@@ -130,10 +130,14 @@ class Expansion(object):
     __slots__ = (
         # Holds the low-level expansion
         'expansion',
+
+        '_is_static_string',
     )
 
     def __init__(self, expansion=None, s=None, location=None):
         '''Initialize from an existing PyMake expansion or text'''
+
+        self._is_static_string is None
 
         if expansion and s:
             raise Exception('Both expansion and string value must not be defined.')
@@ -154,6 +158,56 @@ class Expansion(object):
     def __str__(self):
         return Expansion.to_str(self.expansion)
 
+    @property
+    def is_static_string(self):
+        '''Indicates whether the expansion is a static string.
+
+        A static string is defined as an expansion that consists of no elements
+        beside strongly typed strings.'''
+        if self._is_static_string is None:
+            if isinstance(self.expansion, pymake.data.StringExpansion):
+                self._is_static_string = True
+                return True
+
+            assert(isinstance(self.expansion, pymake.data.Expansion))
+
+            for e, is_func in self.expansion:
+                if is_func:
+                    self._is_static_string = False
+                    return False
+
+            self._is_static_string = True
+
+        return self._is_static_string
+
+    def is_filesystem_dependent(self):
+        '''Indicates whether this expansion is dependent on the state of the
+        filesystem.'''
+        for f in self.functions():
+            if isinstance(f, Expansion.FILESYSTEM_FUNCTION_CLASSES):
+                return True
+
+        return False
+
+    def is_shell_dependent(self):
+        '''Indicates whether this expansion is dependent on the output of a
+        shell command.'''
+        for f in self.functions():
+            if isinstance(f, pymake.data.ShellFunction):
+                return True
+
+        return False
+
+    def functions(self):
+        '''A generator for functions in this expansion.
+
+        Each returned item is a pymake.functions.Function instance.
+        '''
+        if isinstance(self.expansion, pymake.data.Expansion):
+            for e, is_func in self.expansion:
+                if is_func:
+                    yield e
+
     def is_deterministic(self, variables=None, missing_is_deterministic=True):
         '''Returns whether the expansion is determinstic.
 
@@ -161,7 +215,7 @@ class Expansion(object):
         If variables are not provided, a deterministic expansion is one that
         consists of only string data or transformations on strings. If any
         variables are encounted, the expansion will be non-deterministic by
-        the nature of Makefiles, since they variables could come from the
+        the nature of Makefiles, since the variables could come from the
         execution environment or command line arguments. But, we assume
         the current state as defined by the arguments is what will occur
         during real execution. If you wish to override this, set the
@@ -702,7 +756,7 @@ class Statement(object):
 
         return Expansion(self.statement.targetexp)
 
-    @pattern
+    @property
     def pattern(self):
         '''The expansion for this static rule pattern.'''
         assert(self.is_static_pattern_rule);
@@ -801,7 +855,7 @@ class Statement(object):
 
         return Expansion(self.statement.vnameexp)
 
-class ConditionBlock(Statements):
+class ConditionBlock(Statement):
     '''Represents a condition block statement.
 
     The condition block is a collection of conditions and statements inside
@@ -1017,6 +1071,20 @@ class StatementCollection(object):
 
         emit_statements(self._statements)
 
+    def expansions(self):
+        '''A generator for all Expansions in this collection.
+
+        Each returned item is a tuple of:
+
+          ( statement, conditions, expansion )
+
+        Where expansion is an Expansion and statement is the Statement it
+        belongs to.
+        '''
+        for statement, conditions in self.expanded_statements:
+            for expansion in statement.expansions:
+                yield (statement, conditions, expansion)
+
     def ifdefs(self):
         '''A generator of ifdef metadata in this collection.
 
@@ -1041,7 +1109,7 @@ class StatementCollection(object):
                 pass
 
             yield (statement,
-                   conditions
+                   conditions,
                    str(statement.expansions[0]),
                    statement.expected)
 
@@ -1186,6 +1254,40 @@ class StatementCollection(object):
 
         if current_rule is not None:
             yield current_rule
+
+    # Here is where we start defining more esoteric methods dealing with static
+    # analysis and modification.
+
+    def filesystem_dependent_statements(self):
+        '''A generator for statements that directly depend on the state of
+        the filesystem.
+
+        Each returned item is a tuple of:
+
+          ( statement, conditions )
+        '''
+        for statement, conditions in self.expanded_statements():
+            for expansion in statement.expansions:
+                if expansion.is_filesystem_dependent:
+                    yield (statement, conditions)
+                    break
+
+    def shell_dependent_statements(self):
+        '''A generator for statements that directly depend on the execution of
+        a shell command.
+
+        Each returned item is a tuple of:
+
+          ( statement, conditions )
+
+        This excludes rules, which are implicitly dependent on the output of
+        an external command.
+        '''
+        for statement, conditions in self.expanded_statements():
+            for expansion in statement.expansions:
+                if expansion.is_shell_dependent:
+                    yield (statement, conditions)
+                    break
 
     def strip_false_conditionals(self):
         '''Rewrite the raw statement list with false conditional branches

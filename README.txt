@@ -220,6 +220,21 @@ I'm willing to sacrifice some setback for features. Keep in mind, we have
 the existing build system to fall back on, so if BS doesn't provide what you
 need, just go back to the way you've been doing things for years.
 
+Why Do You Require Python 2.7?
+------------------------------
+
+When writing new code, I believe in utilizing the latest stable technology
+stack. Python 2.7 is stable and has some nice features which I wanted to
+utilize.
+
+Since I view this as an alternative build system, I'm more focused on the
+long-term than supporting a minimum ubiquitous environment (like Python
+2.5 or 2.6). Long-term, Python 2.7 will be adopted, so concerns will diminish
+over time.
+
+That being said, not many parts utilize 2.7 features, so it should be simple
+enough to backport if people insist.
+
 ====================
 CONTENT BELOW IS OLD
 ====================

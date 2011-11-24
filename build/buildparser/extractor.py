@@ -130,6 +130,7 @@ class BuildSystem(object):
         self.config          = conf
         self.callback        = callback
         self.autoconfs       = None
+        self.is_configured   = False
         self.configure_state = None
 
     @property
