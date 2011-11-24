@@ -34,8 +34,11 @@
 #
 # ***** END LICENSE BLOCK *****
 
-'''This file contains classes for interacting with Makefiles. A lot of the
-functionality could probably be baked into PyMake directly.'''
+# This file contains classes for interacting with Makefiles. There are a number
+# of classes that wrap PyMake's classes with useful APIs. This functionality
+# could likely be merged into PyMake if there is support for doing that. It was
+# developed outside of PyMake so development wouldn't be dependent on changes
+# being merged into PyMake.
 
 from . import data
 
@@ -87,8 +90,8 @@ class Expansion(object):
         pymake.functions.InfoFunction,
     )
 
-    # Classes in this set rely on the filesystem and thus may not be
-    # idempotent.
+    # Classes in this set rely on the filesystem and thus may change during
+    # run-time.
     FILESYSTEM_FUNCTION_CLASSES = (
         pymake.functions.WildcardFunction,
         pymake.functions.RealpathFunction,
@@ -240,8 +243,6 @@ class Expansion(object):
 
         If escape_variables is True, individual variable sigil elements will
         be escaped (i.e. '$' -> '$$').
-
-        TODO consider adding this logic on the appropriate PyMake classes.
         '''
         if isinstance(e, pymake.data.StringExpansion):
             if escape_variables:
@@ -421,13 +422,41 @@ class Statement(object):
     '''Holds information about an individual PyMake statement.
 
     This is a wrapper around classes in pymake.parserdata that provides
-    useful features for low-level statement inspection and interaction.'''
+    useful features for low-level statement inspection and interaction.
+
+    All parser output from pymake.parserdata is an instance of this class or
+    is an instance of a class derived from this one.
+
+    We have overloaded a lot of functionality in this base class. The object
+    model would be better if each statement type stood in its own class. The
+    main reason it wasn't done this way is laziness. Consumers should not rely
+    on many classes being rolled into the generic Statement class forever.
+    '''
 
     __slots__ = (
         # The actual statement
         'statement',
     )
 
+    # All of the possible output classes from the PyMake parser. Not all derive
+    # from pymake.parserdata.Statement, but we treat them all like they do.
+    ALL_PARSERDATA_STATEMENT_CLASSES = (
+        pymake.parserdata.Rule,
+        pymake.parserdata.StaticPatternRule,
+        pymake.parserdata.Command,
+        pymake.parserdata.SetVariable,
+        pymake.parserdata.EqCondition,
+        pymake.parserdata.IfdefCondition,
+        pymake.parserdata.ElseCondition,
+        pymake.parserdata.ConditionBlock,
+        pymake.parserdata.Include,
+        pymake.parserdata.VPathDirective,
+        pymake.parserdata.ExportDirective,
+        pymake.parserdata.UnexportDirective,
+        pymake.parserdata.EmptyDirective,
+    )
+
+    # Classes that contain a single expansion.
     SINGLE_EXPANSION_CLASSES = (
         pymake.parserdata.Command,
         pymake.parserdata.EmptyDirective,
@@ -437,10 +466,11 @@ class Statement(object):
         pymake.parserdata.VPathDirective,
     )
 
-    '''Variables that are automatically available in Makefiles.'''
+    # Variables that are automatically available in Makefiles.
     AUTOMATIC_VARIABLES = set(['@', '%', '<', '?', '^', '+', '|', '*'])
 
     def __init__(self, statement):
+        assert(isinstance(statement, Statement.ALL_PARSERDATA_STATEMENT_CLASSES))
         self.statement = statement
 
     def __eq__(self, other):
@@ -481,11 +511,11 @@ class Statement(object):
         elif self.is_condition:
             return self.condition_str()
         elif self.is_empty_directive:
-            return self.expansion_string
+            return str(self.expansions[0])
         elif self.is_export:
-            return 'export %s' % self.expansion_string
+            return 'export %s' % self.expansions[0]
         elif self.is_include:
-            return 'include %s' % self.expansion_string
+            return 'include %s' % self.expansions[0]
         elif self.is_rule:
             return ('\n%s%s %s' % (
                 Expansion.to_str(self.statement.targetexp),
@@ -517,109 +547,69 @@ class Statement(object):
 
         return '<%s>' % s
 
-    @property
-    def has_str(self):
-        if self.is_condition_block:
-            return False
-
-        if self.is_ifdef_end or self.is_else_end or self.is_ifeq_end:
-            return False
-
-        return True
-
-    @property
-    def is_condition_block(self):
-        return isinstance(self.statement, pymake.parserdata.ConditionBlock)
-
-    @property
-    def is_condition(self):
-        return isinstance(self.statement, pymake.parserdata.Condition)
-
-    @property
-    def is_command(self):
-        return isinstance(self.statement, pymake.parserdata.Command)
-
-    @property
-    def is_else(self):
-        return isinstance(self.statement, pymake.parserdata.ElseCondition)
-
-    @property
-    def is_else_end(self):
-        return isinstance(self.statement, str) and self.statement == 'EndElseCondition'
-
-    @property
-    def is_empty_directive(self):
-        return isinstance(self.statement, pymake.parserdata.EmptyDirective)
-
-    @property
-    def is_export(self):
-        return isinstance(self.statement, pymake.parserdata.ExportDirective)
-
-    @property
-    def is_ifdef(self):
-        return isinstance(self.statement, pymake.parserdata.IfdefCondition)
-
-    @property
-    def is_ifeq(self):
-        return isinstance(self.statement, pymake.parserdata.EqCondition)
-
-    @property
-    def is_include(self):
-        return isinstance(self.statement, pymake.parserdata.Include)
-
+    # The following are simple tests for the type of statement
     @property
     def is_rule(self):
         return isinstance(self.statement, pymake.parserdata.Rule)
-
-    @property
-    def is_setvariable(self):
-        return isinstance(self.statement, pymake.parserdata.SetVariable)
 
     @property
     def is_static_pattern_rule(self):
         return isinstance(self.statement, pymake.parserdata.StaticPatternRule)
 
     @property
+    def is_command(self):
+        return isinstance(self.statement, pymake.parserdata.Command)
+
+    @property
+    def is_set_variable(self):
+        return isinstance(self.statement, pymake.parserdata.SetVariable)
+
+    @property
+    def is_ifeq(self):
+        return isinstance(self.statement, pymake.parserdata.EqCondition)
+
+    @property
+    def is_ifdef(self):
+        return isinstance(self.statement, pymake.parserdata.IfdefCondition)
+
+    @property
+    def is_else(self):
+        return isinstance(self.statement, pymake.parserdata.ElseCondition)
+
+    @property
+    def is_condition_block(self):
+        return False
+
+    @property
+    def is_include(self):
+        return isinstance(self.statement, pymake.parserdata.Include)
+
+    @property
     def is_vpath(self):
         return isinstance(self.statement, pymake.parserdata.VPathDirective)
 
     @property
-    def command_string(self):
-        '''Converts a command expansion back into its string form.
-
-        Commands are interesting beasts. For a couple of reasons.
-
-        For one, they can be multi-line.
-
-        There also might be variable references inside the command.
-        To the shell, $foo is correct. However, to Makefiles, we need
-        $$foo.
-
-        This all means that conversion back to a string is somewhat
-        challenging. But, it isn't impossible.
-        '''
-
-        s = Expansion.to_str(self.expansion,
-                             escape_variables=True)
-
-        return '\n'.join(['\t%s' % line for line in s.split('\n')])
+    def is_export(self):
+        return isinstance(self.statement, pymake.parserdata.ExportDirective)
 
     @property
-    def condition_is_deterministic(self):
-        '''Returns whether the condition can be evaluated deterministically.
-
-        For a condition to be fully deterministic, it must be composed of
-        expansions that are deterministic. For an expansion to be
-        deterministic, it can't rely on the run-time environment, only
-        preconfigured defaults.'''
-        pass
+    def is_unexport(self):
+        return isinstance(self.statement, pymake.parserdata.UnExportDirective)
 
     @property
-    def doublecolon(self):
-        '''Returns boolean on whether the rule is a doublecolon rule.'''
-        assert(self.is_rule or self.is_static_pattern_rule)
+    def is_empty_directive(self):
+        return isinstance(self.statement, pymake.parserdata.EmptyDirective)
 
-        return self.statement.doublecolon
+    @property
+    def is_condition(self):
+        return isinstance(self.statement, pymake.parserdata.Condition)
+
+
+    # Accessors available to all statements
+    def lines(self):
+        '''Returns an iterator of str representing the statement transformed
+        to Makefile syntax.'''
+        yield str(self)
 
     @property
     def location(self):
@@ -628,39 +618,11 @@ class Statement(object):
 
         May return None if a suitable location is not available.
         '''
-        e = self.first_expansion
+        e = self.expansions[0]
         if e is not None:
             return e.loc
 
         return None
-
-    @property
-    def expected_condition(self):
-        '''For condition statements, returns the expected condition of the test
-        for the branch under the statement to be executed.'''
-        assert(isinstance(
-            self.statement,
-            (pymake.parserdata.IfdefCondition, pymake.parserdata.EqCondition))
-        )
-
-        return self.statement.expected
-
-    @property
-    def expansion(self):
-        '''Returns the single expansion in this statement.
-
-        If the statement has no expansions or multiple expansions, this errors.
-        '''
-        if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
-            return self.statement.exp
-        else:
-            raise Exception('Current statement does not have a single expansion: %s' % self.statement)
-
-    @property
-    def expansion_string(self):
-        '''Returns the single expansion in this statement formatted to a string.'''
-
-        return Expansion.to_str(self.expansion)
 
     @property
     def expansions(self):
@@ -687,34 +649,94 @@ class Statement(object):
         else:
             raise Exception('Unhandled statement type: %s' % self)
 
-    @property
-    def first_expansion(self):
-        '''Returns the first expansion in this statement or None if no
-        expansions are present.'''
+    def are_expansions_deterministic(self, variables=None):
+        '''Determines whether the expansions in this statement are
+        deterministic.'''
 
-        if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
-            return self.statement.exp
-        elif self.is_setvariable:
-            return self.statement.vnameexp
-        elif self.is_rule:
-            return self.statement.targetexp
-        elif self.is_static_pattern_rule:
-            return self.statement.targetexp
-        else:
-            return None
+        # TODO figure out what to do about target expansions. Resolving
+        # these expansions results in access to Makefile.gettarget()
+        if self.is_setvariable and self.statement.targetexp is not None:
+            return False
+
+        for e in self.expansions:
+            if not e.is_deterministic(variables=variables):
+                return False
+
+        return True
+
+    # Statement-specific accessors and methods. If invoked on the wrong
+    # statement type, expect an assertion failure.
+
+    @property
+    def command_string(self):
+        '''Converts a command expansion back into its string form.
+
+        Commands are interesting beasts for a couple of reasons.
+
+        First, they can be multi-line. A tab character is inserted at the
+        beginning of each line.
+
+        There also might be variable references inside the command.
+        To the shell, $foo is correct. However, to Makefiles, we need
+        $$foo.
+        '''
+        assert(self.is_command)
+
+        s = Expansion.to_str(self.expansions[0],
+                             escape_variables=True)
+
+        return '\n'.join(['\t%s' % line for line in s.split('\n')])
+
+
+    @property
+    def has_doublecolon(self):
+        '''Returns whether the rule has a double-colon.'''
+        assert(self.is_rule or self.is_static_pattern_rule)
+
+        return self.statement.doublecolon
+
+    @property
+    def target(self):
+        '''The expansion for the rule target.'''
+        assert(self.is_rule or self.is_static_pattern_rule)
+
+        return Expansion(self.statement.targetexp)
+
+    @pattern
+    def pattern(self):
+        '''The expansion for this static rule pattern.'''
+        assert(self.is_static_pattern_rule);
+
+        return Expansion(self.statement.patternexp)
+
+    def prerequisites(self):
+        '''The expansion for the rule prerequisites.'''
+        assert(self.is_rule or self.is_static_pattern_rule);
+
+        return Expansion(self.statement.depexp)
 
     @property
     def target_separator(self):
         '''Returns the colon separator after the target for rules.'''
-        if self.doublecolon:
+        assert(self.is_rule or self.is_static_pattern_rule)
+
+        if self.has_doublecolon:
             return '::'
         else:
             return ':'
 
     @property
+    def expected_condition(self):
+        '''For condition statements, returns the expected condition of the test
+        for the branch under the statement to be executed.'''
+        assert(self.is_ifeq or self.is_ifdef)
+
+        return self.statement.expected
+
+    @property
     def token(self):
         '''Returns the token for this statement.'''
-        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+        assert(self.is_set_variable)
 
         return self.statement.token
 
@@ -756,7 +778,7 @@ class Statement(object):
     @property
     def value(self):
         '''Returns the value of this statement.'''
-        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+        assert(self.is_set_variable)
 
         return self.statement.value
 
@@ -766,51 +788,20 @@ class Statement(object):
 
         By default, variable values are stored as strings. They can be
         upgraded to expansions upon request.'''
-        assert(isinstance(self.statement, pymake.parserdata.SetVariable))
+        assert(self.is_set_variable)
 
         data = pymake.parser.Data.fromstring(self.statement.value, self.statement.valueloc)
         return Expansion(expansion=pymake.parser.parsemakesyntax(data, 0, (),
                          pymake.parser.iterdata)[0])
 
     @property
-    def vname_expansion(self):
-        '''Returns the vname expansion for this statement.
+    def vname(self):
+        '''Returns the variable name as an expansion.'''
+        assert(self.is_set_variable)
 
-        If the statement doesn't have a vname expansion, this raises.
-        '''
-        if isinstance(self.statement, pymake.parserdata.SetVariable):
-            return self.statement.vnameexp
-        else:
-            raise Exception('Statement does not have a vname expansion: %s' % self.statement)
+        return Expansion(self.statement.vnameexp)
 
-    @property
-    def vname_expansion_string(self):
-        '''Returns the vname expansion as a string.'''
-        return Expansion.to_str(self.vname_expansion)
-
-    @property
-    def vname_expansion_is_string_expansion(self):
-        '''Returns whether the vname expansion for this statement is a
-        String Expansions.'''
-
-        return isinstance(self.vname_expansion, pymake.data.StringExpansion)
-
-    def are_expansions_deterministic(self, variables=None):
-        '''Determines whether the expansions in this statement are
-        deterministic.'''
-
-        # TODO figure out what to do about target expansions. Resolving
-        # these expansions results in access to Makefile.gettarget()
-        if self.is_setvariable and self.statement.targetexp is not None:
-            return False
-
-        for e in self.expansions:
-            if not e.is_deterministic(variables=variables):
-                return False
-
-        return True
-
-class ConditionBlock(object):
+class ConditionBlock(Statements):
     '''Represents a condition block statement.
 
     The condition block is a collection of conditions and statements inside
@@ -821,15 +812,13 @@ class ConditionBlock(object):
     __slots__ = (
         # Array of tuples of ( condition statement, [ statements ] )
         'conditions',
-
-        # Underlying pymake.parserdata.ConditionBlock statement
-        'statement',
     )
 
     def __init__(self, statement):
         assert(isinstance(statement, pymake.parserdata.ConditionBlock))
 
-        self.statement = statement
+        Statement.__init__(self, statement)
+
         self.conditions = []
 
         for condition, statements in statement:
@@ -849,6 +838,10 @@ class ConditionBlock(object):
 
     def __getitem__(self, i):
         return self.conditions[i]
+
+    @property
+    def is_condition_block(self):
+        return True
 
     def lines(self):
         '''Returns an iterable of str representing the Makefile of lines
@@ -911,7 +904,20 @@ class ConditionBlock(object):
         pass
 
 class StatementCollection(object):
-    '''Provides methods for interacting with PyMake's parser output.'''
+    '''Mid-level API for interacting with Makefile statements.
+
+    This is effectively a wrapper around PyMake's parser output. It can
+    be used to extract data from low-level parser output. It can even perform
+    basic manipulation of Makefiles.
+
+    If you want to perform static analysis of Makefiles or want to poke around
+    at what's inside, this is the class to use or extend.
+    '''
+
+    VARIABLE_ASSIGNMENT_SIMPLE = 1
+    VARIABLE_ASSIGNMENT_RECURSIVE = 2
+    VARIABLE_ASSIGNMENT_APPEND = 3
+    VARIABLE_ASSIGNMENT_CONDITIONAL = 4
 
     __slots__ = (
          # String filename we loaded from. A filename must be associated with
@@ -922,19 +928,13 @@ class StatementCollection(object):
         # directory of the filename. However, it is completely valid for
         # instantiators to override this with something else. A use case would
         # be if the contents are being read from one location but should
-        # appear as if it is loaded from elsewhere.
+        # appear as if it is loaded from elsewhere. This is useful for
+        # tricking filesystem functions into working, for example.
         'directory',
 
-        # List of tuples describing ifdefs
-        '_ifdefs',
-
-        # List of our normalized statements. Each element is a Statement or
-        # ConditionBlock.
-        'statements',
-
-        # Dictionary of variable names defined unconditionally. Keys are
-        # variable names and values are lists of their SetVariable statements.
-        'top_level_variables',
+        # List of our normalized statements. Each element is a Statement
+        # or derived class.
+        '_statements',
     )
 
     def __init__(self, filename=None, buf=None, directory=None):
@@ -944,8 +944,6 @@ class StatementCollection(object):
         statements will be read from that string. Else, statements will be
         read from the passed filename.
         '''
-        self._ifdefs = None
-
         if buf is not None:
             assert(filename is not None)
             self._load_raw_statements(pymake.parser.parsestring(buf, filename))
@@ -961,153 +959,233 @@ class StatementCollection(object):
         else:
             self.directory = os.path.dirname(filename)
 
-    @property
-    def ifdefs(self):
-        '''Returns ifdef occurences in the collection.
+    def lines(self):
+        '''Emit lines that constitute a Makefile for this collection.
 
-        Each returned item in the list is a tuple of
-          ( name, expected, is_conditional, location )
+        To generate the Makefile representation of this instance, simply:
+
+          '\n'.join(foo.lines())
+
+        Or,
+
+          for line in foo.lines():
+            print >>fh, line
         '''
-        if self._ifdefs is None:
-            self._ifdefs = []
-            for s in self.statements:
-                if not s.is_ifdef:
-                    continue
+        for statement in self._statements:
+            for line in statment.lines():
+                yield line
 
-                self._ifdefs.append((
-                    s.expansion_string,
-                    s.expected_condition,
-                    s.level > 0,
-                    s.location
-                ))
-
-        return self._ifdefs
-
-    @property
-    def includes(self):
-        '''Returns information about file includes.
-
-        Each returned item is a tuple of
-          ( path, is_conditional, location )
-        '''
-        for s in self.statements:
-            if s.is_include:
-                yield (
-                    s.expansion_string,
-                    s.level > 0,
-                    s.location
-                )
-
-    @property
-    def variable_assignments(self):
-        '''Returns information about variable assignments.
+    def expanded_statements(self):
+        '''Returns an iterator over the statements in this collection.
 
         Each returned item is a tuple of:
-          ( name, value, token, is_conditional, location )
+
+            ( Statement, [conditions] )
+
+        Each Statement is the Statement instance being returned. The 2nd
+        member is a list of conditions that must be satisfied for this
+        statement to be evaluated. Each element is merely a reference to
+        a Statement that was emitted previously. In other words, this is a
+        convenient repackaging to make less stateful consumption easier.
+        An emitted condition does not contain itself on the preconditions
+        stack.
+
+        Condition blocks are emitted as a Statement first followed by all
+        of their individual statements, starting with the condition for
+        the first branch.
+
+        It is possible to detect the end of a condition block by noting when
+        len(conditions) decreases. A new branch in the same condition block
+        is entered when entry[0].is_condition is True. The implementation of
+        various methods in this class demonstrate this technique and can be
+        used as a reference.
         '''
+        condition_stack = []
 
-        # This is a workaround because filtering doesn't currently munge the
-        # statement level.
-        condition_count = 0
+        def emit_statements(statements):
+            for statement in self._statements:
+                yield (statement, condition_stack)
+                if statement.is_condition_block:
+                    for condition, inner in statement:
+                        yield (condition, condition_stack)
+                        condition_stack.append(condition)
 
-        for s in self.statements:
-            if s.is_condition_block:
-                condition_count += 1
-            elif s.is_condition_block_end:
-                condition_count -= 1
+                        for t in emit_statements(inner):
+                            yield t
 
-            if not s.is_setvariable:
-                continue
+                        condition_stack.pop()
 
-            assert(s.vname_expansion_is_string_expansion)
+        emit_statements(self._statements)
 
-            yield (
-                s.vname_expansion_string,
-                s.value,
-                s.token,
-                condition_count > 0,
-                s.location
-            )
+    def ifdefs(self):
+        '''A generator of ifdef metadata in this collection.
 
-    @property
+        Each returned item is a tuple of:
+
+          ( statement, conditions, name, expected )
+
+        The first member is the underlying Statement instance. name is a str
+        of the variable being checked for definintion. expected is the boolean
+        indicating the expected evaluation for the condition to be satisfied.
+        Finally, conditions is a list of conditions that must be satisfied for
+        this statement to be evaluated.
+
+        Please note that "name" is a str, not an Expansion. This is because
+        ifdef statements operate on variable names, not variables themselves.
+
+        name and expected can be accessed from the underlying Statement, of
+        course. They are provided explicitly for convenience.
+        '''
+        for statement, conditions in self.expanded_statements():
+            if not statement.is_ifdef:
+                pass
+
+            yield (statement,
+                   conditions
+                   str(statement.expansions[0]),
+                   statement.expected)
+
+    def includes(self):
+        '''A generator of includes metadata.
+
+        Each returned item is a tuple of:
+
+          ( statement, conditions, path )
+
+        The first member is the underlying Statement. The second is a list
+        of conditions that must be satisfied for this statement to be executed.
+        Finally, we have the path Expansion for this statement. It is up
+        to the caller to expand the expansion.
+        '''
+        for statement, conditions in self.expanded_statements():
+            if not statement.is_include:
+                pass
+
+            yield (statement, conditions, statement.expansions[0])
+
+    def variable_assigments(self):
+        '''A generator of variable assignments.
+
+        Each returned item is a tuple of:
+
+          ( statement, conditions, name, value, type )
+
+        The first member is the underlying Statement. The second is the list
+        of conditions that must be satisfied for this statement to execute.
+        The 3rd, or name, or is the variable name, as a str. The 4th is the
+        value, as a str. The 5th is the type of variable assignment/reference.
+        This will be one of the VARIABLE_ASSIGNMENT_* constants from this
+        class.
+        '''
+        for statement, conditions in self.expanded_statements():
+            if not statement.is_set_variable:
+                pass
+
+            vname = statement.vname
+
+            type = None
+            token = statement.token
+            if token == '=':
+                type = StatementCollection.VARIABLE_ASSIGNMENT_RECURSIVE
+            elif token == ':=':
+                type = StatementCollection.VARIABLE_ASSIGNMENT_SIMPLE
+            elif token == '+=':
+                type = StatementCollection.VARIABLE_ASSIGNMENT_APPEND
+            elif token == '?=':
+                type = StatementCollection.VARIABLE_ASSIGNMENT_CONDITIONAL
+            else:
+                raise Exception('Unhandled variable assignment token: %' % token)
+
+            yield (statement, conditions, str(vname), statement.value, type)
+
     def unconditional_variable_assignments(self):
-        '''Like variable_assignments but for variables being assigned
-        unconditionally (e.g. outside ifdef, ifeq, etc).
+        '''This is a convenience method to return variables that are assigned
+        to unconditionally. It is simply a filter over variable_assignments()
+        which filters out entries where len(entry[1]) == 0.
 
-        Returned items are tuples of:
-          ( name, value, token, location )
+        Each returned item is a tuple of:
+
+          ( statement, name, value, type )
+
+        The members have the same meaning as variable_assignments().
         '''
 
-        for name, value, token, conditional, location in self.variable_assignments:
-            if conditional:
-                continue
+        for t in self.variable_assignments():
+            if len(t) > 0:
+                pass
 
-            yield (name, value, token, location)
+            yield (t[0], t[2], t[3], t[4])
 
-    @property
     def rules(self):
-        '''Returns information about rules defined by statements.
+        '''A generator for rules in this instance.
 
-        This emits a list of objects which describe each rule.'''
+        Each returned item is a tuple of:
 
-        conditions_stack = []
-        last_level       = 0
-        current_rule     = None
+            ( statement, conditions, target, prerequisite, commands )
 
-        # TODO this doesn't properly capture commands within nested ifdefs
-        # within rule blocks. Makefiles are crazy...
-        for o, level in self.statements:
-            if level > last_level:
-                assert(isinstance(o, pymake.parserdata.Condition))
-                conditions_stack.append(o)
-                last_level = level
-                continue
-            elif level < last_level:
-                for i in range(0, last_level - level):
-                    conditions_stack.pop()
+        statement is the underlying Statement instance and conditions is the
+        list of conditions that must be satisfied for this rule to be
+        evaluated.
 
-            last_level = level
+        target is the Expansion for the target of this rule. Next is
+        prerequisite, which is an Expansion of the prerequisites for this
+        rule. Finally, we have commands, which is a list of the command
+        Statement instances that will be evaluated for this rule.
 
-            if isinstance(o, pymake.parserdata.Rule):
-                if current_rule is not None:
+        Please note this only returns regular rules and not static pattern
+        rules.
+        '''
+
+        # Commands are associated with rules until another rule comes along.
+        # So, we keep track of the current rule and add commands to it as we
+        # encounter commands. When we see a new rule, we flush the last rule.
+        # When we're done, if we have a rule, we flush it.
+
+        current_rule = None
+        for statement, conditions in self.expanded_statements():
+            if statement.is_rule:
+                if current_rule:
                     yield current_rule
 
-                current_rule = {
-                    'commands':       [],
-                    'conditions':     conditions_stack,
-                    'doublecolon':    o.doublecolon,
-                    'prerequisites':  self.expansion_to_list(o.depexp),
-                    'targets':        self.expansion_to_list(o.targetexp),
-                    'line':           o.targetexp.loc.line,
-                }
+                current_rule = (statement,
+                                conditions,
+                                statement.target,
+                                statement.prerequisites,
+                                [])
 
-            elif isinstance(o, pymake.parserdata.StaticPatternRule):
-                if current_rule is not None:
-                    yield current_rule
-
-                current_rule = {
-                    'commands':      [],
-                    'conditions':    conditions_stack,
-                    'doublecolon':   o.doublecolon,
-                    'pattern':       self.expansion_to_list(o.patternexp),
-                    'prerequisites': self.expansion_to_list(o.depexp),
-                    'targets':       self.expansion_to_list(o.targetexp),
-                    'line':          o.targetexp.loc.line,
-                }
-
-            elif isinstance(o, pymake.parserdata.Command):
-                assert(current_rule is not None)
-                current_rule['commands'].append(o)
+            elif statement.is_command:
+                assert(current_rule is None)
+                current_rule[4].append(statement)
 
         if current_rule is not None:
             yield current_rule
 
-    @property
-    def lines(self):
-        '''Emit lines that constitute a Makefile for this collection.'''
-        for statement in self.statements:
-            if statement.has_str:
-                yield str(statement)
+    def static_pattern_rules(self):
+        '''A generator for static pattern rules.
+
+        Each returned item is a tuple of:
+          ( statement, conditions, target, pattern, prerequisites, commands )
+
+        The values have the same meaning as those in rule(). However, we have
+        added pattern, which is an Expansion of the pattern for the rule.
+        '''
+        current_rule = None
+        for statement, conditions in self.expanded_statements():
+            if statement.is_static_pattern_rule:
+                if current_rule:
+                    yield current_rule
+
+                current_rule = (statement,
+                                conditions,
+                                statement.target,
+                                statement.pattern,
+                                statement.prerequisites,
+                                [])
+            elif statement.is_command:
+                current_rule[5].append(statement)
+
+        if current_rule is not None:
+            yield current_rule
 
     def strip_false_conditionals(self):
         '''Rewrite the raw statement list with false conditional branches
@@ -1338,21 +1416,17 @@ class StatementCollection(object):
         self.clear_caches()
         self.statements = out
 
-    def clear_caches(self):
-        '''During normal operation, this object caches some data. This clears
-        those caches.'''
-        self._ifdefs = None
 
     def _load_raw_statements(self, statements):
         '''Loads PyMake's parser output into this container.'''
 
-        self.statements = []
+        self._statements = []
 
         for statement in statements:
             if isinstance(statement, pymake.parserdata.ConditionBlock):
-                self.statements.append(ConditionBlock(statement))
+                self._statements.append(ConditionBlock(statement))
             else:
-                self.statements.append(Statement(statement)
+                self._statements.append(Statement(statement))
 
 class Makefile(object):
     '''A high-level API for a Makefile.
