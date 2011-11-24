@@ -426,16 +426,6 @@ class Statement(object):
     __slots__ = (
         # The actual statement
         'statement',
-
-        # Numeric level statement appears in. 0 is the top level. Conditional
-        # blocks increase the numeric level. All statements in the same branch
-        # of a conditional occur at the same level.
-        'level',
-
-        # Numeric condition index for this condition's branch. For a
-        # conditional with many branches, the first branch will be 0,
-        # the second 1, etc.
-        'condition_index',
     )
 
     SINGLE_EXPANSION_CLASSES = (
@@ -450,10 +440,38 @@ class Statement(object):
     '''Variables that are automatically available in Makefiles.'''
     AUTOMATIC_VARIABLES = set(['@', '%', '<', '?', '^', '+', '|', '*'])
 
-    def __init__(self, statement, level, condition_index=None):
-        self.statement       = statement
-        self.level           = level
-        self.condition_index = condition_index
+    def __init__(self, statement):
+        self.statement = statement
+
+    def __eq__(self, other):
+        '''Determines if this statement is equivalent to another.
+
+        We define equivalence to mean the composition of the statement is
+        equivalent. We do not test things like locations or the expanded value
+        of variables, etc.
+
+        Practically speaking, if two statement appears on consecutive lines
+        and the first does not have any side-effects, then the two statements
+        are equivalent.
+        '''
+        if not isinstance(other, Statement):
+            return False
+
+        if type(self.statement) != type(other.statement):
+            return False
+
+        # TODO this implementation is not complete
+        our_expansions = self.expansions
+        other_expansions = other.expansions
+
+        if len(our_expansions) != len(other_expansions):
+            return False
+
+        for i in range(0, len(our_expansions)):
+            if our_expansions[i] != other_expansions[i]:
+                return False
+
+        return True
 
     def __str__(self):
         '''Convert this statement back to its Makefile representation.'''
@@ -461,7 +479,7 @@ class Statement(object):
         if self.is_command:
             return self.command_string
         elif self.is_condition:
-            return self.condition_string
+            return self.condition_str()
         elif self.is_empty_directive:
             return self.expansion_string
         elif self.is_export:
@@ -485,31 +503,19 @@ class Statement(object):
             )).rstrip()
         elif self.is_vpath:
             return 'vpath %s' % self.expansion_string
-        elif self.is_condition_block:
-            raise Exception('Cannot convert condition block to string. Did you forget to check .has_str?')
-        elif self.is_condition_block_end:
-            return 'endif\n'
-        elif self.is_ifeq_end or self.is_ifdef_end or self.is_else_end:
-            raise Exception('Cannot convert end conditions to strings. Did you forget to check .has_str?')
         else:
             raise Exception('Unhandled statement type: %s' % self.statement)
 
     def __repr__(self):
-        loc = self.location
-        indent = ' ' * self.level
-
-        if self.is_semaphore:
-            return '<%s%s>' % ( indent, self.statement )
+        s = None
+        if self.is_condition:
+            s = str(self.statement)
         else:
-            s = None
-            if self.is_condition:
-                s = str(self.statement)
-            else:
-                fd = StringIO.StringIO()
-                self.statement.dump(fd, indent)
-                s = fd.getvalue()
+            fd = StringIO.StringIO()
+            self.statement.dump(fd, indent)
+            s = fd.getvalue()
 
-            return '<%s>' % s
+        return '<%s>' % s
 
     @property
     def has_str(self):
@@ -526,16 +532,8 @@ class Statement(object):
         return isinstance(self.statement, pymake.parserdata.ConditionBlock)
 
     @property
-    def is_condition_block_end(self):
-        return self.is_semaphore and self.statement == 'EndConditionBlock'
-
-    @property
     def is_condition(self):
         return isinstance(self.statement, pymake.parserdata.Condition)
-
-    @property
-    def is_condition_end(self):
-        return self.is_ifdef_end or self.is_else_end or self.is_ifeq_end
 
     @property
     def is_command(self):
@@ -562,16 +560,8 @@ class Statement(object):
         return isinstance(self.statement, pymake.parserdata.IfdefCondition)
 
     @property
-    def is_ifdef_end(self):
-        return isinstance(self.statement, str) and self.statement == 'EndDefCondition'
-
-    @property
     def is_ifeq(self):
         return isinstance(self.statement, pymake.parserdata.EqCondition)
-
-    @property
-    def is_ifeq_end(self):
-        return isinstance(self.statement, str) and self.statement == 'EndEqCondition'
 
     @property
     def is_include(self):
@@ -584,10 +574,6 @@ class Statement(object):
     @property
     def is_setvariable(self):
         return isinstance(self.statement, pymake.parserdata.SetVariable)
-
-    @property
-    def is_semaphore(self):
-        return isinstance(self.statement, str)
 
     @property
     def is_static_pattern_rule(self):
@@ -627,39 +613,6 @@ class Statement(object):
         deterministic, it can't rely on the run-time environment, only
         preconfigured defaults.'''
         pass
-
-    @property
-    def condition_string(self):
-        '''Convert a condition to a string representation.'''
-
-        assert(self.condition_index is not None)
-        prefix = ''
-        if (self.is_ifdef or self.is_ifeq) and self.condition_index > 0:
-            prefix = 'else '
-
-        if self.is_ifdef:
-            s = self.expansion_string
-
-            if self.expected_condition:
-                return '%sifdef %s' % ( prefix, s )
-            else:
-                return '%sifndef %s' % ( prefix, s )
-
-        elif self.is_ifeq:
-            s = ','.join([
-                Expansion.to_str(self.statement.exp1).strip(),
-                Expansion.to_str(self.statement.exp2).strip()
-            ])
-
-            if self.expected_condition:
-                return '%sifeq (%s)' % ( prefix, s )
-            else:
-                return '%sifneq (%s)' % ( prefix, s )
-
-        elif self.is_else:
-            return 'else'
-        else:
-            raise Exception('Unhandled condition type: %s' % self.statement)
 
     @property
     def doublecolon(self):
@@ -731,8 +684,6 @@ class Statement(object):
 
             yield Expansion(expansion=self.statement.vnameexp)
             yield Expansion(s=self.statement.value, location=self.statement.valueloc)
-        elif self.is_semaphore:
-            yield
         else:
             raise Exception('Unhandled statement type: %s' % self)
 
@@ -859,6 +810,106 @@ class Statement(object):
 
         return True
 
+class ConditionBlock(object):
+    '''Represents a condition block statement.
+
+    The condition block is a collection of conditions and statements inside
+    those conditions. The structure mimics that of
+    pymake.parserdata.ConditionBlock. However, we provide some higher-level
+    APIs.'''
+
+    __slots__ = (
+        # Array of tuples of ( condition statement, [ statements ] )
+        'conditions',
+
+        # Underlying pymake.parserdata.ConditionBlock statement
+        'statement',
+    )
+
+    def __init__(self, statement):
+        assert(isinstance(statement, pymake.parserdata.ConditionBlock))
+
+        self.statement = statement
+        self.conditions = []
+
+        for condition, statements in statement:
+            self.conditions.append(
+                (Statement(condition), [Statement(s) for s in statements])
+            )
+
+    def __str__(self):
+        '''Convert the condition block back to its Makefile representation.'''
+        return '\n'.join(self.lines())
+
+    def __iter__(self):
+        return iter(self.conditions)
+
+    def __len__(self):
+        return len(self.conditions)
+
+    def __getitem__(self, i):
+        return self.conditions[i]
+
+    def lines(self):
+        '''Returns an iterable of str representing the Makefile of lines
+        composing this condition block.'''
+        i = 0
+        for condition, statements in self:
+            yield ConditionBlock.condition_str(condition, index)
+
+            for statement in statements:
+                yield str(statement)
+
+        yield 'endif'
+
+    @staticmethod
+    def condition_str(statement, index=None):
+        '''Convert a condition to a string representation.
+
+        The index argument defines the index of this condition inside a
+        condition block. If the index is greater than 0, an else will be
+        added to the representation.
+        '''
+
+        prefix = ''
+        if (statement.is_ifdef or statement.is_ifeq) and index > 0:
+            prefix = 'else '
+
+        if statement.is_ifdef:
+            s = statement.expansion_string
+
+            if statement.expected_condition:
+                return '%sifdef %s' % ( prefix, s )
+            else:
+                return '%sifndef %s' % ( prefix, s )
+
+        elif statement.is_ifeq:
+            s = ','.join([
+                Expansion.to_str(statement.statement.exp1).strip(),
+                Expansion.to_str(statement.statement.exp2).strip()
+            ])
+
+            if statement.expected_condition:
+                return '%sifeq (%s)' % ( prefix, s )
+            else:
+                return '%sifneq (%s)' % ( prefix, s )
+
+        elif statement.is_else:
+            return 'else'
+        else:
+            raise Exception('Unhandled condition type: %s' % statement.statement)
+
+    def evaluation_is_deterministic(self, variables=None,
+                                    missing_is_deterministic=True):
+        '''Returns whether evaluation of this condition block is determinstic.
+
+        Evaluation is considered deterministic if all conditions are
+        deterministic. Note that an else condition is always determinstic, so
+        for simple ifeq..else..end, if the ifeq is determinstic, the whole
+        thing is deterministic.
+        '''
+        pass
+
 class StatementCollection(object):
     '''Provides methods for interacting with PyMake's parser output.'''
 
@@ -877,7 +928,8 @@ class StatementCollection(object):
         # List of tuples describing ifdefs
         '_ifdefs',
 
-        # List of our normalized statements. Each element is a Statement.
+        # List of our normalized statements. Each element is a Statement or
+        # ConditionBlock.
         'statements',
 
         # Dictionary of variable names defined unconditionally. Keys are
@@ -1071,12 +1123,11 @@ class StatementCollection(object):
         run-time and that the state passed in is what will be there when the
         Makefile actually runs.
 
-        Even then, we still take a conservatime approach. Currently, we only
-        remove ifdefs. ifeq are not even evaluated for elimination.
+        The implementation of this function is still horribly naive. A more
+        appropriate solution would involve variable tainting, where any
+        detected modification in non-deterministic statements would taint
+        future references, making them also non-deterministic.
         '''
-
-        # TODO Implement this properly, with variable tainting, etc.
-        return
 
         variables = pymake.data.Variables()
 
@@ -1108,9 +1159,22 @@ class StatementCollection(object):
                     output.append(s)
                     continue
 
-                # Perform common actions when we arrive at a new conditional.
+                # Perform common actions when we arrive at a new test.
                 if s.is_ifdef or s.is_ifeq or s.is_else:
                     top = condition_block_stack[-1]
+
+                    # If any of the branches before it could not be evaluated,
+                    # it is futile for us to test because that would preclude
+                    # the earlier branches from having an opportunity to run.
+                    all_evaluated = True
+                    for t in top[0]:
+                        if t is None:
+                            all_evaluated = False
+                            break
+
+                    if not all_evaluated:
+                        output.append(s)
+                        continue
 
                     # If we have marked a branch as active, say we didn't
                     # evaluate the current one and move on.
@@ -1135,6 +1199,13 @@ class StatementCollection(object):
 
                 elif s.is_ifeq:
                     top = condition_block_stack[-1]
+
+                    # We don't go down this rabbit hole right now. The code is
+                    # here, but it doesn't work properly. So, we just ignore
+                    # ifeq's.
+                    top[0].append(None)
+                    output.append(s)
+                    continue
 
                     # ifeq's are a little more complicated than ifdefs. The details
                     # are buried in called methods. The gist is we see if the
@@ -1202,7 +1273,8 @@ class StatementCollection(object):
                     # need to find the start of this conditional block.
                     start_index = None
                     for i in range(len(output)-1, 0, -1):
-                        if output[i].is_condition_block:
+                        s2 = output[i]
+                        if s2.is_condition_block and s2.level == s.level:
                             start_index = i
                             break
 
@@ -1212,21 +1284,50 @@ class StatementCollection(object):
                     replay = output[start_index + 1:]
                     del output[start_index:]
 
-                    for s in replay:
-                        # Don't include statements for non-taken branches.
-                        if s.condition_index != active_branch:
+                    while len(replay) > 0:
+                        replay_current = replay[0]
+
+                        # Nested condition blocks get lifted wholesale
+                        if replay_current.is_condition_block:
+                            count = 1
+                            for s2 in replay[1:]:
+                                count += 1
+
+                                if s2.is_condition_block_end:
+                                    break
+
+                            output.extend(replay[0:count])
+                            del replay[0:count]
+                            print 'LIFTED CONDITION BLOCK: %s' % count
                             continue
 
-                        # Remove the condition statements, as they
-                        # have no meaning now.
-                        if s.is_condition or s.is_condition_end:
+                        assert(replay_current.is_condition)
+                        assert(replay_current.condition_index is not None)
+
+                        # If we are at a branch we didn't take, filter it out.
+                        if replay_current.condition_index != active_branch:
+                            count = 1
+                            for s2 in replay[1:]:
+                                count += 1
+
+                                if s2.is_condition_end:
+                                    break
+
+                            assert(count > 1)
+                            del replay[0:count]
                             continue
 
-                        # Rewrite condition info
-                        s.condition_index = None
-                        s.level -= 2
+                        # We must be in the active branch. The current
+                        # statement, the condition, can be filtered. The
+                        # last should should be an end condition as well. But,
+                        # we verify that, just to be sure.
+                        assert(replay[-1].is_condition_end)
 
-                        output.append(s)
+                        for s2 in replay[1:-1]:
+                            s2.level -= 2
+                            output.append(s2)
+
+                        del replay[:]
 
                     continue
 
@@ -1245,46 +1346,13 @@ class StatementCollection(object):
     def _load_raw_statements(self, statements):
         '''Loads PyMake's parser output into this container.'''
 
-        # This converts PyMake statements into our internal representation.
-        # We add a nested level marker to each statement. We also expand
-        # ConditionBlocks and add semaphore statements to aid with analysis
-        # later.
-        def examine(stmts, level):
-            for statement in stmts:
-                # ConditionBlocks are composed of statement blocks.
-                # Each group inside a condition block consists of a condition
-                # and a set of statements to be executed when that condition
-                # is satisfied.
-                if isinstance(statement, pymake.parserdata.ConditionBlock):
-                    yield Statement(statement, level=level)
+        self.statements = []
 
-                    index = 0
-                    for condition, l in statement:
-                        yield Statement(condition, level + 1, condition_index=index)
-
-                        # Recursively add these conditional statements at the
-                        # next level.
-                        for s in examine(l, level + 2):
-                            yield s
-
-                        name = None
-                        if isinstance(condition, pymake.parserdata.IfdefCondition):
-                            name = 'EndDefCondition'
-                        elif isinstance(condition, pymake.parserdata.EqCondition):
-                            name = 'EndEqCondition'
-                        elif isinstance(condition, pymake.parserdata.ElseCondition):
-                            name = 'EndElseCondition'
-                        else:
-                            raise Exception('Unhandled condition type: %s' % condition)
-
-                        yield Statement(name, level + 1, condition_index=index)
-                        index += 1
-
-                    yield Statement('EndConditionBlock', level)
-                else:
-                    yield Statement(statement, level)
-
-        self.statements = [s for s in examine(statements, 0)]
+        for statement in statements:
+            if isinstance(statement, pymake.parserdata.ConditionBlock):
+                self.statements.append(ConditionBlock(statement))
+            else:
+                self.statements.append(Statement(statement)
 
 class Makefile(object):
     '''A high-level API for a Makefile.
