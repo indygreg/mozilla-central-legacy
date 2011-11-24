@@ -87,6 +87,9 @@ class MakefileCritic(Critic):
 
     TODO ensure the various flag variables are either '1' or not defined
     (FORCE_SHARED_LIB, GRE_MODULE, etc)
+
+    TODO someone on PyMake said only srcdir and topsrcdir should be valid
+    substitutions
     '''
     CRITIC_ERROR = ( 'CRITIC_ERROR', Critic.HARSH )
     UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE = ( 'UNDERSCORE_PREFIXED_UPPERCASE_VARIABLE', Critic.STERN )
