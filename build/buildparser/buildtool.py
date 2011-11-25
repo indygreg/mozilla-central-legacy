@@ -69,16 +69,16 @@ class BuildTool(object):
 
     USAGE = """%(prog)s action [arguments]
 
-    This program is your main control point for interfacing with the Mozilla build
-    system.
+This program is your main control point for the Mozilla build
+system.
 
-    To perform an action, specify it as the first argument to the command. Some
-    common actions are:
+To perform an action, specify it as the first argument to the command. Some
+common actions are:
 
-      %(prog)s build       Build the source tree.
-      %(prog)s settings    Launch a wizard to guide you through build setup.
-      %(prog)s help        Show additional command information.
-    """
+  %(prog)s build         Build the source tree.
+  %(prog)s settings      Launch a wizard to guide you through build setup.
+  %(prog)s help          Show full help.
+"""
 
     __slots__ = (
         'cwd',
@@ -93,8 +93,16 @@ class BuildTool(object):
 
     def run(self, argv):
         parser = self.get_argument_parser()
-        args = parser.parse_args(argv)
 
+        if len(argv) == 0:
+            parser.usage = BuildTool.USAGE
+            parser.print_usage()
+            return 0
+        elif argv[0] == 'help':
+            parser.print_help()
+            return 0
+
+        args = parser.parse_args(argv)
         start_time = time.time()
 
         settings_file = self.get_settings_file(args)
@@ -103,8 +111,11 @@ class BuildTool(object):
         if args.logfile:
             forensic_handle = args.logfile
 
-        def action_callback(action, params, formatter,
-                                               important=False, error=False):
+        verbose = args.verbose
+        print_json = args.print_json
+
+        def action_callback(action, params, formatter, important=False,
+                            error=False):
             """Our logging/reporting callback. It takes an enumerated string
             action, a dictionary of parameters describing that action, a
             formatting string for producing human readable text of that event,
@@ -120,8 +131,8 @@ class BuildTool(object):
                 json.dump(json_obj, forensic_handle)
                 print >>forensic_handle, ''
 
-            if args.verbose or important or error:
-                if args.print_json:
+            if verbose or important or error:
+                if print_json:
                     json.dump(json_obj, sys.stderr)
                 else:
                     print >>sys.stderr, '%4.2f %s' % ( elapsed, formatter.format(**params) )
@@ -181,42 +192,52 @@ class BuildTool(object):
     def wipe(self, bs):
         bs.wipe()
 
-    # TODO convert makefile actions to methods
-    ## The debug and power user options take precedence over explicit actions.
-    #if options.print_makefile_statements is not None:
-    #    statements = pymake.parser.parsefile(options.print_makefile_statements)
-    #    statements.dump(sys.stdout, '')
-    #    other_action_taken = True
-    #
-    #if options.print_statement_collection is not None:
-    #    statements = buildparser.makefile.StatementCollection(
-    #        filename=options.print_statement_collection)
-    #
-    #    for statement in statements.statements:
-    #        print statement.debug_str
-    #
-    #    other_action_taken = True
-    #
-    #if options.print_reformatted_statements is not None:
-    #    statements = buildparser.makefile.StatementCollection(
-    #        filename=options.print_reformatted_statements)
-    #
-    #    for line in statements.lines:
-    #        print line
-    #
-    #    other_action_taken = True
-    #
-    #if options.print_pruned_makefile is not None:
-    #    statements = buildparser.makefile.StatementCollection(
-    #        filename=options.print_pruned_makefile
-    #    )
-    #
-    #    statements.strip_false_conditionals()
-    #
-    #    for line in statements.lines:
-    #        print line
-    #
-    #    other_action_taken = True
+    def format_makefile(self, bs, format, filename=None, input=None, output=None):
+        """Format Makefiles different ways.
+
+        Arguments:
+
+        format -- How to format the Makefile. Can be one of (raw, pymake,
+                  substitute, reformat, stripped)
+        filename -- Name of file being read from.
+        input -- File handle to read Makefile content from.
+        output -- File handle to write output to. Defaults to stdout.
+
+        """
+        if output is None:
+            output = sys.stdout
+
+        if filename is None and not input:
+            raise Exception('No input file handle given.')
+
+        if filename is not None and input is None:
+            input = open(filename, 'rb')
+        elif filename is None:
+            filename = 'FILE_HANDLE'
+
+        if format == 'raw':
+            print >>output, input.read()
+
+        elif format == 'pymake':
+            statements = pymake.parser.parsestring(input.read(), filename)
+            statements.dump(output, '')
+
+        elif format == 'reformat':
+            statements = makefile.StatementCollection(buf=input.read(),
+                                                      filename=filename)
+            for line in statements.lines():
+                print >>output, line
+
+        elif format == 'stripped':
+            statements = makefile.StatementCollection(buf=input.read(),
+                                                      filename=filename)
+            statements.strip_false_conditionals()
+
+            for line in statements.lines():
+                print >>output, line
+
+        else:
+            raise Exception('Unsupported format type: %' % format)
 
     def get_settings_file(self, args):
         """Get the settings file for the current environment.
@@ -239,7 +260,7 @@ class BuildTool(object):
     def get_argument_parser(self):
         """Returns an argument parser for the command-line interface."""
 
-        parser = argparse.ArgumentParser(usage=BuildTool.USAGE)
+        parser = argparse.ArgumentParser()
 
         # Add global arguments
         global_parser = argparse.ArgumentParser(add_help=False)
@@ -297,16 +318,14 @@ class BuildTool(object):
         action_format_makefile = subparser.add_parser('format-makefile',
                                                       help=BuildTool.ACTIONS['format-makefile'])
 
-        action_format_makefile.set_defaults(method='makefile_format')
-        action_format_makefile.add_argument('filename',
-                                            metavar='FILENAME',
-                                            type=argparse.FileType('r'),
-                                            help='Makefile to parse.')
-
-        format_choices = set(['raw', 'pymake', 'substitute', 'reformat', 'prune'])
+        action_format_makefile.set_defaults(method='format_makefile')
+        format_choices = set(['raw', 'pymake', 'substitute', 'reformat', 'stripped'])
         action_format_makefile.add_argument('format', default='raw',
                                             choices=format_choices,
                                             help='How to format the Makefile')
+        action_format_makefile.add_argument('filename',
+                                            metavar='FILENAME',
+                                            help='Makefile to parse.')
 
         action_makefiles = subparser.add_parser('makefiles',
                                                 help=BuildTool.ACTIONS['makefiles'])
