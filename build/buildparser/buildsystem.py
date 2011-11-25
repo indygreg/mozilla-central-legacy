@@ -42,6 +42,7 @@ from . import makefile
 
 import hashlib
 import os.path
+import subprocess
 
 class BuildSystem(object):
     """High-level interface to the build system."""
@@ -154,7 +155,10 @@ class BuildSystem(object):
             )
 
             statements = makefile.StatementCollection(filename=filename)
-            statements.strip_false_conditionals()
+
+            # We evaluate ifeq's because the config files /should/ be
+            # static. We don't rewrite these, so there is little risk.
+            statements.strip_false_conditionals(evaluate_ifeq=True)
 
             for statement, conditions, name, value, type in statements.variable_assigments():
                 if len(conditions):

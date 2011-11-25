@@ -60,7 +60,7 @@ class BuildTool(object):
         'build': 'Performs all steps necessary to perform a build.',
         'bxr': 'Generate Build Cross Reference HTML file describing the build system.',
         'configure': 'Run autoconf and ensure your build environment is proper.',
-        'format-makefile': 'Print a make file (re)formatted.',
+        'format-makefile': 'Print a makefile (re)formatted.',
         'help': 'Show full help documentation.',
         'makefiles': 'Generate Makefiles to build the project.',
         'settings': 'Sets up your build settings.',
@@ -176,12 +176,17 @@ common actions are:
     def build(self, bs):
         bs.build()
 
-    def bxr(self, bs, output_filename):
+    def bxr(self, bs, output):
+        """Generate BXR.
+
+        Arguments:
+
+          output -- File object to write output to.
+        """
         # We lazy import because we don't want a dependency on Mako. If that
-        # package is every included with the source tree, we can change this.
+        # package is every included with the source tree.
         from . import bxr
-        with open(output_filename, 'wb') as fh:
-            buildparser.bxr.generate_bxr(config, fh)
+        bxr.generate_bxr(bs.config, output)
 
     def configure(self, bs):
         bs.configure()

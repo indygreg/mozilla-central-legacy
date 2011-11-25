@@ -43,7 +43,6 @@ from . import makefile
 
 import os
 import os.path
-import subprocess
 import sys
 import traceback
 import xpidl
@@ -78,7 +77,7 @@ class MozillaMakefile(makefile.Makefile):
     UNUSED_VARIABLES = []
 
     def __init__(self, filename):
-        Makefile.__init__(self, filename)
+        makefile.Makefile.__init__(self, filename)
 
         self.traits = None
 
