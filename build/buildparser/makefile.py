@@ -163,7 +163,11 @@ class Expansion(object):
 
     def split(self):
         """Split this expansion into words and return the list."""
-        return str(self).split(' ')
+        s = str(self).strip()
+        if len(s) > 1:
+            return s.split(' ')
+        else:
+            return []
 
     @property
     def location(self):
@@ -776,6 +780,7 @@ class Statement(object):
 
         return Expansion(self.statement.patternexp)
 
+    @property
     def prerequisites(self):
         """The expansion for the rule prerequisites."""
         assert(self.is_rule or self.is_static_pattern_rule);
