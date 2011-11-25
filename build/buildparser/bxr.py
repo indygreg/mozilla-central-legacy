@@ -63,6 +63,7 @@ HTML_TEMPLATE = """
       <li><a href="#makefiles">Makefiles</a></li>
       <li><a href="#variables">Variables</a></li>
       <li><a href="#targets">Targets</a></li>
+      <li><a href="#commands">Commands</a></li>
     </ul>
     </section>
 
@@ -121,6 +122,7 @@ HTML_TEMPLATE = """
             <th>Doublecolon</th>
             <th>Prerequisites</th>
             <th>Conditions</th>
+            <th>Commands</th>
           </tr>
           % for rule in makefile['rules']:
             <tr>
@@ -135,7 +137,15 @@ HTML_TEMPLATE = """
                   <td>No</td>
               % endif
 
-              <td>${rule['prerequisites'] | h}</td>
+              <td>
+                % if len(rule['prerequisites']) > 0:
+                <ul>
+                  % for prereq in rule['prerequisites']:
+                    <li>${prereq | h}</li>
+                  % endfor
+                </ul>
+                % endif
+              </td>
 
               <td>
               % if len(rule['conditions']) > 0:
@@ -145,6 +155,12 @@ HTML_TEMPLATE = """
                 % endfor
                 </ul>
               % endif
+              </td>
+
+              <td>
+                % for command in rule['commands']:
+                  ${command.lstrip()}<br />
+                % endfor
               </td>
             </tr>
           % endfor
@@ -281,6 +297,31 @@ HTML_TEMPLATE = """
         % endfor
       </table>
     </section>
+
+    <section id="commands">
+      <h1>Commands</h1>
+      <table border="1">
+        <tr>
+          <th>Command</th>
+          <th>Makefile(s)</th>
+        </tr>
+        % for command in sorted(commands.keys()):
+          <% data = commands[command] %>
+          <tr>
+            <td>${command | h}</td>
+            <td>
+              % if len(data['used_paths']) > 0:
+                <ul>
+                  % for path in sorted(data['used_paths']):
+                    <li>${makefile_link(path)}</li>
+                  % endfor
+                </ul>
+              % endif
+            </td>
+          </tr>
+        % endfor
+      </table>
+    </section>
   </body>
 </html>
 
@@ -356,6 +397,7 @@ def generate_bxr(conf, fh):
     variables = {} # Name to dictionary of metadata
     targets = {}   # Expansion str to dictionary of metadata
     includes = {}  # Expansion str to list of tuples
+    commands = {}  # Expansion str to dictionary of metadata
 
     for m in bse.makefiles.makefiles():
         key = m.filename
@@ -380,13 +422,13 @@ def generate_bxr(conf, fh):
             vdata['set_paths'].add(key)
             variables[name] = vdata
 
-        for statement, conditions, target, prerequisites, commands in statements.rules():
+        for statement, conditions, target, prerequisites, cmds in statements.rules():
             target_str = str(target)
             metadata['rules'].append({
                 'target': target_str,
                 'conditions': [str(c) for c in conditions],
-                'prerequisites': str(prerequisites),
-                'commands': commands,
+                'prerequisites': prerequisites.split(),
+                'commands': [str(c) for c in cmds],
                 'line': statement.location.line,
                 'doublecolon': statement.has_doublecolon,
             })
@@ -402,13 +444,26 @@ def generate_bxr(conf, fh):
                 target_data['paths'].add(key)
                 targets[targ] = target_data
 
-        for statement, conditions, target, pattern, prerequisites, commands in statements.static_pattern_rules():
+            for command in cmds:
+                cmd = command.command_name
+                if cmd is not None:
+                    command_data = commands.get(cmd, None)
+                    if command_data is None:
+                        command_data = {
+                            'id': hashlib.sha1(cmd).hexdigest(),
+                            'used_paths': set(),
+                        }
+
+                    command_data['used_paths'].add(key)
+                    commands[cmd] = command_data
+
+        for statement, conditions, target, pattern, prerequisites, cmds in statements.static_pattern_rules():
             metadata['pattern_rules'].append((
                 str(target),
                 conditions,
                 str(pattern),
                 prerequisites,
-                commands
+                cmds
             ))
 
         for statement, conditions, path in statements.includes():
@@ -437,6 +492,7 @@ def generate_bxr(conf, fh):
             variables=variables,
             targets=targets,
             includes=includes,
+            commands=commands,
             variables_by_makefile_count=variables_by_file_count
         )
     except:
