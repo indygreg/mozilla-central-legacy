@@ -43,6 +43,7 @@ from . import makefile
 import hashlib
 import os.path
 import subprocess
+import traceback
 
 class BuildSystem(object):
     """High-level interface to the build system."""

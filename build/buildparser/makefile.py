@@ -592,7 +592,7 @@ class Statement(object):
                 Expansion.to_str(self.statement.depexp).strip()
             )).rstrip()
         elif self.is_vpath:
-            return 'vpath %s' % self.expansion_string
+            return 'vpath %s' % Expansion(self.statement.exp)
         else:
             raise Exception('Unhandled statement type: %s' % self.statement)
 
@@ -817,7 +817,7 @@ class Statement(object):
         if self.statement.targetexp is not None:
             return '%s: %s %s %s' % (
                     Expansion.to_str(self.statement.targetexp),
-                    self.vname_expansion_string,
+                    self.vname,
                     self.token,
                     value
                 )
@@ -1572,7 +1572,7 @@ class Makefile(object):
         """Returns a list of lines making up this file."""
 
         if self._statements:
-            for line in self._statements.lines:
+            for line in self._statements.lines():
                 yield line
         elif self._lines is not None:
             for line in self._lines:
