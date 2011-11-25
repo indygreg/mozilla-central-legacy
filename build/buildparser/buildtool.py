@@ -192,7 +192,8 @@ common actions are:
     def wipe(self, bs):
         bs.wipe()
 
-    def format_makefile(self, bs, format, filename=None, input=None, output=None):
+    def format_makefile(self, bs, format, filename=None, input=None,
+                        output=None, strip_ifeq=False):
         """Format Makefiles different ways.
 
         Arguments:
@@ -202,7 +203,8 @@ common actions are:
         filename -- Name of file being read from.
         input -- File handle to read Makefile content from.
         output -- File handle to write output to. Defaults to stdout.
-
+        strip_ifeq -- If True and format is stripped, try to evaluate ifeq
+                      conditions in addition to ifdef.
         """
         if output is None:
             output = sys.stdout
@@ -231,7 +233,7 @@ common actions are:
         elif format == 'stripped':
             statements = makefile.StatementCollection(buf=input.read(),
                                                       filename=filename)
-            statements.strip_false_conditionals()
+            statements.strip_false_conditionals(evaluate_ifeq=strip_ifeq)
 
             for line in statements.lines():
                 print >>output, line
@@ -326,6 +328,11 @@ common actions are:
         action_format_makefile.add_argument('filename',
                                             metavar='FILENAME',
                                             help='Makefile to parse.')
+        action_format_makefile.add_argument('--evaluate-ifeq',
+                                            default=False,
+                                            dest='strip_ifeq',
+                                            action='store_true',
+                                            help='Evaluate ifeq conditions.')
 
         action_makefiles = subparser.add_parser('makefiles',
                                                 help=BuildTool.ACTIONS['makefiles'])
