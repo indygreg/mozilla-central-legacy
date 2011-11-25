@@ -935,9 +935,16 @@ class ConditionBlock(Statement):
     def determine_condition(self, makefile, allow_nondeterministic=False):
         """Evaluate conditions in this block and determine which one executes.
 
-        Returns the index of the condition that evaluated to True or None
-        if a condition could not be determined. None will likely be returned
-        if a non-deterministic expansion is seen in a condition.
+        Possible return values:
+          int -- Index of the condition that evaluated to True.
+          None -- Unable to determine condition.
+          False -- The condition didn't evaluate to True.
+
+        False should only be returned on condition blocks consisting of one
+        condition.
+
+        None will likely be returned if a non-deterministic expansion is seen
+        in a condition.
 
         Arguments:
 
@@ -956,7 +963,10 @@ class ConditionBlock(Statement):
                 deterministic = condition.are_expansions_deterministic(makefile.variables)
 
                 if deterministic:
-                    return i
+                    if condition.statement.evaluate(makefile):
+                        return i
+                    else:
+                        continue
 
                 if not allow_nondeterministic:
                     return None
@@ -974,7 +984,8 @@ class ConditionBlock(Statement):
             else:
                 raise Exception('Unexpected condition type: %s' % type(condition.statement))
 
-        return None
+        assert(len(self) == 1)
+        return False
 
     @staticmethod
     def condition_str(statement, index=None):
@@ -1418,6 +1429,11 @@ class StatementCollection(object):
 
                 if branch is None:
                     i += 1
+                    continue
+
+                if branch is False:
+                    del self._statements[i]
+                    self._clear_caches()
                     continue
 
                 # We replace the condition block with the statements that
