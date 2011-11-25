@@ -971,10 +971,6 @@ class ConditionBlock(Statement):
                 if not allow_nondeterministic:
                     return None
 
-                # This is dangerous, but they asked for it.
-                if condition.statement.evaluate(makefile):
-                    return i
-
             # If we get to the else condition, all other branches must have
             # evaluated to False.
             elif condition.is_else:
