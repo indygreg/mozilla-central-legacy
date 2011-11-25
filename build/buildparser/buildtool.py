@@ -72,8 +72,8 @@ class BuildTool(object):
 This program is your main control point for the Mozilla build
 system.
 
-To perform an action, specify it as the first argument to the command. Some
-common actions are:
+To perform an action, specify it as the first argument. Here are some common
+actions:
 
   %(prog)s build         Build the source tree.
   %(prog)s settings      Launch a wizard to guide you through build setup.

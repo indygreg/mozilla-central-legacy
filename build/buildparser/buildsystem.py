@@ -41,17 +41,13 @@ from . import config
 from . import makefile
 
 import hashlib
+import os
 import os.path
 import subprocess
 import traceback
 
 class BuildSystem(object):
     """High-level interface to the build system."""
-
-    MANAGED_PATHS = (
-        'js/src',
-        'nsprpub',
-    )
 
     # Ideally no paths should be ignored, but alas.
     IGNORED_PATHS = (
@@ -262,27 +258,6 @@ class BuildSystem(object):
 
         self.refresh_state()
 
-    def _find_input_makefiles(self):
-        for root, dirs, files in os.walk(self.config.source_directory):
-            # Filter out object directories inside the source directory
-            if root[0:len(self.config.object_directory)] == self.config.object_directory:
-                continue
-
-            relative = root[len(self.config.source_directory)+1:]
-            ignored = False
-
-            for ignore in self.IGNORED_PATHS:
-                if relative[0:len(ignore)] == ignore:
-                    ignored = True
-                    break
-
-            if ignored:
-                continue
-
-            for name in files:
-                if name == 'Makefile.in':
-                    yield (relative, name)
-
     def generate_makefiles(self):
         """Generate Makefile's into configured object tree."""
 
@@ -305,7 +280,7 @@ class BuildSystem(object):
         # memory.
         statements_cache = {}
 
-        for (relative, path) in self._find_input_makefiles():
+        for (relative, path) in self.source_directory_template_files():
             try:
                 full = os.path.join(self.config.source_directory, relative, path)
 
@@ -411,13 +386,24 @@ class BuildSystem(object):
             lines = m.statements.lines
 
         with open(output_path, 'wb') as output:
-            for line in m.lines:
+            for line in m.lines():
                 print >>output, line
 
         self.run_callback(
             'generate_makefile_success',
             {'path': os.path.join(relative_path, out_basename)},
             'Generated Makefile {path}')
+
+    def source_directory_template_files(self):
+        """Obtain all template files from the source directory."""
+        for relative, filename, type in self.source_directory_build_files():
+            if type != self.BUILD_FILE_INPUT:
+                continue
+
+            if relative in self.IGNORED_PATHS:
+                continue
+
+            yield (relative, filename)
 
     def _get_autoconf_for_file(self, path):
         """Obtain an autoconf file for a relative path."""

@@ -12,19 +12,31 @@ To quickly get up to your knees in BS, grab this branch then run:
 
   $ ./build.py
 
-Or, if you'd rather see what you can do:
-
-  $ ./build.py --help
-
 Everything new on this tree is accessed through that one gateway script.
 
 Main Features
 =============
 
+Guiding Principles
+------------------
+
+Design and implementation decisions were influenced by the following principles
+in which I fervently believe:
+
+* Turn-key initial experience. Compiling Mozilla projects (or any project for
+  that matter) shouldn't require you to read pages of docs or consult anything
+  other than the README in the root of the source directory. One of my main
+  goals was to make this initial (and even on-going) experience as painless
+  as possible.
+
+* Everything is a library. All the new code is written inside Python modules.
+  Others should be able to hook into the core build APIs with minimal effort
+  and should be able to construct new and exciting tools on top of them.
+
 Unified Build Tool
 ------------------
 
-A new file, build.py, is introduced in the main source directory. This
+A new tool, build.py, is introduced in the main source directory. This
 file serves as a gateway to common build actions, including build
 configuration.
 
@@ -42,13 +54,20 @@ You launch build.py with an action you want to perform. Common actions are
 are executed automatically.
 
 The unified build tool also has nifty output formatting. By default, output is
-very silent, so you only see high-level logging to stdout. Even when you run
+very silent, so you only see high-level logging to stderr. Even when you run
 configure, you just see "starting configure" [wait 10 seconds] "Configure
 finished." Of course, you can turn on verbose mode to see everything. Each
 output line contains a relative timestamp from action start so you can see how
 long things are taking. There is also a forensic log mode which writes newline-
-delimited JSON objects describing each entry. This allows for easier machine
-consumption of logs without having to write a complicated parser.
+delimited JSON arrays. Each entry consists of a tuple of:
+
+  * UNIX time
+  * string action (strongly enumerated)
+  * Object with metadata describing action
+
+This makes parsing much, much easier since data is strongly typed. You just
+need to write a switch statement keyed off the action for each entry. RelEng
+should love this.
 
 Derecursified Makefile Generation
 ---------------------------------
@@ -67,7 +86,7 @@ To help see how the build system is configured without having to grok
 Makefiles, BXR is introduced. BXR takes metadata from the build system and
 formats it to HTML.
 
-Run BXR through build.py:
+Generate the BXR file through build.py:
 
   $ ./build.py bxr
 
@@ -89,6 +108,11 @@ Changes to Existing Files
 configure.in's were updated to allow optional suppression of Makefile.in
 conversion. Build Splendid can perform this conversion itself. The change
 should be transparent to people on the old system.
+
+A very small modification was made to PyMake to enable non-PyMake classes to
+be fed into variable/expansion resolution. This was required because I needed
+a way to resolve variables without instantiating a full-blown
+pymake.data.Makefile instance.
 
 Technical Details
 =================
@@ -186,13 +210,13 @@ When can this get checked in?
 -----------------------------
 
 I don't know. It is a lot of code that needs to be reviewed. And, some test
-code likely needs written. Since it can safely exist side-by-side with the
-existing build system, I'm hoping that lowers the barrier to checkin and leads
-to more users to find and help squash bugs. Maybe this will require moving
+code needs written. Since it can safely exist side-by-side with the existing
+build system, I'm hoping that lowers the barrier to checkin and leads
+to "beta availability" or similar. Maybe this will require moving
 things like build.py out of the root directory. I'm cool with that.
 
-Why did you reinvent parts of PyMake?
--------------------------------------
+Why did you reinvent parts of Makefile processing?
+--------------------------------------------------
 
 There is a lot of code doing make/pymake-like things, but I didn't modify the
 PyMake core classes. The main reason I did this was I wanted to avoid making
@@ -203,8 +227,8 @@ are unsuitable for consumption as a library. The data model is tightly
 coupled with the execution model of make. This won't work for my needs since
 I need to use PyMake as a parsing library. Fortunately, PyMake loosely coupled
 its parser from its higher-level API. Most of the work I've done is
-interfacing with PyMake's parser-level API. Since it is so low level,
-some reinvention was bound to happen.
+interfacing with PyMake's parser-level API. Where possible, I've called into
+existing PyMake functions to perform grunt work.
 
 You Didn't Do X Properly!
 -------------------------

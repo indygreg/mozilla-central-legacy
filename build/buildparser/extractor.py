@@ -34,8 +34,8 @@
 #
 # ***** END LICENSE BLOCK *****
 
-# This file contains classes and methods used to extract metadata from the
-# Mozilla build system.
+# This file contains classes used to extract metadata from the Mozilla build
+# system.
 
 from . import config
 from . import data
@@ -48,7 +48,10 @@ import traceback
 import xpidl
 
 class MozillaMakefile(makefile.Makefile):
-    """A Makefile with knowledge of Mozilla's build system."""
+    """A Makefile with knowledge of Mozilla's build system.
+
+    This is the class used to extract metadata from the Makefiles.
+    """
 
     """Traits that can identify a Makefile"""
     MODULE       = 1
@@ -385,6 +388,215 @@ class MozillaMakefile(makefile.Makefile):
         yield tracker
         yield misc
 
+class MakefileCollection(object):
+    """Holds APIs for interacting with multiple Makefiles.
+
+    This is a convenience class so all methods interacting with sets of
+    Makefiles reside in one location.
+    """
+    __slots__ = (
+        # Set of paths to all the Makefiles.
+        'all_paths',
+
+        'source_directory',
+        'object_directory',
+
+        # Dictionary of paths to makefile.Makefile instances (cache)
+        '_makefiles',
+    )
+
+    def __init__(self, source_directory, object_directory):
+        assert(os.path.isabs(source_directory))
+        assert(os.path.isabs(object_directory))
+
+        self.source_directory = source_directory
+        self.object_directory = object_directory
+
+        self.all_paths = set()
+        self._makefiles = {}
+
+    def add(self, path):
+        """Adds a Makefile at a path to this collection."""
+        self.all_paths.add(path)
+
+    def makefiles(self):
+        """A generator for Makefile instances from the configured paths.
+
+        Returns instances of makefile.Makefile.
+        """
+        for path in sorted(self.all_paths):
+            m = self._makefiles.get(path, None)
+            if m is None:
+                m = makefile.Makefile(path)
+                self._makefiles[path] = m
+
+            yield m
+
+    def includes(self):
+        """Obtain information about all the includes in the Makefiles.
+
+        This is a generator of tuples. Eah tuple has the items:
+
+          ( makefile, statement, conditions, path )
+        """
+        for m in self.makefiles():
+            for statement, conditions, path in m.statements.includes():
+                yield (m, statement, conditions, path)
+
+    def variable_assignments(self):
+        """A generator of variable assignments.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, name, value, type )
+        """
+        for m in self.makefiles():
+            for statement, conditions, name, value, type in m.statements.variable_assignments():
+                yield (makefile, statement, conditions, name, value, type)
+
+    def rules(self):
+        """A generator for rules in all the Makefiles.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, target, prerequisite, commands )
+        """
+        for m in self.makefiles():
+            for statement, conditions, target, prerequisites, commands in m.statements.rules():
+                yield (makefile, statement, conditions, target, prerequisites, commands)
+
+    def static_pattern_rules(self):
+        """A generator for static pattern rules in all the Makefiles.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, target, pattern, prerequisite, commands )
+        """
+        for m in self.makefiles():
+            for statement, conditions, target, pattern, prerequisites, commands in m.statements.rules():
+                yield (makefile, statement, conditions, target, pattern, prerequisites, commands)
+
+class BuildSystemExtractor(object):
+    """The entity that extracts information from the build system.
+
+    This is the thing that turns Makefiles and other signals into data
+    structures. If you are looking for the core of the build system, you've
+    found it!
+    """
+
+    BUILD_FILE_INPUT = 1
+    BUILD_FILE_MAKEFILE = 2
+    BUILD_FILE_MK = 3
+
+    # These relative paths are not managed by us, so we can ignore them
+    EXTERNALLY_MANAGED_PATHS = (
+        'js/src',
+        'nsprpub',
+    )
+
+    __slots__ = (
+        # BuildConfig instance
+        'config',
+
+        # MakefileCollection for the currently loaded Makefiles
+        'makefiles',
+    )
+
+    def __init__(self, conf):
+        assert(isinstance(conf, config.BuildConfig))
+
+        self.config = conf
+        self.makefiles = MakefileCollection(conf.source_directory, conf.object_directory)
+
+    def load_all_object_directory_makefiles(self):
+        """Convenience method to load all Makefiles in the object directory.
+
+        This pulls in *all* the Makefiles. You probably want to pull in a
+        limited set instead.
+        """
+        for reldir, name, type in self.object_directory_build_files():
+            if type != self.BUILD_FILE_MAKEFILE:
+                continue
+
+            path = os.path.join(self.config.object_directory, reldir, name)
+            self.makefiles.add(path)
+
+    def source_directory_build_files(self):
+        """Obtain all build files in the source directory."""
+        it = BuildSystemExtractor.get_build_files_in_tree(
+            self.config.source_directory,
+            ignore_full=[self.config.object_directory]
+        )
+        for t in it: yield t
+
+    def object_directory_build_files(self):
+        """Obtain all build files in the object directory."""
+        it = BuildSystemExtractor.get_build_files_in_tree(self.config.object_directory)
+        for t in it: yield t
+
+    def relevant_makefiles(self):
+        """Obtains the set of relevant Makefiles for the current build
+        configuration.
+
+        This looks at the various DIRs variables and assembles the set of
+        consulted Makefiles.
+        """
+        pass
+
+    @staticmethod
+    def get_build_files_in_tree(path, ignore_relative=None, ignore_full=None):
+        """Find all build files in the directory tree under the given path.
+
+        This is a generator of tuples. Each tuple is of the form:
+
+          ( reldir, filename, type )
+
+        Where reldir is the relative directory from the path argument,
+        filename is the str of the build filename, and type is a
+        BuildSystemExtractor.BUILD_FILE_* constant.
+
+        Arguments:
+
+          path - Path to directory to recurse.
+          ignore_relative - Iterable of relative directory names to ignore.
+          ignore_full - Iterable of full paths to ignore.
+        """
+        assert(os.path.isabs(path))
+
+        if ignore_relative is None:
+            ignore_relative = []
+
+        if ignore_full is None:
+            ignore_full = []
+
+        for root, dirs, files in os.walk(path):
+            relative = root[len(path)+1:]
+
+            # Filter out ignored directories
+            ignored = False
+            for ignore in ignore_relative:
+                if relative.find(ignore) == 0:
+                    ignored = True
+                    break
+
+            if ignored:
+                continue
+
+            for ignore in ignore_full:
+                if root.find(ignore) == 0:
+                    ignored = True
+                    break
+
+            if ignored:
+                continue
+
+            for name in files:
+                if name[-3:] == '.in':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_INPUT)
+                elif name == 'Makefile':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_MAKEFILE)
+                elif name[-3:] == '.mk':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_MK)
 
 class ObjectDirectoryParser(object):
     """A parser for an object directory.
@@ -420,31 +632,6 @@ class ObjectDirectoryParser(object):
 
         'tree', # The parsed build tree
     )
-
-    # Some directories cause PyMake to lose its mind when parsing. This is
-    # likely due to a poorly configured PyMake environment. For now, we just
-    # skip over these.
-    # TODO support all directories.
-    IGNORE_DIRECTORIES = [os.path.normpath(f) for f in [
-        'accessible/src/atk', # non-Linux
-        'build/win32',        # non-Linux
-        'browser/app',
-        'browser/installer',
-        'browser/locales',   # $(shell) in global scope
-        'js',
-        'modules',
-        'nsprpub',
-        #'security/manager',
-        'toolkit/content',
-        'toolkit/xre',
-        #'widget',
-        'xpcom/reflect/xptcall',
-    ]]
-
-    SOURCE_DIR_MAKEFILES = [
-        'config/config.mk',
-        'config/rules.mk',
-    ]
 
     def __init__(self, directory):
         """Construct an instance from a directory.

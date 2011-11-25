@@ -36,9 +36,12 @@
 
 # This file contains classes for interacting with Makefiles. There are a number
 # of classes that wrap PyMake's classes with useful APIs. This functionality
-# could likely be merged into PyMake if there is support for doing that. It was
+# could likely be merged into PyMake if there is desire for doing that. It was
 # developed outside of PyMake so development wouldn't be dependent on changes
 # being merged into PyMake.
+#
+# None of the functionality in this file should be Mozilla-specific. It should
+# be reusable for any Makefile.
 
 from . import data
 
@@ -157,6 +160,10 @@ class Expansion(object):
 
     def __str__(self):
         return Expansion.to_str(self.expansion)
+
+    def split(self):
+        """Split this expansion into words and return the list."""
+        return str(self).split(' ')
 
     @property
     def location(self):
@@ -569,7 +576,7 @@ class Statement(object):
         if self.is_command:
             return self.command_string
         elif self.is_condition:
-            return self.condition_str()
+            return ConditionBlock.condition_str(self)
         elif self.is_empty_directive:
             return str(Expansion(self.statement.exp))
         elif self.is_export:
@@ -792,6 +799,13 @@ class Statement(object):
         assert(self.is_ifeq or self.is_ifdef)
 
         return self.statement.expected
+
+    @property
+    def required(self):
+        """Whether the statement is required."""
+        assert(self.is_include)
+
+        return self.statement.required
 
     @property
     def token(self):
@@ -1202,11 +1216,11 @@ class StatementCollection(object):
         """
         for statement, conditions in self.expanded_statements():
             if not statement.is_include:
-                pass
+                continue
 
-            yield (statement, conditions, statement.expansions[0])
+            yield (statement, conditions, list(statement.expansions)[0])
 
-    def variable_assigments(self):
+    def variable_assignments(self):
         """A generator of variable assignments.
 
         Each returned item is a tuple of:
@@ -1259,12 +1273,12 @@ class StatementCollection(object):
 
             yield (t[0], t[2], t[3], t[4])
 
-    def rules(self):
-        """A generator for rules in this instance.
+    def all_rules(self):
+        """A generator for all rules in this instance.
 
         Each returned item is a tuple of:
 
-            ( statement, conditions, target, prerequisite, commands )
+          ( statement, conditions, target, prerequisites, commands, pattern )
 
         statement is the underlying Statement instance and conditions is the
         list of conditions that must be satisfied for this rule to be
@@ -1275,33 +1289,56 @@ class StatementCollection(object):
         rule. Finally, we have commands, which is a list of the command
         Statement instances that will be evaluated for this rule.
 
-        Please note this only returns regular rules and not static pattern
-        rules.
+        If the rule is a regular rule, pattern will be None. If the rule is a
+        static pattern rule, it will be an expansions.
         """
 
         # Commands are associated with rules until another rule comes along.
         # So, we keep track of the current rule and add commands to it as we
         # encounter commands. When we see a new rule, we flush the last rule.
         # When we're done, if we have a rule, we flush it.
-
         current_rule = None
         for statement, conditions in self.expanded_statements():
-            if statement.is_rule:
+            if statement.is_rule or statement.is_static_pattern_rule:
                 if current_rule:
                     yield current_rule
 
+            if statement.is_rule:
                 current_rule = (statement,
                                 conditions,
                                 statement.target,
                                 statement.prerequisites,
-                                [])
-
+                                [],
+                                None)
+            elif statement.is_static_pattern_rule:
+                current_rule = (statement,
+                                conditions,
+                                statement.target,
+                                statement.prerequisites,
+                                [],
+                                statement.pattern)
             elif statement.is_command:
-                assert(current_rule is None)
+                assert(current_rule is not None)
                 current_rule[4].append(statement)
 
         if current_rule is not None:
             yield current_rule
+
+    def rules(self):
+        """A generator for rules in this instance.
+
+        Each returned item is a tuple of:
+
+            ( statement, conditions, target, prerequisite, commands )
+
+        Please note this only returns regular rules and not static pattern
+        rules.
+        """
+        for t in self.all_rules():
+            if t[5] is not None:
+                continue
+
+            yield (t[0], t[1], t[2], t[3], t[4])
 
     def static_pattern_rules(self):
         """A generator for static pattern rules.
@@ -1312,23 +1349,11 @@ class StatementCollection(object):
         The values have the same meaning as those in rule(). However, we have
         added pattern, which is an Expansion of the pattern for the rule.
         """
-        current_rule = None
-        for statement, conditions in self.expanded_statements():
-            if statement.is_static_pattern_rule:
-                if current_rule:
-                    yield current_rule
+        for t in self.all_rules():
+            if t[5] is None:
+                continue
 
-                current_rule = (statement,
-                                conditions,
-                                statement.target,
-                                statement.pattern,
-                                statement.prerequisites,
-                                [])
-            elif statement.is_command:
-                current_rule[5].append(statement)
-
-        if current_rule is not None:
-            yield current_rule
+            yield t
 
     # Here is where we start defining more esoteric methods dealing with static
     # analysis and modification.
@@ -1567,7 +1592,6 @@ class Makefile(object):
 
         return self._makefile
 
-    @property
     def lines(self):
         """Returns a list of lines making up this file."""
 
@@ -1679,25 +1703,3 @@ class Makefile(object):
             return []
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
-
-    def get_own_variable_names(self, include_conditionals=True):
-        """Returns a set of variable names defined by the Makefile itself.
-
-        include_conditionals can be used to filter out variables defined inside
-        a conditional (e.g. #ifdef). By default, all variables are returned,
-        even the ones inside conditionals that may not be evaluated.
-        """
-        names = set()
-
-        for ( name, value, token, is_conditional, location ) in self.statements.variable_assignments:
-            if is_conditional and not include_conditionals:
-                continue
-
-            names.add(name)
-
-        return names
-
-    def has_own_variable(self, name, include_conditionals=True):
-        """Returns whether the specified variable is defined in the Makefile
-        itself (as opposed to being defined in an included file."""
-        return name in self.get_own_variable_names(include_conditionals)

@@ -40,10 +40,13 @@
 from . import config
 from . import extractor
 
+import hashlib
 import mako
 import mako.template
 import uuid
 
+# This is our mako HTML template. Scroll down to see which variables are
+# available.
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -54,13 +57,17 @@ HTML_TEMPLATE = """
     <h1>Build Cross Reference</h1>
     <p>This document contains information about the build system.</p>
 
-    <h2>Index</h2>
+    <section id="index">
+    <h1>Index</h1>
     <ul>
       <li><a href="#makefiles">Makefiles</a></li>
       <li><a href="#variables">Variables</a></li>
+      <li><a href="#targets">Targets</a></li>
     </ul>
+    </section>
 
-    <h1 id="makefiles">Makefiles</h1>
+    <section id="makefiles">
+    <h1>Makefiles</h1>
     <p>This section documents the various Makefiles which were consulted to
     build this page.</p>
 
@@ -70,7 +77,7 @@ HTML_TEMPLATE = """
         <th>Relevant</th>
         <th>Success</th>
       </tr>
-      % for path in sorted(makefile_paths):
+      % for path in sorted(makefiles.keys()):
         <tr>
           <td>${makefile_link(path)}</td>
           <td>${makefile_relevant(path)}</td>
@@ -87,7 +94,7 @@ HTML_TEMPLATE = """
         <th>Path</th>
         <th>Count</th>
       </tr>
-      % for path, v in included_files.iteritems():
+      % for path, v in includes.iteritems():
         <tr>
           <td>${path | h}</td>
           <td>${len(v)}</td>
@@ -98,15 +105,16 @@ HTML_TEMPLATE = """
     <h2>Makefile Info</h2>
     <p>This section contains detailed information on every Makefile.</p>
 
-    % for path in sorted(makefile_paths):
-      <div id="${makefile_ids[path]}" class="makefile">
+    % for path in sorted(makefiles.keys()):
+      <% makefile = makefiles[path] %>
+      <div id="${makefile['id']}" class="makefile">
         <h4>${makefile_path(path) | h}</h4>
         <div>
           <strong>Source</strong>:
           <a href="${makefile_repo_link(path, 'hg') | h}">Mercurial</a>,
           <a href="${makefile_repo_link(path, 'github') | h}">GitHub</a>
         </div>
-        % if len(makefile_rules[path]) > 0:
+        % if len(makefile['rules']) > 0:
         <table border="1">
           <tr>
             <th>Target Name(s)</th>
@@ -114,14 +122,9 @@ HTML_TEMPLATE = """
             <th>Prerequisites</th>
             <th>Conditions</th>
           </tr>
-          % for rule in makefile_rules[path]:
+          % for rule in makefile['rules']:
             <tr>
-              <td><ul>
-              % for target in rule['targets']:
-                <li>${target | h}</li>
-              % endfor
-              </ul>
-
+              <td>${rule['target'] | h}
               <a href="${makefile_repo_link(path, 'hg', rule['line']) | h}">HG</a> |
               <a href="${makefile_repo_link(path, 'github', rule['line']) | h}">GitHub</a>
               </td>
@@ -132,20 +135,12 @@ HTML_TEMPLATE = """
                   <td>No</td>
               % endif
 
-              <td>
-              % if len(rule['prerequisites']) > 0:
-                <ul>
-                % for prereq in rule['prerequisites']:
-                  <li>${prereq | h}</li>
-                % endfor
-                </ul>
-              % endif
-              </td>
+              <td>${rule['prerequisites'] | h}</td>
 
               <td>
-              % if len(rule['condition_strings']) > 0:
+              % if len(rule['conditions']) > 0:
                 <ul>
-                % for c in rule['condition_strings']:
+                % for c in rule['conditions']:
                   <li>${c | h}</li>
                 % endfor
                 </ul>
@@ -157,8 +152,10 @@ HTML_TEMPLATE = """
         % endif
       </div>
     % endfor
+    </section>
 
-    <h1 id="variables">Variables</h1>
+    <section id="variables">
+    <h1>Variables</h1>
 
     <h2>Variable List</h2>
     <p>The master list of all variables follows. These variables can appear in
@@ -170,16 +167,18 @@ HTML_TEMPLATE = """
         <th>Makefile Count</th>
         <th>Used as Conditional</th>
       </tr>
-      % for variable in sorted(variables.keys()):
+      % for name in sorted(variables.keys()):
+        <% variable = variables[name] %>
         <tr>
-          <td><a href="#${variable_ids[variable]}">${variable | h}</a></td>
-          <td>${len(variables[variable]['paths'])}</td>
+          <td><a href="#${variable['id']}">${name | h}</a></td>
+          <td>${len(variable['set_paths'])}</td>
           <td>
-          % if variable in ifdef_variables:
-            <strong>Yes</strong>
-          % else:
-            No
-          % endif
+          ?
+          ##% if variable in ifdef_variables:
+          ##  <strong>Yes</strong>
+          ##% else:
+          ##  No
+          ##% endif
           </td>
         </tr>
       % endfor
@@ -195,7 +194,7 @@ HTML_TEMPLATE = """
       </tr>
       % for k, v in variables_by_makefile_count:
         <tr>
-          <td><a href="#${variable_ids[k]}">${k | h}</a></td>
+          <td><a href="#${variables[k]['id']}">${k | h}</a></td>
           <td>${v}</td>
         </tr>
       % endfor
@@ -204,9 +203,10 @@ HTML_TEMPLATE = """
     <h2>Variable Info</h2>
     <p>Information about each encountered variable follows.</p>
 
-    % for variable in sorted(variables.keys()):
-      <div id="${variable_ids[variable]}" class="variable">
-        <h4>${variable | h}</h4>
+    % for name in sorted(variables.keys()):
+      <% variable = variables[name] %>
+      <div id="${variable['id']}" class="variable">
+        <h4>${name | h}</h4>
 
         <table border="1">
           <tr>
@@ -215,22 +215,24 @@ HTML_TEMPLATE = """
             <th>Defined Conditionally</th>
             <th>Utilized</th>
           </tr>
-          % for path in sorted(variables[variable]['paths']):
+          % for path in sorted(variable['set_paths']):
           <tr>
             <td>${makefile_link(path)}</td>
             <td>
-            % if variable in ifdef_variables and path in ifdef_variables[variable]:
-              <strong>Yes</strong>
-            % else:
-              No
-            % endif
+            ?
+            ##% if variable in ifdef_variables and path in ifdef_variables[variable]:
+            ##  <strong>Yes</strong>
+            ##% else:
+            ##  No
+            ##% endif
             </td>
             <td>
-            % if path in variables[variable]['conditional_paths']:
-              <strong>Yes</strong>
-            % else:
-              No
-            % endif
+            ?
+            ##% if path in variables[variable]['conditional_paths']:
+            ##  <strong>Yes</strong>
+            ##% else:
+            ##  No
+            ##% endif
             </td>
             <td>?</td>
           </tr>
@@ -246,34 +248,62 @@ HTML_TEMPLATE = """
         <th>Name</th>
         <th># Makefiles</th>
       </tr>
-      % for var in sorted(ifdef_variables.keys()):
-      <tr>
-        <td><a href="#${variable_ids[var]}">${var | h}</td>
-        <td>${len(ifdef_variables[var].keys())}</td>
-      </tr>
-      % endfor
+      ##% for var in sorted(ifdef_variables.keys()):
+      ##<tr>
+      ##  <td><a href="#${variable_ids[var]}">${var | h}</td>
+      ##  <td>${len(ifdef_variables[var].keys())}</td>
+      ##</tr>
+      ##% endfor
     </table>
+    </section>
+
+    <section id="targets">
+      <h1>Targets</h1>
+      <table border="1">
+        <tr>
+          <th>Target</th>
+          <th>Makefiles</th>
+        </tr>
+        % for target in sorted(targets.keys()):
+          <% data = targets[target] %>
+          <tr>
+            <td>${target | h}</td>
+            <td>
+              % if len(data['paths']) > 0:
+                <ul>
+                % for path in sorted(data['paths']):
+                  <li>${makefile_link(path)}</li>
+                % endfor
+                </ul>
+              % endif
+            </td>
+          </tr>
+        % endfor
+      </table>
+    </section>
   </body>
 </html>
 
 <%def name="makefile_relevant(path)">
-    % if path in relevant_makefile_paths:
-        YES
-    % else:
-        <strong>NO</strong>
-    % endif
+    ?
+    ##% if path in relevant_makefile_paths:
+    ##    YES
+    ##% else:
+    ##    <strong>NO</strong>
+    ##% endif
 </%def>
 
 <%def name="makefile_success(path)">
-    % if path in error_makefile_paths:
-        <strong>No</strong>
-    % else:
-        Yes
-    % endif
+    ?
+    ##% if path in error_makefile_paths:
+    ##    <strong>No</strong>
+    ##% else:
+    ##    Yes
+    ##% endif
 </%def>
 
 <%def name="makefile_path(path)", buffered="True">
-    <% objdir = tree.object_directory %>
+    <% objdir = object_directory %>
     % if path[0:len(objdir)] == objdir:
         ${path[len(objdir)+1:]}
     % else:
@@ -282,13 +312,13 @@ HTML_TEMPLATE = """
 </%def>
 
 <%def name="makefile_link(path)", buffered="True">
-    <% id = makefile_ids[path] %>
+    <% id = makefiles[path]['id'] %>
     <a href="#${id}">${makefile_path(path) | h}</a>
 </%def>
 
 <%def name="makefile_repo_link(path, flavor, line=None)", buffered="True">
     <%
-    objdir = tree.object_directory
+    objdir = object_directory
     newpath = path
     if path[0:len(objdir)] == objdir:
         newpath = path[len(objdir)+1:]
@@ -315,48 +345,100 @@ HTML_TEMPLATE = """
 </%def>
 """
 
-def generate_bxr(c, fh):
+def generate_bxr(conf, fh):
     """Generate the BXR HTML and write to the specified file handle."""
-    assert(isinstance(c, config.BuildConfig))
+    assert(isinstance(conf, config.BuildConfig))
 
-    parser = extractor.ObjectDirectoryParser(c.object_directory)
-    parser.load_tree(retain_metadata=True)
+    bse = extractor.BuildSystemExtractor(conf)
+    bse.load_all_object_directory_makefiles()
 
-    variable_ids = {}
-    for name in parser.variables.keys():
-        variable_ids[name] = str(uuid.uuid4())
+    makefiles = {} # Path to dictionary of metadata
+    variables = {} # Name to dictionary of metadata
+    targets = {}   # Expansion str to dictionary of metadata
+    includes = {}  # Expansion str to list of tuples
 
-    makefile_ids = {}
-    for path in parser.all_makefile_paths:
-        makefile_ids[path] = str(uuid.uuid4())
+    for m in bse.makefiles.makefiles():
+        key = m.filename
+        statements = m.statements
+        metadata = makefiles.get(key, None)
+        if metadata is None:
+            metadata = {
+                'id': hashlib.sha1(key).hexdigest(),
+                'rules': [],
+                'pattern_rules': [],
+                'includes': [],
+            }
 
-    variables_by_makefile_count = [(k, len(v['paths'])) for (k, v) in
-                                    sorted(parser.variables.iteritems(),
-                                          reverse=True,
-                                          key=lambda(k, v): (len(v['paths']), k)
-                                    )]
+        for statement, conditions, name, value, type in statements.variable_assignments():
+            vdata = variables.get(name, None)
+            if vdata is None:
+                vdata = {
+                    'id': hashlib.sha1(name).hexdigest(),
+                    'set_paths': set(),
+                }
 
-    makefile_target_names = {}
-    makefile_rules = {}
-    for path in parser.all_makefile_paths:
-        makefile_target_names[path] = parser.get_target_names_from_makefile(path)
-        makefile_rules[path] = parser.get_rules_for_makefile(path)
+            vdata['set_paths'].add(key)
+            variables[name] = vdata
+
+        for statement, conditions, target, prerequisites, commands in statements.rules():
+            target_str = str(target)
+            metadata['rules'].append({
+                'target': target_str,
+                'conditions': [str(c) for c in conditions],
+                'prerequisites': str(prerequisites),
+                'commands': commands,
+                'line': statement.location.line,
+                'doublecolon': statement.has_doublecolon,
+            })
+
+            for targ in target.split():
+                target_data = targets.get(targ, None)
+                if target_data is None:
+                    target_data = {
+                        'id': hashlib.sha1(target_str).hexdigest(),
+                        'paths': set(),
+                    }
+
+                target_data['paths'].add(key)
+                targets[targ] = target_data
+
+        for statement, conditions, target, pattern, prerequisites, commands in statements.static_pattern_rules():
+            metadata['pattern_rules'].append((
+                str(target),
+                conditions,
+                str(pattern),
+                prerequisites,
+                commands
+            ))
+
+        for statement, conditions, path in statements.includes():
+            s = str(path)
+
+            metadata['includes'].append((s, conditions, statement.required, statement.location))
+
+            include = includes.get(s, [])
+            include.append((s, conditions, statement.required, statement.location))
+            includes[s] = include
+
+        makefiles[key] = metadata
+
+    variables_by_file_count = [(k, len(v['set_paths'])) for (k, v) in
+                               sorted(variables.iteritems(),
+                                      reverse=True,
+                                      key=lambda(k, v): (len(v['set_paths']), k)
+                               )]
 
     try:
         t = mako.template.Template(HTML_TEMPLATE)
         print >>fh, t.render(
-            makefile_paths=parser.all_makefile_paths,
-            makefile_ids=makefile_ids,
-            makefile_target_names=makefile_target_names,
-            makefile_rules=makefile_rules,
-            relevant_makefile_paths=parser.relevant_makefile_paths,
-            error_makefile_paths=parser.error_makefile_paths,
-            included_files=parser.included_files,
-            tree=parser.tree,
-            variables=parser.variables,
-            variable_ids=variable_ids,
-            variables_by_makefile_count=variables_by_makefile_count,
-            ifdef_variables=parser.ifdef_variables
+            source_directory=conf.source_directory,
+            object_directory=conf.object_directory,
+            makefiles=makefiles,
+            variables=variables,
+            targets=targets,
+            includes=includes,
+            variables_by_makefile_count=variables_by_file_count
         )
     except:
-        print >>fh, mako.exceptions.text_error_template().render()
+        print >>fh, mako.exceptions.html_error_template().render()
+        raise Exception('Error when rendering template. See file for full error.')

@@ -40,20 +40,40 @@
 import os.path
 
 class TreeInfo(object):
-    """This class represents an entire build tree."""
+    """This class represents an entire build tree.
+
+    It is a dumb container. Logic for putting stuff in the container and doing
+    things with the content lives elsewhere.
+    """
 
     __slots__ = (
-        'exports',                 # Dictionary of path/namespace to set of filenames
-        'idl_directories',         # Set of directories containing IDL files
-        'idl_sources',             # Dictionary of filenames to metadata
-        'jar_manifests',           # Dictionary of filenames to metadata
-        'libraries',               # Dictionary of libraries. Keys are unique
-                                   # library names. Values are dictionaries
-                                   # with additional metadata.
-        'object_directory',        # Path to output/object directory
-        'source_directories',      # Set of directories containing sources
-        'top_source_directory',    # Main/top source directory
-        'xpidl_modules',           # Dictionary of XPIDL modules to metadata
+        # Dictionary of path/namespace to set of filenames
+        'exports',
+
+        # Set of directories containing IDL files
+        'idl_directories',
+
+        # Dictionary of filenames to metadata
+        'idl_sources',
+
+        # Dictionary of filenames to metadata
+        'jar_manifests',
+
+        # Dictionary of libraries. Keys are unique library names. Values are
+        # dictionaries with additional metadata.
+        'libraries',
+
+        # Path to output/object directory
+        'object_directory',
+
+        # Set of directories containing sources
+        'source_directories',
+
+        # Main/top source directory
+        'top_source_directory',
+
+        # Dictionary of XPIDL modules to metadata
+        'xpidl_modules',
     )
 
     def __init__(self):
