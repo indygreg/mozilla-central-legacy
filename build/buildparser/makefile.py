@@ -758,6 +758,24 @@ class Statement(object):
 
         return '\n'.join(['\t%s' % line for line in s.split('\n')])
 
+    @property
+    def command_name(self):
+        """Obtain the name of the command being executed.
+
+        Returns a str or None if the command is empty or doesn't appear to be a
+        command.
+        """
+        assert(self.is_command)
+
+        words = Expansion(self.statement.exp).split()
+        if len(words) == 0:
+            return None
+
+        command = words[0]
+        if command.find('=') != -1:
+            return None
+
+        return command.lstrip('@#-+(')
 
     @property
     def has_doublecolon(self):
