@@ -743,8 +743,7 @@ class Statement(object):
         """
         assert(self.is_command)
 
-        s = Expansion.to_str(self.expansions[0],
-                             escape_variables=True)
+        s = Expansion.to_str(self.statement.exp, escape_variables=True)
 
         return '\n'.join(['\t%s' % line for line in s.split('\n')])
 
