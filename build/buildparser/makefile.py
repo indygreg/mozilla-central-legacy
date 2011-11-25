@@ -1130,7 +1130,7 @@ class StatementCollection(object):
         condition_stack = []
 
         def emit_statements(statements):
-            for statement in self._statements:
+            for statement in statements:
                 yield (statement, condition_stack)
                 if statement.is_condition_block:
                     for condition, inner in statement:
@@ -1143,6 +1143,8 @@ class StatementCollection(object):
                         condition_stack.pop()
 
         for t in emit_statements(self._statements): yield t
+
+        assert(len(condition_stack) == 0)
 
     def expansions(self):
         """A generator for all Expansions in this collection.
