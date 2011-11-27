@@ -115,10 +115,72 @@ pymake.data.Makefile instance.
 Technical Details
 =================
 
-Most of the code lives as Python modules under build/buildparser. I've
-implemented things such that the components should be reusable from other
-tools. The coupling is tighter than I would prefer, but it gets the job
-done.
+Code Layout
+-----------
+
+All the core code lives as Python modules under build/buildsplendid. I've
+implemented things such that components should be reusable from other tools
+and possibly other Makefile-based projects. The coupling is tighter than I
+would like in places, but the project is still new, so I'm sure that will
+improve with time.
+
+Here is an overview of the modules:
+
+  buildsystem   High-level APIs for the entire build system. If you want to
+  buildtool     build.py functionality
+  bxr           Build Cross Reference tool
+  config        Config file management.
+  critic        Analyze build system for best practices
+  data          Dumb container classes for representing build data
+  extractor     Extraction of data from our build system. This contains the
+                logic for converting Makefiles into data structures and
+                reading info from the tree.
+  makefile      Classes for interacting with Makefiles. Code here provides
+                APIs missing from PyMake. Functionality is non-specific to
+                Mozilla.
+  generator.*   Individual modules convert build system data into some other
+                kind of output like makefiles or Visual Studio projects.
+
+Data Extraction
+---------------
+
+Lots of the new code deals with extracting data from the existing build system.
+This is being done through a combination of "parsing" Makefiles and inspecting
+the file system.
+
+The data extraction code lives in the "extractor" module. This module contains
+the following relevant classes:
+
+  MozillaMakefile  Child class of makefile.Makefile which interacts with
+                   Makefiles using Mozilla-specific knowledge.
+
+  BuildSystemExtractor  Provides APIs for extracting state and metadata from
+                        the build system. If you want to query state about the
+                        build system or find information defined in the build
+                        system, this is the class you use.
+
+MozillaMakefile contains logic for extracting metadata from individual
+Makefiles. You point it at a Makefile, that file is parsed with PyMake, and
+then it looks at the statement tree to extract information. The extraction
+relies on the trait that Makefiles in the Mozilla tree are mostly data-driven
+and static. In practical terms, the Makefiles define variables (like CPPSRCS)
+and included code from rules.mk turns those variables into rules and commands
+to execute.
+
+MozillaMakefile is coded with knowledge of these traits. It translates the
+statement "assign Y to variable X" to "Y is a C++ source file." In other
+words, it is converting Makefiles to a generic data-centric data structure.
+
+BuildSystemExtractor contains code for extracting data not specific to
+Makefiles. For example, there are APIs to parse IDL files and obtain the
+dependencies of IDL files. It also provides APIs for interacting with JAR
+manifests. It also examines the state of the build system. It knows if
+configure needs to run, if a Makefile needs to be regenerated because the
+source template file changed, etc.
+
+====
+
+
 
 The code is conceptualized in 3 components: parsing/extraction,
 representation, and transformation.
@@ -228,6 +290,25 @@ I need to use PyMake as a parsing library. Fortunately, PyMake loosely coupled
 its parser from its higher-level API. Most of the work I've done is
 interfacing with PyMake's parser-level API. Where possible, I've called into
 existing PyMake functions to perform grunt work.
+
+You are dynamically rewriting Makefiles!?
+-----------------------------------------
+
+Yes. Scary, isn't it? Rewriting occurs at 2 levels. First, I wrote code that
+reformats PyMake's parser output back to Makefiles. In addition we can
+strip some content out of Makefiles and write that back. In the latter case,
+we just remove statements from the statement list and use the former to
+reformat.
+
+For the simple rewriting, I've written code that ensures that the Makefile
+content dumped from the parser output is equivalent to the original input.
+I've fed all the makefiles from the build tree through rewriting and verified
+there is no data loss. While the output may look different (non-relevant
+whitespace isn't preserved for example), the dumped content is functionally
+equivalent.
+
+Changing the functionality of Makefiles is controversial, I'll admit. But,
+I can do it and it seems to work.
 
 You didn't do X properly!
 -------------------------
