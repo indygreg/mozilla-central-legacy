@@ -616,6 +616,7 @@ class BuildSystemExtractor(object):
         """Obtain all build files in the source directory."""
         it = BuildSystemExtractor.get_build_files_in_tree(
             self.config.source_directory,
+            ignore_relative=BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS,
             ignore_full=[self.config.object_directory]
         )
         for t in it: yield t
@@ -624,6 +625,10 @@ class BuildSystemExtractor(object):
         """Obtain all template files in the source directory."""
         for t in self.source_directory_build_files():
             if t[2] == BuildSystemExtractor.BUILD_FILE_MAKE_TEMPLATE:
+                outfile = t[1][0:-3]
+                if os.path.join(t[0], outfile) in BuildSystemExtractor.CONFIGURE_MANAGED_FILES:
+                    continue
+
                 yield (t[0], t[1])
 
     def object_directory_build_files(self):
