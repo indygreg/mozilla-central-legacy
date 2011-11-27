@@ -204,9 +204,8 @@ HTML_TEMPLATE = """
     </table>
 
     <h2>Variables by File Frequency</h2>
-    <p>The following lists the number of Makefiles an individual variable occurs in.</p>
-
     <table border="1">
+      <caption>Variables by File Frequency</caption>
       <tr>
         <th>Variable</th>
         <th>Count</th>
@@ -216,6 +215,24 @@ HTML_TEMPLATE = """
           <td><a href="#${variables[k]['id']}">${k | h}</a></td>
           <td>${v}</td>
         </tr>
+      % endfor
+    </table>
+
+    <h2>Variables Used in ifdefs</h2>
+    <table border="1">
+      <caption>Variables used in ifdefs</caption>
+      <tr>
+        <th>Name</th>
+        <th># Makefiles</th>
+      </tr>
+      % for name in sorted(variables.keys()):
+        <% variable = variables[name] %>
+        % if len(variable['ifdef_paths']) > 0:
+          <tr>
+            <td><a href="#${variable['id']}">${name | h}</a></td>
+            <td>${len(variable['ifdef_paths'])}</td>
+          </tr>
+        % endif
       % endfor
     </table>
 
@@ -230,50 +247,39 @@ HTML_TEMPLATE = """
         <table border="1">
           <tr>
             <th>Makefile</th>
+            <th>Set</th>
+            <th>Referenced</th>
             <th>Used as ifdef</th>
-            <th>Defined Conditionally</th>
-            <th>Utilized</th>
           </tr>
-          % for path in sorted(variable['set_paths']):
+          % for path in sorted(variable['all_paths']):
           <tr>
             <td>${makefile_link(path)}</td>
             <td>
-            ?
-            ##% if variable in ifdef_variables and path in ifdef_variables[variable]:
-            ##  <strong>Yes</strong>
-            ##% else:
-            ##  No
-            ##% endif
+              % if path in variable['set_paths']:
+                Yes
+              % else:
+                No
+              % endif
             </td>
             <td>
-            ?
-            ##% if path in variables[variable]['conditional_paths']:
-            ##  <strong>Yes</strong>
-            ##% else:
-            ##  No
-            ##% endif
+              % if path in variable['referenced_paths']:
+                Yes
+              % else:
+                No
+              % endif
             </td>
-            <td>?</td>
+            <td>
+              % if path in variable['ifdef_paths']:
+                Yes
+              % else:
+                No
+              % endif
+            </td>
           </tr>
           % endfor
         </table>
       </div>
     % endfor
-
-    <h2>Variables Used in Conditionals</h2>
-    <p>The following variables are used as part of evaluating a conditional.</p>
-    <table border="1">
-      <tr>
-        <th>Name</th>
-        <th># Makefiles</th>
-      </tr>
-      ##% for var in sorted(ifdef_variables.keys()):
-      ##<tr>
-      ##  <td><a href="#${variable_ids[var]}">${var | h}</td>
-      ##  <td>${len(ifdef_variables[var].keys())}</td>
-      ##</tr>
-      ##% endfor
-    </table>
     </section>
 
     <section id="targets">
@@ -551,10 +557,13 @@ def generate_bxr(conf, fh):
 
         makefiles[key] = metadata
 
-    variables_by_file_count = [(k, len(v['set_paths'])) for (k, v) in
+    for k, v in variables.iteritems():
+        v['all_paths'] = v['set_paths'] | v['ifdef_paths'] | v['referenced_paths']
+
+    variables_by_file_count = [(k, len(v['all_paths'])) for (k, v) in
                                sorted(variables.iteritems(),
                                       reverse=True,
-                                      key=lambda(k, v): (len(v['set_paths']), k)
+                                      key=lambda(k, v): (len(v['all_paths']), k)
                                )]
 
     try:
