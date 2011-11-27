@@ -157,9 +157,8 @@ class BuildSystem(object):
                 self.run_callback('makefile-generate', {'path': full},
                                   'Generating makefile: {path}')
 
-                autoconf = self.bse.autoconf_for_path(relative)
                 self.generate_makefile(
-                    relative, path, translation_map=autoconf,
+                    relative, path,
                     strip_false_conditionals=strip_false_conditionals,
                     apply_rewrite=apply_rewrite)
             except:
@@ -173,16 +172,11 @@ class BuildSystem(object):
                           'Finished generation of Makefiles',
                           important=True)
 
-    def generate_makefile(self, relative_path, filename, translation_map=None,
+    def generate_makefile(self, relative_path, filename,
                           strip_false_conditionals=False, apply_rewrite=False):
         """Generate a Makefile from an input file.
 
         Generation options can be toggled by presence of arguments:
-
-          translation_map
-              If defined as a dictionary, strings of form "@varname@" will be
-              replaced by the value contained in the passed dictionary. If this
-              argument is None (the default), no translation will occur.
 
           strip_false_conditionals
               If True, conditionals evaluated to false will be stripped from the
