@@ -214,15 +214,44 @@ class Expansion(object):
 
         return False
 
-    def functions(self):
+    def functions(self, descend=False):
         """A generator for functions in this expansion.
 
         Each returned item is a pymake.functions.Function instance.
+
+        Arguments:
+
+        descend -- If True, descend and find inner functions.
         """
         if isinstance(self.expansion, pymake.data.Expansion):
             for e, is_func in self.expansion:
                 if is_func:
                     yield e
+
+                    if descend:
+                        if isinstance(e, (pymake.functions.VariableRef, pymake.functions.SubstitutionRef)):
+                            continue
+
+                        for i in range(0, len(e)):
+                            for f in Expansion(e[i]).functions(descend=True):
+                                yield f
+
+    def variable_references(self, descend=False):
+        """Generator for all variable references in this expansion.
+
+        Returns Expansion instances which represent the variable name. These
+        Expansions will typically be static strings representing the variable
+        names, but it is possible for them to reference other variables.
+
+        Arguments:
+
+        descend -- If True, descend into child expansions and find references.
+        """
+        for f in self.functions(descend=descend):
+            if not isinstance(f, pymake.functions.VariableRef):
+                continue
+
+            yield Expansion(f.vname, location=f.loc)
 
     def is_deterministic(self, variables=None, missing_is_deterministic=True):
         """Returns whether the expansion is determinstic.
@@ -698,8 +727,10 @@ class Statement(object):
 
     @property
     def expansions(self):
-        """Returns an iterator over all expansions in this statement."""
+        """Returns an iterator over all expansions in this statement.
 
+        Each returned item is an Expansion instance.
+        """
         if isinstance(self.statement, Statement.SINGLE_EXPANSION_CLASSES):
             yield Expansion(expansion=self.statement.exp)
         elif self.is_ifeq:
@@ -718,8 +749,23 @@ class Statement(object):
 
             yield Expansion(expansion=self.statement.vnameexp)
             yield Expansion(s=self.statement.value, location=self.statement.valueloc)
+        elif self.is_else:
+            return
         else:
             raise Exception('Unhandled statement type: %s' % self)
+
+    def variable_references(self, descend=False):
+        """A generator for variables referenced in this statement.
+
+        Each returned item is an Expansion instance.
+
+        Arguments:
+
+        descend -- If True, descend into expansions contained within primary
+                   expansions.
+        """
+        for e in self.expansions:
+            for v in e.variable_references(descend=descend): yield v
 
     def are_expansions_deterministic(self, variables=None):
         """Determines whether the expansions in this statement are
@@ -955,6 +1001,14 @@ class ConditionBlock(Statement):
     def has_ifeq(self):
         """Does the condition block have any ifeq components?"""
         return not self.is_ifdef_only
+
+    @property
+    def expansions(self):
+        """A generator for expansions in the conditions block."""
+        for condition, statements in self:
+            for e in condition.expansions: yield e
+            for s in statements:
+                for e in s.expansions: yield e
 
     def lines(self):
         """Returns an iterable of str representing the Makefile of lines
@@ -1194,6 +1248,11 @@ class StatementCollection(object):
         belongs to.
         """
         for statement, conditions in self.expanded_statements:
+            # Condition blocks expand to their child elements. The child
+            # elements come after, so we ignore to avoid double output.
+            if statement.is_condition_block:
+                continue
+
             for expansion in statement.expansions:
                 yield (statement, conditions, expansion)
 
@@ -1218,12 +1277,12 @@ class StatementCollection(object):
         """
         for statement, conditions in self.expanded_statements():
             if not statement.is_ifdef:
-                pass
+                continue
 
             yield (statement,
                    conditions,
-                   str(statement.expansions[0]),
-                   statement.expected)
+                   str(list(statement.expansions)[0]),
+                   statement.statement.expected)
 
     def includes(self):
         """A generator of includes metadata.
@@ -1295,6 +1354,14 @@ class StatementCollection(object):
                 pass
 
             yield (t[0], t[2], t[3], t[4])
+
+    def variable_references(self):
+        """Generator for references to variables.
+
+        Returns Expansion instances that expand to the name of the variable.
+        """
+        for statement, conditions in self.expanded_statements():
+            for v in statement.variable_references(descend=True): yield v
 
     def all_rules(self):
         """A generator for all rules in this instance.

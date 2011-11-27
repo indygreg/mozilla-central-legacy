@@ -178,24 +178,22 @@ HTML_TEMPLATE = """
     Makefiles or inside included .mk files.</p>
 
     <table border="1">
+      <caption>Variable File Counts</caption>
       <tr>
         <th>Name</th>
-        <th>Makefile Count</th>
-        <th>Used as Conditional</th>
+        <th>Set</th>
+        <th>Referenced</th>
+        <th>Used in ifdef</th>
       </tr>
       % for name in sorted(variables.keys()):
         <% variable = variables[name] %>
         <tr>
-          <td><a href="#${variable['id']}">${name | h}</a></td>
-          <td>${len(variable['set_paths'])}</td>
           <td>
-          ?
-          ##% if variable in ifdef_variables:
-          ##  <strong>Yes</strong>
-          ##% else:
-          ##  No
-          ##% endif
-          </td>
+            <a href="#${variable['id']}">${name | h}</a>
+            <small>${mxr_link(name, '(MXR)')}</small></td>
+          <td>${len(variable['set_paths'])}</td>
+          <td>${len(variable['referenced_paths'])}</td>
+          <td>${len(variable['ifdef_paths'])}</td>
         </tr>
       % endfor
     </table>
@@ -384,6 +382,10 @@ HTML_TEMPLATE = """
     %>
     ${uri}
 </%def>
+
+<%def name="mxr_link(term, text)", buffered="True">
+  <a href="https://mxr.mozilla.org/mozilla-central/search?string=${term | h}&amp;case=on">${text | h}</a>
+</%def>
 """
 
 def generate_bxr(conf, fh):
@@ -392,6 +394,14 @@ def generate_bxr(conf, fh):
 
     bse = extractor.BuildSystemExtractor(conf)
     bse.load_all_object_directory_makefiles()
+
+    def get_variable_value(name):
+        return {
+            'id':               hashlib.sha1(name).hexdigest(),
+            'set_paths':        set(),
+            'ifdef_paths':      set(),
+            'referenced_paths': set(),
+        }
 
     makefiles = {} # Path to dictionary of metadata
     variables = {} # Name to dictionary of metadata
@@ -414,10 +424,7 @@ def generate_bxr(conf, fh):
         for statement, conditions, name, value, type in statements.variable_assignments():
             vdata = variables.get(name, None)
             if vdata is None:
-                vdata = {
-                    'id': hashlib.sha1(name).hexdigest(),
-                    'set_paths': set(),
-                }
+                vdata = get_variable_value(name)
 
             vdata['set_paths'].add(key)
             variables[name] = vdata
@@ -474,6 +481,23 @@ def generate_bxr(conf, fh):
             include = includes.get(s, [])
             include.append((s, conditions, statement.required, statement.location))
             includes[s] = include
+
+        for statement, conditions, name, expected in statements.ifdefs():
+            vdata = variables.get(name, None)
+            if vdata is None:
+                vdata = get_variable_value(name)
+
+            vdata['ifdef_paths'].add(key)
+            variables[name] = vdata
+
+        for expansion in statements.variable_references():
+            name = str(expansion)
+            vdata = variables.get(name, None)
+            if vdata is None:
+                vdata = get_variable_value(name)
+
+            vdata['referenced_paths'].add(key)
+            variables[name] = vdata
 
         makefiles[key] = metadata
 
