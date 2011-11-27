@@ -64,6 +64,8 @@ HTML_TEMPLATE = """
       <li><a href="#variables">Variables</a></li>
       <li><a href="#targets">Targets</a></li>
       <li><a href="#commands">Commands</a></li>
+      <li><a href="#shell">Shell Invocations</a></li>
+      <li><a href="#filesystem">Filesystem Statements</a></li>
     </ul>
     </section>
 
@@ -323,6 +325,44 @@ HTML_TEMPLATE = """
         % endfor
       </table>
     </section>
+
+    <section id="shell">
+      <h1>Shell Invocations</h1>
+      <table border="1">
+        <caption>Listing of shell invocations in Makefiles</caption>
+        <tr>
+          <th>File</th>
+          <th>Statement</th>
+        </tr>
+        % for path in sorted(shell_statements.keys()):
+          % for statement in shell_statements[path]:
+            <tr>
+              <td>${makefile_link(path)}</td>
+              <td><pre>${statement[0] | h}</pre></td>
+            </tr>
+          % endfor
+        % endfor
+      </table>
+    </section>
+
+    <section id="filesystem">
+      <h1>Filesystem Statements</h1>
+      <table border="1">
+        <caption>Listing of make statements dependent on filesystem</caption>
+        <tr>
+          <th>File</th>
+          <th>Statement</th>
+        </tr>
+        % for path in sorted(filesystem_statements.keys()):
+          % for statement in filesystem_statements[path]:
+            <tr>
+              <td>${makefile_link(path)}</td>
+              <td><pre>${statement[0] | h}</pre></td>
+            </tr>
+          % endfor
+        % endfor
+      </table>
+    </section>
   </body>
 </html>
 
@@ -388,11 +428,13 @@ def generate_bxr(conf, fh):
             'referenced_paths': set(),
         }
 
-    makefiles = {} # Path to dictionary of metadata
-    variables = {} # Name to dictionary of metadata
-    targets = {}   # Expansion str to dictionary of metadata
-    includes = {}  # Expansion str to list of tuples
-    commands = {}  # Expansion str to dictionary of metadata
+    makefiles = {}             # Path to dictionary of metadata
+    variables = {}             # Name to dictionary of metadata
+    targets = {}               # Expansion str to dictionary of metadata
+    includes = {}              # Expansion str to list of tuples
+    commands = {}              # Expansion str to dictionary of metadata
+    shell_statements = {}      # Path to list of tuples
+    filesystem_statements = {} # Path to list of tuples
 
     for m in bse.makefiles.makefiles():
         key = m.filename
@@ -400,11 +442,13 @@ def generate_bxr(conf, fh):
         metadata = makefiles.get(key, None)
         if metadata is None:
             metadata = {
-                'id': hashlib.sha1(key).hexdigest(),
-                'rules': [],
-                'pattern_rules': [],
-                'includes': [],
-                'doublecolon_count': 0,
+                'id':                    hashlib.sha1(key).hexdigest(),
+                'rules':                 [],
+                'pattern_rules':         [],
+                'includes':              [],
+                'doublecolon_count':     0,
+                'shell_statements':      [],
+                'filesystem_statements': [],
             }
 
         for statement, conditions, name, value, type in statements.variable_assignments():
@@ -489,6 +533,22 @@ def generate_bxr(conf, fh):
             vdata['referenced_paths'].add(key)
             variables[name] = vdata
 
+        for statement, conditions in statements.shell_dependent_statements():
+            t = (str(statement), statement.location.line)
+            metadata['shell_statements'].append(t)
+
+            sdata = shell_statements.get(key, [])
+            sdata.append(t)
+            shell_statements[key] = sdata
+
+        for statement, conditions in statements.filesystem_dependent_statements():
+            t = (str(statement), statement.location.line)
+            metadata['filesystem_statements'].append(t)
+
+            sdata = filesystem_statements.get(key, [])
+            sdata.append(t)
+            filesystem_statements[key] = sdata
+
         makefiles[key] = metadata
 
     variables_by_file_count = [(k, len(v['set_paths'])) for (k, v) in
@@ -507,6 +567,8 @@ def generate_bxr(conf, fh):
             targets=targets,
             includes=includes,
             commands=commands,
+            shell_statements=shell_statements,
+            filesystem_statements=filesystem_statements,
             variables_by_makefile_count=variables_by_file_count
         )
     except:

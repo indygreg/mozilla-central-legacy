@@ -199,7 +199,7 @@ class Expansion(object):
     def is_filesystem_dependent(self):
         """Indicates whether this expansion is dependent on the state of the
         filesystem."""
-        for f in self.functions():
+        for f in self.functions(descend=True):
             if isinstance(f, Expansion.FILESYSTEM_FUNCTION_CLASSES):
                 return True
 
@@ -208,8 +208,8 @@ class Expansion(object):
     def is_shell_dependent(self):
         """Indicates whether this expansion is dependent on the output of a
         shell command."""
-        for f in self.functions():
-            if isinstance(f, pymake.data.ShellFunction):
+        for f in self.functions(descend=True):
+            if isinstance(f, pymake.functions.ShellFunction):
                 return True
 
         return False
@@ -1193,7 +1193,7 @@ class StatementCollection(object):
         for statement in self._statements:
             for line in statement.lines(): yield line
 
-    def expanded_statements(self):
+    def expanded_statements(self, suppress_condition_blocks=False):
         """Returns an iterator over the statements in this collection.
 
         Each returned item is a tuple of:
@@ -1217,12 +1217,24 @@ class StatementCollection(object):
         is entered when entry[0].is_condition is True. The implementation of
         various methods in this class demonstrate this technique and can be
         used as a reference.
+
+        Arguments:
+
+        suppress_condition_blocks -- If True, the Condition Block statement
+                                     will not be emitted. However, everything
+                                     else is the same.
         """
         condition_stack = []
 
         def emit_statements(statements):
             for statement in statements:
-                yield (statement, condition_stack)
+                emit = True
+                if statement.is_condition_block and suppress_condition_blocks:
+                    emit = False
+
+                if emit:
+                    yield (statement, condition_stack)
+
                 if statement.is_condition_block:
                     for condition, inner in statement:
                         yield (condition, condition_stack)
@@ -1247,7 +1259,8 @@ class StatementCollection(object):
         Where expansion is an Expansion and statement is the Statement it
         belongs to.
         """
-        for statement, conditions in self.expanded_statements:
+        statements = self.expanded_statements(suppress_condition_blocks=True)
+        for statement, conditions in statements:
             # Condition blocks expand to their child elements. The child
             # elements come after, so we ignore to avoid double output.
             if statement.is_condition_block:
@@ -1275,7 +1288,8 @@ class StatementCollection(object):
         name and expected can be accessed from the underlying Statement, of
         course. They are provided explicitly for convenience.
         """
-        for statement, conditions in self.expanded_statements():
+        statements = self.expanded_statements(suppress_condition_blocks=True)
+        for statement, conditions in statements:
             if not statement.is_ifdef:
                 continue
 
@@ -1456,9 +1470,10 @@ class StatementCollection(object):
 
           ( statement, conditions )
         """
-        for statement, conditions in self.expanded_statements():
+        statements = self.expanded_statements(suppress_condition_blocks=True)
+        for statement, conditions in statements:
             for expansion in statement.expansions:
-                if expansion.is_filesystem_dependent:
+                if expansion.is_filesystem_dependent():
                     yield (statement, conditions)
                     break
 
@@ -1473,9 +1488,10 @@ class StatementCollection(object):
         This excludes rules, which are implicitly dependent on the output of
         an external command.
         """
-        for statement, conditions in self.expanded_statements():
+        statements = self.expanded_statements(suppress_condition_blocks=True)
+        for statement, conditions in statements:
             for expansion in statement.expansions:
-                if expansion.is_shell_dependent:
+                if expansion.is_shell_dependent():
                     yield (statement, conditions)
                     break
 
