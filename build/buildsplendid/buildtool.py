@@ -134,6 +134,7 @@ actions:
             if verbose or important or error:
                 if print_json:
                     json.dump(json_obj, sys.stderr)
+                    print >>sys.stderr, ''
                 else:
                     print >>sys.stderr, '%4.2f %s' % ( elapsed, formatter.format(**params) )
 
