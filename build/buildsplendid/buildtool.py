@@ -64,6 +64,7 @@ class BuildTool(object):
         'help': 'Show full help documentation.',
         'makefiles': 'Generate Makefiles to build the project.',
         'settings': 'Sets up your build settings.',
+        'unittest': 'Run the unit tests for the build system code',
         'wipe': 'Wipe your output directory and force a full rebuild.',
     }
 
@@ -247,6 +248,16 @@ actions:
         else:
             raise Exception('Unsupported format type: %' % format)
 
+    def unittest(self, bs):
+        import unittest
+
+        top_dir = os.path.join(self.cwd, 'build')
+        start_dir = os.path.join(top_dir, 'buildsplendid', 'test')
+
+        loader = unittest.TestLoader()
+        suite = loader.discover(start_dir, pattern='*_test.py', top_level_dir=top_dir)
+        unittest.TextTestRunner().run(suite)
+
     def get_settings_file(self, args):
         """Get the settings file for the current environment.
 
@@ -347,6 +358,10 @@ actions:
         action_settings = subparser.add_parser('settings',
                                                help=BuildTool.ACTIONS['settings'])
         action_settings.set_defaults(method='settings')
+
+        action_unittest = subparser.add_parser('unittest',
+                                               help=BuildTool.ACTIONS['unittest'])
+        action_unittest.set_defaults(method='unittest')
 
         action_wipe = subparser.add_parser('wipe', help=BuildTool.ACTIONS['wipe'])
         action_wipe.set_defaults(method='wipe')
