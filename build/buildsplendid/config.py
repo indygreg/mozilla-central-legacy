@@ -133,6 +133,7 @@ class BuildConfig(object):
         return self.DEFAULTS[section][option]
 
     def load_file(self, filename):
+        # TODO perform validation of read config file
         self.config.read(filename)
 
     def save(self, filename):

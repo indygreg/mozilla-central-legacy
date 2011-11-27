@@ -37,7 +37,7 @@
 # This file contains code for turning the Python build system data structures
 # into Makefiles.
 
-from . import data
+from .. import data
 
 import os.path
 

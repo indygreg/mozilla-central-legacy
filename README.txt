@@ -23,11 +23,12 @@ Guiding Principles
 Design and implementation decisions were influenced by the following principles
 in which I fervently believe:
 
-* Turn-key experience. Compiling Mozilla projects (or any project for that
+* Turn-key experience. Building Mozilla projects (or any project for that
   matter) shouldn't require you to read pages of docs or consult anything
-  other than the README in the root of the source directory. One of my main
-  goals was to make the initial and on-going experiences as painless as
-  possible.
+  other than the README in the root of the source directory. I believe that by
+  making the process as simple as possible and lowering the barrier to get
+  going, you increase adoption. In other words, by making the developer user
+  experience better, you retain more developers.
 
 * Everything is a library. All the new code is written inside Python modules.
   Others should be able to hook into the core build APIs with minimal effort.
@@ -140,6 +141,7 @@ Here is an overview of the modules:
                 Mozilla.
   generator.*   Individual modules convert build system data into some other
                 kind of output like makefiles or Visual Studio projects.
+  test.*        Test code.
 
 Data Extraction
 ---------------

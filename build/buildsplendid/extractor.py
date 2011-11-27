@@ -80,10 +80,40 @@ class MozillaMakefile(makefile.Makefile):
     """This list tracks all variables that are still in the wild but aren't used"""
     UNUSED_VARIABLES = []
 
-    def __init__(self, filename):
-        makefile.Makefile.__init__(self, filename)
+    __slots__ = (
+        # Path within tree this Makefile is present at
+        'relative_directory',
 
+        # Set of traits exhibited by this file
+        'traits',
+    )
+
+    def __init__(self, filename, relative_directory=None, directory=None):
+        """Interface for Makefiles with Mozilla build system knowledge."""
+        makefile.Makefile.__init__(self, filename, directory=directory)
+
+        self.relative_directory = relative_directory
         self.traits = None
+
+    def perform_substitutions(self, bse, callback_on_missing=None):
+        """Perform substitutions on this Makefile.
+
+        This overrides the parent method to apply Mozilla-specific
+        functionality.
+        """
+        assert(isinstance(bse, BuildSystemExtractor))
+        assert(self.relative_directory is not None)
+
+        autoconf = bse.autoconf_for_path(self.relative_directory)
+        mapping = autoconf.copy()
+
+        mapping['configure_input'] = 'Generated automatically from Build Splendid'
+        mapping['top_srcdir'] = bse.config.source_directory
+        mapping['srcdir'] = os.path.join(bse.config.source_directory,
+                                         self.relative_directory)
+
+        makefile.Makefile.perform_substitutions(self, mapping,
+                                                callback_on_missing=callback_on_missing)
 
     def get_traits(self):
         """Obtain traits of the Makefile.

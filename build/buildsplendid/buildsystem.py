@@ -49,18 +49,6 @@ import traceback
 class BuildSystem(object):
     """High-level interface to the build system."""
 
-    # Ideally no paths should be ignored, but alas.
-    IGNORED_PATHS = (
-        # We ignore libffi because we have no way of producing the files from the
-        # .in because configure doesn't give us an easily parseable file
-        # containing the defines.
-        'js/src/ctypes/libffi',
-    )
-
-    CONFIGURE_IGNORE_DIRECTORIES = (
-        'js/src/ctypes/libffi',
-    )
-
     __slots__ = (
         # BuildSystemExtractor instance
         'bse',
@@ -107,8 +95,7 @@ class BuildSystem(object):
         for k, v in os.environ.iteritems():
             env[k] = v
 
-        # We tell configure via an environment variable not to load a
-        # .mozconfig
+        # Tell configure not to load a .mozconfig.
         env['IGNORE_MOZCONFIG'] = '1'
 
         # Tell configure scripts not to generate Makefiles, as we do that.
@@ -230,19 +217,6 @@ class BuildSystem(object):
             self.run_callback('mkdir', {'dir': output_directory},
                               'Created directory: {dir}')
 
-        # We assume these will be calculated at least once.
-        top_source_directory = self.config.source_directory
-        source_directory = os.path.join(self.config.source_directory,
-                                        relative_path)
-
-        mapping = {}
-        for k, v in translation_map.iteritems():
-            mapping[k] = v
-
-        mapping['srcdir']     = source_directory
-        mapping['top_srcdir'] = top_source_directory
-        mapping['configure_input'] = 'Generated automatically from Build Splendid'
-
         def missing_callback(variable):
             self.run_callback(
                 'makefile_substitution_missing',
@@ -250,8 +224,10 @@ class BuildSystem(object):
                 'Missing source variable for substitution: {var} in {path}',
                 error=True)
 
-        m = makefile.Makefile(input_path, directory=output_directory)
-        m.perform_substitutions(mapping, callback_on_missing=missing_callback)
+        m = extractor.MozillaMakefile(input_path,
+                                      relative_directory=os.path.dirname(relative_path),
+                                      directory=output_directory)
+        m.perform_substitutions(self.bse, callback_on_missing=missing_callback)
 
         if strip_false_conditionals:
             m.statements.strip_false_conditionals()
