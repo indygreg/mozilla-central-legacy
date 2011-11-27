@@ -678,20 +678,34 @@ class Statement(object):
         elif self.is_include:
             return 'include %s' % Expansion(self.statement.exp)
         elif self.is_rule:
-            return ('\n%s%s %s' % (
+            # We jump through hoops to preserve whitespace
+            sep = self.target_separator
+
+            dep_str = Expansion.to_str(self.statement.depexp)
+            if len(dep_str) > 0 and dep_str[0] not in (' ', '\t'):
+                sep += ' '
+
+            return '\n%s%s%s' % (
                 Expansion.to_str(self.statement.targetexp),
-                self.target_separator,
-                Expansion.to_str(self.statement.depexp).lstrip()
-            )).rstrip()
+                sep,
+                dep_str
+            )
         elif self.is_set_variable:
             return self.setvariable_string
         elif self.is_static_pattern_rule:
-            return ('\n%s%s %s: %s' % (
+            sep = self.target_separator
+            pattern = Expansion.to_str(self.statement.patternexp)
+            dep = Expansion.to_str(self.statement.depexp)
+
+            if len(pattern) > 0 and pattern[0] not in (' ', '\t'):
+                sep += ' '
+
+            return ('\n%s%s%s:%s' % (
                 Expansion.to_str(self.statement.targetexp),
-                self.target_separator,
-                Expansion.to_str(self.statement.patternexp).strip(),
-                Expansion.to_str(self.statement.depexp).strip()
-            )).rstrip()
+                sep,
+                pattern,
+                dep
+            ))
         elif self.is_vpath:
             return 'vpath %s' % Expansion(self.statement.exp)
         else:
@@ -1024,7 +1038,10 @@ class Statement(object):
             # According to 6.8 of the Make manual, the equals is optional.
             return 'define %s\n%s\nendef\n' % (self.vname, value)
         else:
-            return ('%s %s %s' % (self.vname, self.token, value)).rstrip()
+            sep = self.token
+            if len(value) and value[0] not in (' ', '\t'):
+                sep += ' '
+            return ('%s %s%s' % (self.vname, self.token, value))
 
     @property
     def value(self):
