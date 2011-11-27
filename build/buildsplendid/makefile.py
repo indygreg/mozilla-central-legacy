@@ -162,6 +162,93 @@ class Expansion(object):
     def __str__(self):
         return Expansion.to_str(self.expansion)
 
+    def difference(self, other):
+        """Determine the difference between this and another Expansions.
+
+        Returns None if there is no functional difference. Otherwise, return
+        a tuple of:
+
+          ( why, our_expansion, their_expansion )
+
+        Where why is a str describing what is different.
+        """
+        assert(isinstance(other, Expansion))
+        is_our_exp = isinstance(self.expansion, pymake.data.Expansion)
+        is_other_exp = isinstance(self.expansion, pymake.data.Expansion)
+
+        if is_our_exp != is_other_exp:
+            return ('Expansions not of same type', self, other)
+
+        if not is_our_exp and not is_other_exp:
+            assert(isinstance(self.expansion, pymake.data.StringExpansion))
+            assert(isinstance(other.expansion, pymake.data.StringExpansion))
+
+            if self.expansion.s != other.expansion.s:
+                return ('String content not identical', self, other)
+            else:
+                return None
+
+        us = collections.deque(self.expansion)
+        them = collections.deque(other.expansion)
+        # and after all we're only ordinary men
+
+        while len(us) > 0 and len(them) > 0:
+            ours, ours_is_func = us.popleft()
+            theirs, theirs_is_func = them.popleft()
+
+            if ours_is_func != theirs_is_func:
+                return ('Type of expansion not the same', ours, theirs)
+
+            if ours_is_func:
+                if type(ours) != type(theirs):
+                    return ('Type of function not identical', ours, theirs)
+
+                # Sadly, VariableRef and SubstitutionRef need to be handled as
+                # one-offs because they don't follow the typical Function class
+                # API.
+                if isinstance(ours, pymake.functions.VariableRef):
+                    diff = Expansion(ours.vname).difference(Expansion(theirs.vname))
+                    if diff is not None:
+                        return diff
+                    continue
+
+                if isinstance(ours, pymake.functions.SubstitutionRef):
+                    diff = Expansion(ours.vname).difference(Expansion(theirs.vname))
+                    if diff is not None:
+                        return diff
+
+                    diff = Expansion(ours.substfrom).difference(Expansion(theirs.substfrom))
+                    if diff is not None:
+                        return diff
+
+                    diff = Expansion(ours.substto).difference(Expansion(theirs.substto))
+                    if diff is not None:
+                        return diff
+
+                    continue
+
+                if len(ours) != len(theirs):
+                    return ('Length of function arguments not identical', ours, theirs)
+
+                for offset in range(0, len(ours)):
+                    diff = Expansion(ours[offset]).difference(Expansion(theirs[offset]))
+                    if diff is not None:
+                        return diff
+
+                continue
+
+            else:
+                assert(isinstance(ours, str))
+                assert(isinstance(theirs, str))
+
+                if ours != theirs:
+                    return ('String content not identical', ours, theirs)
+
+                continue
+
+        return None
+
+
     def split(self):
         """Split this expansion into words and return the list."""
         s = str(self).strip()
@@ -724,20 +811,31 @@ class Statement(object):
         if type(self.statement) != type(other.statement):
             return ('pymake statement type not identical', None, None)
 
-        # TODO this implementation is not complete
-        our_expansions = list(self.expansions)
-        other_expansions = list(other.expansions)
+        our_expansions = collections.deque(self.expansions)
+        other_expansions = collections.deque(other.expansions)
 
-        if len(our_expansions) != len(other_expansions):
-            return ('Number of expansions not equivalent', None, None)
+        while len(our_expansions) > 0 and len(other_expansions) > 0:
+            ours = our_expansions.popleft()
+            theirs = other_expansions.popleft()
 
-        for i in range(0, len(our_expansions)):
-            ours = our_expansions[i]
-            theirs = other_expansions[i]
-            if ours != theirs:
-                return ('Expansions not equivalent', ours, theirs)
+            difference = ours.difference(theirs)
+            if difference is None:
+                continue
 
-        return None
+            return difference
+
+        if len(our_expansions) == 0 and len(other_expansions) == 0:
+            return None
+
+        ret_ours = None
+        ret_theirs = None
+        if len(our_expansions) > 0:
+            ret_ours = our_expansions.popleft()
+
+        if len(their_expansions) > 0:
+            ret_theirs = other_expansions.popleft()
+
+        return ('Length of expansions not equivalent', ret_ours, ret_theirs)
 
     @property
     def expansions(self):
@@ -1252,6 +1350,7 @@ class StatementCollection(object):
             error['why'] = difference[0]
             error['our_expansion'] = difference[1]
             error['their_expansion'] = difference[2]
+            return error
 
         if len(our_statements) == 0 and len(other_statements) == 0:
             return None
