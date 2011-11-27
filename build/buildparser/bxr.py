@@ -75,14 +75,17 @@ HTML_TEMPLATE = """
     <table border="1">
       <tr>
         <th>Path</th>
-        <th>Relevant</th>
-        <th>Success</th>
+        <th>Rules</th>
+        <th>Pattern Rules</th>
+        <th>Doublecolon Rules</th>
       </tr>
       % for path in sorted(makefiles.keys()):
+        <% makefile = makefiles[path] %>
         <tr>
           <td>${makefile_link(path)}</td>
-          <td>${makefile_relevant(path)}</td>
-          <td>${makefile_success(path)}</td>
+          <td>${len(makefile['rules'])}</td>
+          <td>${len(makefile['pattern_rules'])}</td>
+          <td>${makefile['doublecolon_count']}</td>
         </tr>
       % endfor
     </table>
@@ -323,24 +326,6 @@ HTML_TEMPLATE = """
   </body>
 </html>
 
-<%def name="makefile_relevant(path)">
-    ?
-    ##% if path in relevant_makefile_paths:
-    ##    YES
-    ##% else:
-    ##    <strong>NO</strong>
-    ##% endif
-</%def>
-
-<%def name="makefile_success(path)">
-    ?
-    ##% if path in error_makefile_paths:
-    ##    <strong>No</strong>
-    ##% else:
-    ##    Yes
-    ##% endif
-</%def>
-
 <%def name="makefile_path(path)", buffered="True">
     <% objdir = object_directory %>
     % if path[0:len(objdir)] == objdir:
@@ -419,6 +404,7 @@ def generate_bxr(conf, fh):
                 'rules': [],
                 'pattern_rules': [],
                 'includes': [],
+                'doublecolon_count': 0,
             }
 
         for statement, conditions, name, value, type in statements.variable_assignments():
@@ -439,6 +425,8 @@ def generate_bxr(conf, fh):
                 'line': statement.location.line,
                 'doublecolon': statement.has_doublecolon,
             })
+
+            metadata['doublecolon_count'] += 1
 
             for targ in target.split():
                 target_data = targets.get(targ, None)
@@ -472,6 +460,8 @@ def generate_bxr(conf, fh):
                 prerequisites,
                 cmds
             ))
+
+            metadata['doublecolon_count'] += 1
 
         for statement, conditions, path in statements.includes():
             s = str(path)
