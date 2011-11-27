@@ -41,6 +41,7 @@ from . import config
 from . import data
 from . import makefile
 
+import hashlib
 import os
 import os.path
 import sys
@@ -484,9 +485,12 @@ class BuildSystemExtractor(object):
     found it!
     """
 
-    BUILD_FILE_INPUT = 1
+    # Constants for identifying build file types
+    BUILD_FILE_MAKE_TEMPLATE = 1
     BUILD_FILE_MAKEFILE = 2
     BUILD_FILE_MK = 3
+    BUILD_FILE_CONFIGURE_INPUT = 4
+    BUILD_FILE_OTHER_IN = 5
 
     # These relative paths are not managed by us, so we can ignore them
     EXTERNALLY_MANAGED_PATHS = (
@@ -494,9 +498,54 @@ class BuildSystemExtractor(object):
         'nsprpub',
     )
 
+    # Paths in object directory that are produced by configure.
+    CONFIGURE_MANAGED_FILES = (
+        'config/expandlibs_config.py',
+        'config/autoconf.mk',
+        'config/doxygen.cfg',
+        'gfx/cairo/cairo/src/cairo-features.h',
+        'js/src/config/autoconf.mk',
+        'js/src/config/expandlibs_config.py',
+        'js/src/config.status',
+        'js/src/editline/Makefile',   # TODO why is this getting produced?
+        'js/src/js-confdefs.h',
+        'js/src/js-config',
+        'js/src/js-config.h',
+        'js/src/Makefile',            # TODO why is this getting produced
+        'network/necko-config.h',
+        'nsprpub/config/autoconf.mk',
+        'nsprpub/config/nspr-config',
+        'nsprpub/config/nsprincl.mk',
+        'nsprpub/config/nsprincl.sh',
+        'nsprpub/config.status',
+        'xpcom/xpcom-config.h',
+        'xpcom/xpcom-private.h',
+        'config.status',
+        'mozilla-config.h',
+    )
+
+    # Files produced by configure that we don't care about
+    CONFIGURE_IGNORE_FILES = (
+        'js/src/config.log',
+        'js/src/unallmakefiles',
+        'nsprpub/config.log',
+        'config.cache',
+        'config.log',
+        'unallmakefiles',
+    )
+
     __slots__ = (
+        # Holds dictionary of autoconf values for different paths.
+        'autoconfs',
+
         # BuildConfig instance
         'config',
+
+        # Holds state of configure
+        'configure_state',
+
+        # Boolean indicating whether we are configured
+        '_is_configured',
 
         # MakefileCollection for the currently loaded Makefiles
         'makefiles',
@@ -505,8 +554,50 @@ class BuildSystemExtractor(object):
     def __init__(self, conf):
         assert(isinstance(conf, config.BuildConfig))
 
+        self.autoconfs = None
         self.config = conf
+        self.configure_state = None
+        self._is_configured = None
         self.makefiles = MakefileCollection(conf.source_directory, conf.object_directory)
+
+    @property
+    def is_configured(self):
+        """Returns whether autoconf has run and the object directory is
+        configured."""
+        if self._is_configured is None:
+            self.refresh_configure_state()
+
+        return self._is_configured is True
+
+    def refresh_configure_state(self):
+        """Refreshes state relevant to configure."""
+        self.configure_state = {
+            'files': {}
+        }
+        self.autoconfs = {}
+
+        # We clear this flag if it isn't.
+        self._is_configured = True
+
+        for path in self.CONFIGURE_MANAGED_FILES:
+            full = os.path.join(self.config.object_directory, path)
+
+            # Construct defined variables from autoconf.mk files
+            if path[-len('config/autoconf.mk'):] == 'config/autoconf.mk':
+                if os.path.exists(full):
+                    k = path[0:-len('config/autoconf.mk')].rstrip('/')
+                    self.autoconfs[k] = BuildSystemExtractor.convert_autoconf_to_dict(full)
+                else:
+                    self._is_configured = False
+
+            if not os.path.exists(full) and path in self.configure_state['files']:
+                raise Exception('File managed by configure has disappeared. Re-run configure: %s' % path)
+
+            if os.path.exists(full):
+                self.configure_state['files'][path] = {
+                    'sha1': BuildSystemExtractor.sha1_file_hash(full),
+                    'mtime': os.path.getmtime(full),
+                }
 
     def load_all_object_directory_makefiles(self):
         """Convenience method to load all Makefiles in the object directory.
@@ -529,6 +620,12 @@ class BuildSystemExtractor(object):
         )
         for t in it: yield t
 
+    def source_directory_template_files(self):
+        """Obtain all template files in the source directory."""
+        for t in self.source_directory_build_files():
+            if t[2] == BuildSystemExtractor.BUILD_FILE_MAKE_TEMPLATE:
+                yield (t[0], t[1])
+
     def object_directory_build_files(self):
         """Obtain all build files in the object directory."""
         it = BuildSystemExtractor.get_build_files_in_tree(self.config.object_directory)
@@ -542,6 +639,52 @@ class BuildSystemExtractor(object):
         consulted Makefiles.
         """
         pass
+
+    def autoconf_for_path(self, path):
+        """Obtains a dictionary of variable values from the autoconf file
+        relevant for the specified path.
+        """
+        assert(self.is_configured)
+        for managed in BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS:
+            if path.find(managed) == 0:
+                return self.autoconfs[managed]
+
+        return self.autoconfs['']
+
+    @staticmethod
+    def convert_autoconf_to_dict(path):
+        """Convert the autoconf file at the specified path to a dictionary
+        of name-value pairs.
+
+        This assumes that our autoconf files don't have complex logic. It will
+        raise if they do.
+        """
+        d = {}
+
+        allowed_types = (
+            makefile.StatementCollection.VARIABLE_ASSIGNMENT_SIMPLE,
+            makefile.StatementCollection.VARIABLE_ASSIGNMENT_RECURSIVE
+        )
+
+        statements = makefile.StatementCollection(filename=path)
+
+        # We evaluate ifeq's because the config files /should/ be
+        # static. We don't rewrite these, so there is little risk.
+        statements.strip_false_conditionals(evaluate_ifeq=True)
+
+        for statement, conditions, name, value, type in statements.variable_assignments():
+            if len(conditions):
+                raise Exception(
+                    'Conditional variable assignment encountered (%s) in autoconf file: %s' % (
+                        name, statement.location ))
+
+            if name in d:
+                if type not in allowed_types:
+                    raise Exception('Variable assigned multiple times in autoconf file: %s' % name)
+
+            d[name] = value
+
+        return d
 
     @staticmethod
     def get_build_files_in_tree(path, ignore_relative=None, ignore_full=None):
@@ -591,12 +734,29 @@ class BuildSystemExtractor(object):
                 continue
 
             for name in files:
-                if name[-3:] == '.in':
-                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_INPUT)
+                if name == 'configure.in':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_CONFIGURE_INPUT)
+                elif name[-6:] == '.mk.in' or name == 'Makefile.in':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_MAKE_TEMPLATE)
+                elif name[-3:] == '.in':
+                    yield (relative, name, BuildSystemExtractor.BUILD_FILE_OTHER_IN)
                 elif name == 'Makefile':
                     yield (relative, name, BuildSystemExtractor.BUILD_FILE_MAKEFILE)
                 elif name[-3:] == '.mk':
                     yield (relative, name, BuildSystemExtractor.BUILD_FILE_MK)
+
+    @staticmethod
+    def sha1_file_hash(filename):
+        h = hashlib.sha1()
+        with open(filename, 'rb') as fh:
+            while True:
+                data = fh.read(8192)
+                if not data:
+                    break
+
+                h.update(data)
+
+        return h.hexdigest()
 
 class ObjectDirectoryParser(object):
     """A parser for an object directory.

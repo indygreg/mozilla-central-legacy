@@ -38,9 +38,9 @@
 # the Mozilla build system.
 
 from . import config
+from . import extractor
 from . import makefile
 
-import hashlib
 import os
 import os.path
 import subprocess
@@ -57,147 +57,38 @@ class BuildSystem(object):
         'js/src/ctypes/libffi',
     )
 
-    # Paths in object directory that are produced by configure. We keep
-    # track of these paths and look for changes, etc.
-    CONFIGURE_MANAGED_FILES = (
-        'config/expandlibs_config.py',
-        'config/autoconf.mk',
-        'config/doxygen.cfg',
-        'gfx/cairo/cairo/src/cairo-features.h',
-        'js/src/config/autoconf.mk',
-        'js/src/config/expandlibs_config.py',
-        'js/src/config.status',
-        'js/src/editline/Makefile',   # TODO why is this getting produced?
-        'js/src/js-confdefs.h',
-        'js/src/js-config',
-        'js/src/js-config.h',
-        'js/src/Makefile',            # TODO why is this getting produced
-        'network/necko-config.h',
-        'nsprpub/config/autoconf.mk',
-        'nsprpub/config/nspr-config',
-        'nsprpub/config/nsprincl.mk',
-        'nsprpub/config/nsprincl.sh',
-        'nsprpub/config.status',
-        'xpcom/xpcom-config.h',
-        'xpcom/xpcom-private.h',
-        'config.status',
-        'mozilla-config.h',
-    )
-
-    # Files produced by configure that we don't care about
-    CONFIGURE_IGNORE_FILES = (
-        'js/src/config.log',
-        'js/src/unallmakefiles',
-        'nsprpub/config.log',
-        'config.cache',
-        'config.log',
-        'unallmakefiles',
-    )
-
     CONFIGURE_IGNORE_DIRECTORIES = (
         'js/src/ctypes/libffi',
     )
 
     __slots__ = (
-        # Mapping of identifiers to autoconf.mk data.Makefile instances
-        'autoconfs',
+        # BuildSystemExtractor instance
+        'bse',
 
         # Method that gets invoked any time an action is performed.
         'callback',
 
         # config.BuildConfig instance
         'config',
-
-        # whether the object directory has been configured
-        'is_configured',
-
-        # Holds cached state for configure output
-        'configure_state',
     )
 
     def __init__(self, conf, callback=None):
         """Construct an instance from a source and target directory."""
         assert(isinstance(conf, config.BuildConfig))
 
-        self.config          = conf
-        self.callback        = callback
-        self.autoconfs       = None
-        self.is_configured   = False
-        self.configure_state = None
-
-    @property
-    def have_state(self):
-        return self.autoconfs is not None and self.configure_state is not None
+        self.config = conf
+        self.bse = extractor.BuildSystemExtractor(conf)
+        self.callback = callback
 
     def build(self):
-        if not self.is_configured:
+        if not self.bse.is_configured:
             self.configure()
 
         # TODO make conditional
         self.generate_makefiles()
 
-    def refresh_state(self):
-        self.autoconfs = {}
-        if self.configure_state is None:
-            self.configure_state = {
-                'files': {}
-            }
-
-        def get_variable_map(filename):
-            d = {}
-
-            allowed_types = (
-                makefile.StatementCollection.VARIABLE_ASSIGNMENT_SIMPLE,
-                makefile.StatementCollection.VARIABLE_ASSIGNMENT_RECURSIVE
-            )
-
-            statements = makefile.StatementCollection(filename=filename)
-
-            # We evaluate ifeq's because the config files /should/ be
-            # static. We don't rewrite these, so there is little risk.
-            statements.strip_false_conditionals(evaluate_ifeq=True)
-
-            for statement, conditions, name, value, type in statements.variable_assigments():
-                if len(conditions):
-                    raise Exception(
-                        'Conditional variable assignment encountered (%s) in autoconf file: %s' % (
-                            name, statement.location ))
-
-                if name in d:
-                    if type not in allowed_types:
-                        raise Exception('Variable assigned multiple times in autoconf file: %s' % name)
-
-                d[name] = value
-
-            return d
-
-        self.is_configured = True
-
-        for path in self.CONFIGURE_MANAGED_FILES:
-            full = os.path.join(self.config.object_directory, path)
-
-            # Construct defined variables from autoconf.mk files
-            if path[-len('config/autoconf.mk'):] == 'config/autoconf.mk':
-                if os.path.exists(full):
-                    k = path[0:-len('config/autoconf.mk')].rstrip('/')
-                    self.autoconfs[k] = get_variable_map(full)
-                else:
-                    self.is_configured = False
-
-            if not os.path.exists(full) and path in self.configure_state['files']:
-                raise Exception('File managed by configure has disappeared. Re-run configure: %s' % path)
-
-            if os.path.exists(full):
-                self.configure_state['files'][path] = {
-                    'sha1': self._sha1_file_hash(full),
-                    'mtime': os.path.getmtime(full),
-                }
-
     def configure(self):
         """Runs configure on the build system."""
-
-        if not self.have_state:
-            self.refresh_state()
 
         # TODO regenerate configure's from configure.in's if needed
 
@@ -256,15 +147,12 @@ class BuildSystem(object):
                               'Configure finished successfully',
                               important=True)
 
-        self.refresh_state()
+        self.bse.refresh_configure_state()
 
     def generate_makefiles(self):
         """Generate Makefile's into configured object tree."""
 
-        if not self.have_state:
-            self.refresh_state()
-
-        if not self.is_configured:
+        if not self.bse.is_configured:
             self.configure()
 
         self.run_callback('generate_makefile_begin', {},
@@ -275,16 +163,11 @@ class BuildSystem(object):
         apply_rewrite = conversion == 'rewrite'
         strip_false_conditionals = conversion in ('prune', 'optimized')
 
-        # PyMake's cache only holds 15 items. We assume we have the resources
-        # (because we are building m-c after all) and keep ALL THE THINGS in
-        # memory.
-        statements_cache = {}
-
-        for (relative, path) in self.source_directory_template_files():
+        for relative, path in self.bse.source_directory_template_files():
             try:
                 full = os.path.join(self.config.source_directory, relative, path)
 
-                autoconf = self._get_autoconf_for_file(relative)
+                autoconf = self.bse.autoconf_for_path(relative)
                 self.generate_makefile(
                     relative, path, translation_map=autoconf,
                     strip_false_conditionals=strip_false_conditionals,
@@ -345,7 +228,7 @@ class BuildSystem(object):
                               'Created directory: {dir}')
 
         managed_path = None
-        for managed in self.MANAGED_PATHS:
+        for managed in extractor.BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS:
             if relative_path[0:len(managed)] == managed:
                 managed_path = managed
                 break
@@ -382,8 +265,37 @@ class BuildSystem(object):
             m.statements.strip_false_conditionals()
         elif apply_rewrite:
             # This has the side-effect of populating the StatementCollection,
-            # which will cause lines to come from it.
-            lines = m.statements.lines
+            # which will cause lines to come from it when we eventually write
+            # out the content.
+            lines = m.statements.lines()
+
+            # Perform verification that the rewritten file is equivalent to the
+            # original. This is present for mostly testing and verification
+            # purposes. For API reasons, it should be controlled by a named
+            # argument. It should probably be left off by default because it
+            # is expensive (doubles makefile generation time).
+            rewritten = makefile.StatementCollection(buf='\n'.join(lines),
+                                                     filename=input_path)
+
+            difference = m.statements.difference(rewritten)
+            if difference is not None:
+                self.run_callback(
+                    'rewritten_makefile_consistency_failure',
+                    {
+                        'path': os.path.join(relative_path, filename),
+                        'our_expansion': str(difference['our_expansion']),
+                        'their_expansion': str(difference['their_expansion']),
+                        'why': difference['why'],
+                        'ours': str(difference['ours']),
+                        'theirs': str(difference['theirs']),
+                        'our_line': difference['our_line'],
+                        'their_line': difference['their_line'],
+                        'index': difference['index']
+                    },
+                    'Generated Makefile not equivalent: {path} ("{ours}" != "{theirs}")',
+                    error=True
+                )
+                raise Exception('Rewritten Makefile not equivalent: %s' % difference)
 
         with open(output_path, 'wb') as output:
             for line in m.lines():
@@ -393,38 +305,6 @@ class BuildSystem(object):
             'generate_makefile_success',
             {'path': os.path.join(relative_path, out_basename)},
             'Generated Makefile {path}')
-
-    def source_directory_template_files(self):
-        """Obtain all template files from the source directory."""
-        for relative, filename, type in self.source_directory_build_files():
-            if type != self.BUILD_FILE_INPUT:
-                continue
-
-            if relative in self.IGNORED_PATHS:
-                continue
-
-            yield (relative, filename)
-
-    def _get_autoconf_for_file(self, path):
-        """Obtain an autoconf file for a relative path."""
-
-        for managed in self.MANAGED_PATHS:
-            if path[0:len(managed)] == managed:
-                return self.autoconfs[managed]
-
-        return self.autoconfs['']
-
-    def _sha1_file_hash(self, filename):
-        h = hashlib.sha1()
-        with open(filename, 'rb') as fh:
-            while True:
-                data = fh.read(8192)
-                if not data:
-                    break
-
-                h.update(data)
-
-        return h.hexdigest()
 
     def run_callback(self, action, params, formatter,
                      important=False, error=False):
