@@ -45,6 +45,7 @@
 
 from . import data
 
+import collections
 import os
 import os.path
 import pymake.data
@@ -574,34 +575,7 @@ class Statement(object):
         self.statement = statement
 
     def __eq__(self, other):
-        """Determines if this statement is equivalent to another.
-
-        We define equivalence to mean the composition of the statement is
-        equivalent. We do not test things like locations or the expanded value
-        of variables, etc.
-
-        Practically speaking, if two statement appears on consecutive lines
-        and the first does not have any side-effects, then the two statements
-        are equivalent.
-        """
-        if not isinstance(other, Statement):
-            return False
-
-        if type(self.statement) != type(other.statement):
-            return False
-
-        # TODO this implementation is not complete
-        our_expansions = self.expansions
-        other_expansions = other.expansions
-
-        if len(our_expansions) != len(other_expansions):
-            return False
-
-        for i in range(0, len(our_expansions)):
-            if our_expansions[i] != other_expansions[i]:
-                return False
-
-        return True
+        return self.difference(other) is None
 
     def __str__(self):
         """Convert this statement back to its Makefile representation."""
@@ -722,6 +696,46 @@ class Statement(object):
         # Expansions is a generator, so we can't subscript.
         for e in self.expansions:
             return e.location
+
+        return None
+
+    def difference(self, other):
+        """Determines the difference between this and another Statement.
+
+        We define equivalence to mean the composition of the statement is
+        equivalent. We do not test things like locations or the expanded value
+        of variables, etc.
+
+        Practically speaking, if two statement appears on consecutive lines
+        and the first does not have any side-effects, then the two statements
+        are equivalent.
+
+        If there is no difference, None is returned. If there is a difference,
+        returns a tuple of:
+
+          ( why, our_expansion, their_expansion )
+
+        Where why is a str explaining the difference and the expansion members
+        can be Expansion instances that caused the disagreement.
+        """
+        if not isinstance(other, Statement):
+            return ('Other type is not a Statement', None, None)
+
+        if type(self.statement) != type(other.statement):
+            return ('pymake statement type not identical', None, None)
+
+        # TODO this implementation is not complete
+        our_expansions = list(self.expansions)
+        other_expansions = list(other.expansions)
+
+        if len(our_expansions) != len(other_expansions):
+            return ('Number of expansions not equivalent', None, None)
+
+        for i in range(0, len(our_expansions)):
+            ours = our_expansions[i]
+            theirs = other_expansions[i]
+            if ours != theirs:
+                return ('Expansions not equivalent', ours, theirs)
 
         return None
 
@@ -1192,6 +1206,58 @@ class StatementCollection(object):
         """
         for statement in self._statements:
             for line in statement.lines(): yield line
+
+    def difference(self, other):
+        """Obtain the difference between this instance and another one.
+
+        This is a helper method to identify where/how two supposedly
+        equivalent Makefiles differ.
+
+        If the two instances are functionally equivalent, None is returned.
+        If they are different, a dictionary is returned with the form:
+          {
+            'index': 6, # Numeric index of statements at which things were
+                        # different
+            'ours': Statement,   # Our statement that didn't match
+            'theirs': Statement, # Their statement that didn't match
+            'our_expansion': Expansion, # Our expansion that didn't match
+            'their_expansion': Expansion, # Their expansion that didn't match
+            'why': 'X was Y', # str explaining why they were different
+          }
+        """
+        assert(isinstance(other, StatementCollection))
+        our_statements = collections.deque(self.expanded_statements(suppress_condition_blocks=True))
+        other_statements = collections.deque(other.expanded_statements(suppress_condition_blocks=True))
+
+        error = {
+            'index': -1,
+            'our_line': -1,
+            'their_line': -1,
+            'why': 'Unknown',
+        }
+
+        while len(our_statements) > 0 and len(other_statements) > 0:
+            error['index'] += 1
+            ours = our_statements.popleft()[0]
+            theirs = other_statements.popleft()[0]
+
+            # Pure laziness
+            error['ours'] = ours
+            error['theirs'] = theirs
+
+            difference = ours.difference(theirs)
+            if difference is None:
+                continue
+
+            error['why'] = difference[0]
+            error['our_expansion'] = difference[1]
+            error['their_expansion'] = difference[2]
+
+        if len(our_statements) == 0 and len(other_statements) == 0:
+            return None
+
+        error['why'] = 'statement lengths did not agree'
+        return error
 
     def expanded_statements(self, suppress_condition_blocks=False):
         """Returns an iterator over the statements in this collection.
