@@ -167,6 +167,9 @@ class BuildSystem(object):
             try:
                 full = os.path.join(self.config.source_directory, relative, path)
 
+                self.run_callback('makefile-generate', {'path': full},
+                                  'Generating makefile: {path}')
+
                 autoconf = self.bse.autoconf_for_path(relative)
                 self.generate_makefile(
                     relative, path, translation_map=autoconf,
@@ -227,19 +230,8 @@ class BuildSystem(object):
             self.run_callback('mkdir', {'dir': output_directory},
                               'Created directory: {dir}')
 
-        managed_path = None
-        for managed in extractor.BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS:
-            if relative_path[0:len(managed)] == managed:
-                managed_path = managed
-                break
-
-        # We assume these will be calculated at least once b/c they
-        # are common.
+        # We assume these will be calculated at least once.
         top_source_directory = self.config.source_directory
-        if managed_path is not None:
-            top_source_directory = os.path.join(top_source_directory,
-                                                managed_path)
-
         source_directory = os.path.join(self.config.source_directory,
                                         relative_path)
 
