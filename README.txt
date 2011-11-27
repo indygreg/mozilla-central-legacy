@@ -8,7 +8,7 @@ It is called Build Splendid, or BS for short.
 Quick Start
 ===========
 
-To quickly get up to your knees in BS, grab this branch then run:
+To quickly get up to your knees in BS, grab this branch and run:
 
   $ ./build.py
 
@@ -23,31 +23,27 @@ Guiding Principles
 Design and implementation decisions were influenced by the following principles
 in which I fervently believe:
 
-* Turn-key initial experience. Compiling Mozilla projects (or any project for
-  that matter) shouldn't require you to read pages of docs or consult anything
+* Turn-key experience. Compiling Mozilla projects (or any project for that
+  matter) shouldn't require you to read pages of docs or consult anything
   other than the README in the root of the source directory. One of my main
-  goals was to make this initial (and even on-going) experience as painless
-  as possible.
+  goals was to make the initial and on-going experiences as painless as
+  possible.
 
 * Everything is a library. All the new code is written inside Python modules.
-  Others should be able to hook into the core build APIs with minimal effort
-  and should be able to construct new and exciting tools on top of them.
+  Others should be able to hook into the core build APIs with minimal effort.
+  This should enable construction of new and exciting tools on top of them.
 
 Unified Build Tool
 ------------------
 
-A new tool, build.py, is introduced in the main source directory. This
-file serves as a gateway to common build actions, including build
-configuration.
+A new tool, build.py, is introduced in the main source directory. It serves
+as a gateway to common build actions, including build configuration.
 
-The first time you run build.py,
-
-  $ ./build.py
-
-The tool recognizes that you don't have an existing build config and opens a
-wizard to help you create one. Behind the scenes it writes out a config file.
-But, this file is transparent to the user and is managed through build.py.
-These config files are replacements for mozconfig files.
+The first time you run build.py with any build-related action, it recognizes
+that you don't have an existing build config and opens a wizard to help you
+create one. Behind the scenes it writes out a config file. But, this file is
+transparent to the user and is managed through build.py. These config files
+are replacements for mozconfig files. They accomplish the same and more.
 
 You launch build.py with an action you want to perform. Common actions are
 "configure," "makefiles," or "build." When you run an action, the prerequisites
@@ -66,8 +62,10 @@ delimited JSON arrays. Each entry consists of a tuple of:
   * Object with metadata describing action
 
 This makes parsing much, much easier since data is strongly typed. You just
-need to write a switch statement keyed off the action for each entry. RelEng
-should love this.
+need to write a switch statement keyed off the action for each entry. Anyone
+needing to do log analysis (RelEng) will love this. Of course, power users
+could hook into the low-level build API and write custom tools if build.py
+doesn't suit them.
 
 Derecursified Makefile Generation
 ---------------------------------
@@ -98,7 +96,7 @@ build system. It makes no backwards-incompatible changes that should impact the
 existing build system. So, once it lands, developers can select which one to
 use.
 
-The only caveat is Build Splendid needs to own the object directory. So, you
+The only caveat is Build Splendid needs to "own" the object directory. So, you
 can't use both build systems on the same output directory. But, you can have
 both working from the same source directory.
 
@@ -186,6 +184,7 @@ Python than in configure or makefiles.
 
 Have any performance numbers?
 -----------------------------
+
 Yes!
 
 Linux and Windows numbers executed on a Core i7-2600K running in 64-bit. Linux
@@ -230,7 +229,7 @@ its parser from its higher-level API. Most of the work I've done is
 interfacing with PyMake's parser-level API. Where possible, I've called into
 existing PyMake functions to perform grunt work.
 
-You Didn't Do X Properly!
+You didn't do X properly!
 -------------------------
 
 Yes, there is likely lots of subtle functionality that hasn't been ported
@@ -244,7 +243,7 @@ I'm willing to sacrifice some setback for features. Keep in mind, we have
 the existing build system to fall back on, so if BS doesn't provide what you
 need, just go back to the way you've been doing things for years.
 
-Why Do You Require Python 2.7?
+Why do you require Python 2.7?
 ------------------------------
 
 When writing new code, I believe in utilizing the latest stable technology
@@ -258,6 +257,84 @@ over time.
 
 That being said, not many parts utilize 2.7 features, so it should be simple
 enough to backport if people insist.
+
+Project History
+===============
+
+This project started as a way to provide automatically generated Visual Studio
+projects for developers to consume. The project has since undergone numerous
+"a ha" moments.
+
+The first idea was to capture all the commands being executed during a clobber
+build and convert these to a Visual Studio/MSBuild/NMake file. Code was written
+to add tracing support to PyMake to capture a forensic log of every command
+executed during the build. The tracing code was pretty cool and it serves as
+an excellent reference for debugging what's going on in builds (this code
+hasn't landed in PyMake's tree yet). The tracing provided me (still a young
+Mozillian) a good insight into what the build system is actually doing without
+me having to read Makefiles.
+
+After exploring the build system in more detail, I realized that most of our
+Makefiles were data-driven: they declare variables and Makefile magic in
+rules.mk converts these variables to rules and things happen. Using the
+existing PyMake Makefile API (pymake.data.Makefile), I wrote a tool that
+scoured over a pre-configured object directory. It started at the root
+Makefile and expanded the directory variables and assembles the set of
+"relevant" Makefiles. For each of these Makefiles, it parsed them and looked
+for key named variables, like CPPSRCS, EXPORTS, XPIPDLSRCS, CLFAGS, etc.
+It converted these into Visual Studio projects, even going as far as to
+convert each CFLAG into a native Visual Studio project option.
+
+The Visual Studio projects were kinda cool. They had all the source and header
+files defined. I even got IDL header file generation working. However,
+dependencies were non-existent. And, there was no master state to keep track
+of global dependencies between projects.
+
+There were also issues running the tool on Windows. The PyMake APIs on the
+built-in Makefile class were very high-level and geared towards running make.
+If you instantiated a Makefile instance on a file that had a $(shell), PyMake
+would try to run the shell. This is not cool when all you are trying to do is
+simple inspection!
+
+I evaluated PyMake's internals and decided that refactoring the classes to
+do what I wanted would be too large of an undertaking. In all honesty, the code
+isn't documented very well and it is very fragile, partly due to the use of
+the multiprocess module. I attempted some modifications, but after seeing
+Python fork and resume parallel execution in another process without any way
+to control it, I gave up on manipulating the high-level PyMake APIs.
+
+At this point, I started authoring APIs for interfacing with PyMake's lower
+level parser output. Here, I have access to the parsed Makefile statements.
+Using this API, I was able to pull out very raw details about Makefiles without
+having to worry about execution logic. I could iterate over a file and see
+where all the variable assignments were happening, for example. Before, the
+variable namespace would be polluted by variables defined in included files.
+
+At the same time I was refactoring to use the lower-level APIs, I was building
+a more robust data extraction component. One problem with the initial Visual
+Studio work was it was extremely fragile and very hacky. There really wasn't
+an API anywhere - it was just a bunch of code to extract data for the purposes
+of outputting to Visual Studio. I realized that an extraction API had use
+beyond Visual Studio, so I began to build a separate extraction API.
+
+When the data extraction API started to come together, I realized I was on to
+something special. I could literally point a Python method at a directory path
+and it was generate a series of objects describing individual bits of the build
+system as it discovered them. "Here's an IDL file," "here's a shared library,"
+"here's a JAR manifest," etc. At this point, I had built a pretty good data
+extraction API. The data coming out of it was so much more pleasant than trying
+to parse Makefiles in my head. I thought, "wow, this data is very useful. I
+should publish it somewhere!" So, BXR was born. Since one of my personal metras
+is "everything is a library," BXR exists as a module inside the Python code
+I've been writing. So, anybody can produce a BXR instance just by running a
+single command.
+
+One feature of my Makefile data extractor is that it keeps track of which
+variables are consulted when extracting metadata. This means that once I have
+extracted all data from a specific Makefile, I'm able to see which files
+remain and still have data presumably not captured by the extractor. Looking
+at the build system as a whole, the set of unhandled variables was daunting.
+
 
 ====================
 CONTENT BELOW IS OLD
@@ -360,83 +437,6 @@ The following doesn't work yet:
 * .exe generation
 * DLL generation
 * Proper dependencies
-
-Project History
-===============
-
-This project started as a way to provide automatically generated Visual Studio
-projects for developers to consume. The project has since undergone numerous
-"a ha" moments.
-
-The first idea was to capture all the commands being executed during a clobber
-build and convert these to a Visual Studio/MSBuild/NMake file. Code was written
-to add tracing support to PyMake to capture a forensic log of every command
-executed during the build. The tracing code was pretty cool and it serves as
-an excellent reference for debugging what's going on in builds (this code
-hasn't landed in PyMake's tree yet). The tracing provided me (still a young
-Mozillian) a good insight into what the build system is actually doing without
-me having to read Makefiles.
-
-After exploring the build system in more detail, I realized that most of our
-Makefiles were data-driven: they declare variables and Makefile magic in
-rules.mk converts these variables to rules and things happen. Using the
-existing PyMake Makefile API (pymake.data.Makefile), I wrote a tool that
-scoured over a pre-configured object directory. It started at the root
-Makefile and expanded the directory variables and assembles the set of
-"relevant" Makefiles. For each of these Makefiles, it parsed them and looked
-for key named variables, like CPPSRCS, EXPORTS, XPIPDLSRCS, CLFAGS, etc.
-It converted these into Visual Studio projects, even going as far as to
-convert each CFLAG into a native Visual Studio project option.
-
-The Visual Studio projects were kinda cool. They had all the source and header
-files defined. I even got IDL header file generation working. However,
-dependencies were non-existent. And, there was no master state to keep track
-of global dependencies between projects.
-
-There were also issues running the tool on Windows. The PyMake APIs on the
-built-in Makefile class were very high-level and geared towards running make.
-If you instantiated a Makefile instance on a file that had a $(shell), PyMake
-would try to run the shell. This is not cool when all you are trying to do is
-simple inspection!
-
-I evaluated PyMake's internals and decided that refactoring the classes to
-do what I wanted would be too large of an undertaking. In all honesty, the code
-isn't documented very well and it is very fragile, partly due to the use of
-the multiprocess module. I attempted some modifications, but after seeing
-Python fork and resume parallel execution in another process without any way
-to control it, I gave up on manipulating the high-level PyMake APIs.
-
-At this point, I started authoring APIs for interfacing with PyMake's lower
-level parser output. Here, I have access to the parsed Makefile statements.
-Using this API, I was able to pull out very raw details about Makefiles without
-having to worry about execution logic. I could iterate over a file and see
-where all the variable assignments were happening, for example. Before, the
-variable namespace would be polluted by variables defined in included files.
-
-At the same time I was refactoring to use the lower-level APIs, I was building
-a more robust data extraction component. One problem with the initial Visual
-Studio work was it was extremely fragile and very hacky. There really wasn't
-an API anywhere - it was just a bunch of code to extract data for the purposes
-of outputting to Visual Studio. I realized that an extraction API had use
-beyond Visual Studio, so I began to build a separate extraction API.
-
-When the data extraction API started to come together, I realized I was on to
-something special. I could literally point a Python method at a directory path
-and it was generate a series of objects describing individual bits of the build
-system as it discovered them. "Here's an IDL file," "here's a shared library,"
-"here's a JAR manifest," etc. At this point, I had built a pretty good data
-extraction API. The data coming out of it was so much more pleasant than trying
-to parse Makefiles in my head. I thought, "wow, this data is very useful. I
-should publish it somewhere!" So, BXR was born. Since one of my personal metras
-is "everything is a library," BXR exists as a module inside the Python code
-I've been writing. So, anybody can produce a BXR instance just by running a
-single command.
-
-One feature of my Makefile data extractor is that it keeps track of which
-variables are consulted when extracting metadata. This means that once I have
-extracted all data from a specific Makefile, I'm able to see which files
-remain and still have data presumably not captured by the extractor. Looking
-at the build system as a whole, the set of unhandled variables was daunting.
 
 Ramble on Data Driven Building
 ==============================

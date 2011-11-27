@@ -38,14 +38,15 @@
 import sys
 
 # TODO these should magically come from the environment.
+# [gps] I want a virtualenv environment for the source tree!
 sys.path.append('build')
 sys.path.append('build/pymake')
 sys.path.append('other-licenses/ply')
 sys.path.append('xpcom/idl-parser')
 
-import buildparser.buildtool
+import buildsplendid.buildtool
 import os.path
 
 # All of the code is in a module because EVERYTHING IS A LIBRARY.
-b = buildparser.buildtool.BuildTool(os.path.dirname(os.path.abspath(__file__)))
+b = buildsplendid.buildtool.BuildTool(os.path.dirname(os.path.abspath(__file__)))
 b.run(sys.argv[1:])
