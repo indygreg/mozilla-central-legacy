@@ -184,7 +184,10 @@ class Expansion(object):
             assert(isinstance(other.expansion, pymake.data.StringExpansion))
 
             if self.expansion.s != other.expansion.s:
-                return ('String content not identical', self, other)
+                if self.expansion.s.strip() == other.expansion.s.strip():
+                    return ('StringExpansion content not identical (whitespace)', self, other)
+                else:
+                    return ('StringExpansion content not identical', self, other)
             else:
                 return None
 
@@ -242,7 +245,15 @@ class Expansion(object):
                 assert(isinstance(theirs, str))
 
                 if ours != theirs:
-                    return ('String content not identical', ours, theirs)
+                    message = 'Expansion member string content not identical'
+                    if ours.strip() == theirs.strip():
+                        message += ' (whitespace)'
+
+                    return (
+                        message,
+                        Expansion(s=ours, location=self.location),
+                        Expansion(s=theirs, location=other.location)
+                    )
 
                 continue
 
@@ -599,7 +610,7 @@ class Expansion(object):
 
                 return '$(%s)' % ex.vname.s
             else:
-                return Expansion.to_str(ex.vname)
+                return '$(%s)' % Expansion.to_str(ex.vname)
 
         else:
             raise Exception('Unhandled function type: %s' % ex)
@@ -666,7 +677,6 @@ class Statement(object):
 
     def __str__(self):
         """Convert this statement back to its Makefile representation."""
-
         if self.is_command:
             return self.command_string
         elif self.is_condition:
