@@ -1051,7 +1051,7 @@ class Statement(object):
             sep = self.token
             if len(value) and value[0] not in (' ', '\t'):
                 sep += ' '
-            return ('%s %s%s' % (self.vname, self.token, value))
+            return ('%s %s%s' % (self.vname, sep, value))
 
     @property
     def value(self):
