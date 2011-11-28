@@ -555,6 +555,12 @@ class BuildSystemExtractor(object):
         'mozilla-config.h',
     )
 
+    IGNORE_BUILD_FILES = (
+        # Uses order-only prerequisites, which PyMake can't handle.
+        # Bug 703843 tracks fixing.
+        'build/unix/elfhack/Makefile.in',
+    )
+
     # Files produced by configure that we don't care about
     CONFIGURE_IGNORE_FILES = (
         'js/src/config.log',
@@ -756,7 +762,9 @@ class BuildSystemExtractor(object):
             ignore_relative=BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS,
             ignore_full=[self.config.object_directory]
         )
-        for t in it: yield t
+        for t in it:
+            if '%s/%s' % ( t[0], t[1] ) not in BuildSystemExtractor.IGNORE_BUILD_FILES:
+                yield t
 
     def source_directory_template_files(self):
         """Obtain all template files in the source directory."""
