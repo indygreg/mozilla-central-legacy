@@ -42,6 +42,7 @@ from . import data
 from . import makefile
 
 import hashlib
+import logging
 import os
 import os.path
 import sys
@@ -579,6 +580,9 @@ class BuildSystemExtractor(object):
 
         # MakefileCollection for the currently loaded Makefiles
         'makefiles',
+
+        # logging.Logger instance
+        'logger',
     )
 
     def __init__(self, conf):
@@ -589,6 +593,7 @@ class BuildSystemExtractor(object):
         self.configure_state = None
         self._is_configured = None
         self.makefiles = MakefileCollection(conf.source_directory, conf.object_directory)
+        self.logger = logging.getLogger(__name__)
 
     @property
     def is_configured(self):
@@ -628,6 +633,108 @@ class BuildSystemExtractor(object):
                     'sha1': BuildSystemExtractor.sha1_file_hash(full),
                     'mtime': os.path.getmtime(full),
                 }
+
+    def generate_object_directory_makefiles(self):
+        """Generates object directory Makefiles from input Makefiles.
+
+        This is a generator that yields tuples of:
+
+          ( relative_directory, filename, MozillaMakefile )
+
+        Presumably, the caller will be writing these Makefiles to disk or will
+        be performing analysis of them.
+        """
+        conversion = self.config.makefile_conversion
+        apply_rewrite = conversion == 'rewrite'
+        strip_false_conditionals = conversion in ('prune', 'optimized')
+
+        for relative, path in self.source_directory_template_files():
+            m = self.generate_object_directory_makefile(
+                relative,
+                path,
+                strip_false_conditionals=strip_false_conditionals,
+                apply_rewrite=apply_rewrite,
+                verify_rewrite=True
+            )
+
+            out_filename = path
+            if out_filename[-3:] == '.in':
+                out_filename = out_filename[0:-3]
+
+            yield (relative, out_filename, m)
+
+    def generate_object_directory_makefile(self, relative_directory, filename,
+                                           strip_false_conditionals=False,
+                                           apply_rewrite=False,
+                                           verify_rewrite=False):
+        """Generates a single object directory Makefile using the given options.
+
+        Returns an instance of MozillaMakefile representing the generated
+        Makefile.
+
+        Arguments:
+
+        relative_directory -- Relative directory the input file is located in.
+        filename -- Name of file in relative_directory to open.
+        strip_false_conditionals -- If True, conditionals evaluated to false
+                                    will be stripped from the Makefile. This
+                                    implies apply_rewrite=True
+        apply_rewrite -- If True, the Makefile will be rewritten from PyMake's
+                         parser output. This will lose formatting of the
+                         original file. However, the produced file should be
+                         functionally equivalent to the original.
+        verify_rewrite -- If True, verify the rewritten output is functionally
+                          equivalent to the original.
+        """
+        if strip_false_conditionals:
+            apply_rewrite = True
+
+        input_path = os.path.join(self.config.source_directory,
+                                  relative_directory, filename)
+
+        def missing_callback(variable):
+            self.log(logging.WARNING, 'makefile_substitution_missing',
+                     {'path': input_path, 'var': variable},
+                     'Missing source variable for substitution: {var} in {path}')
+
+        m = MozillaMakefile(input_path,
+                            relative_directory=relative_directory,
+                            directory=os.path.join(self.config.object_directory, relative_directory))
+        m.perform_substitutions(self, callback_on_missing=missing_callback)
+
+        if strip_false_conditionals:
+            m.statements.strip_false_conditionals()
+        elif apply_rewrite:
+            # This has the side-effect of populating the StatementCollection,
+            # which will cause lines to come from it when we eventually write
+            # out the content.
+            lines = m.statements.lines()
+
+            if verify_rewrite:
+                rewritten = makefile.StatementCollection(buf='\n'.join(lines),
+                                                         filename=input_path)
+
+                difference = m.statements.difference(rewritten)
+                if difference is not None:
+                    self.run_callback(
+                        'rewritten_makefile_consistency_failure',
+                        {
+                            'path': os.path.join(relative_path, filename),
+                            'our_expansion': str(difference['our_expansion']),
+                            'their_expansion': str(difference['their_expansion']),
+                            'why': difference['why'],
+                            'ours': str(difference['ours']),
+                            'theirs': str(difference['theirs']),
+                            'our_line': difference['our_line'],
+                            'their_line': difference['their_line'],
+                            'index': difference['index']
+                        },
+                        'Generated Makefile not equivalent: {path} ("{ours}" != "{theirs}")',
+                        error=True
+                    )
+                    raise Exception('Rewritten Makefile not equivalent: %s' % difference)
+
+        return m
 
     def load_all_object_directory_makefiles(self):
         """Convenience method to load all Makefiles in the object directory.
@@ -685,6 +792,10 @@ class BuildSystemExtractor(object):
                 return self.autoconfs[managed]
 
         return self.autoconfs['']
+
+    def log(self, level, action, params, format_str):
+        self.logger.log(level, format_str,
+                        extra={'action': action, 'params': params})
 
     @staticmethod
     def convert_autoconf_to_dict(path):

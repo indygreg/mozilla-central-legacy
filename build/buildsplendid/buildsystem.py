@@ -41,6 +41,7 @@ from . import config
 from . import extractor
 from . import makefile
 
+import logging
 import os
 import os.path
 import subprocess
@@ -53,20 +54,20 @@ class BuildSystem(object):
         # BuildSystemExtractor instance
         'bse',
 
-        # Method that gets invoked any time an action is performed.
-        'callback',
-
         # config.BuildConfig instance
         'config',
+
+        # logging.Logger instance
+        'logger',
     )
 
-    def __init__(self, conf, callback=None):
+    def __init__(self, conf):
         """Construct an instance from a source and target directory."""
         assert(isinstance(conf, config.BuildConfig))
 
         self.config = conf
         self.bse = extractor.BuildSystemExtractor(conf)
-        self.callback = callback
+        self.logger = logging.getLogger(__name__)
 
     def build(self):
         if not self.bse.is_configured:
@@ -82,10 +83,9 @@ class BuildSystem(object):
 
         # Create object directory if it doesn't exist
         if not os.path.exists(self.config.object_directory):
-            self.run_callback('create_object_directory',
-                              {'dir':self.config.object_directory},
-                              'Creating object directory {dir}',
-                              important=True)
+            self.log(logging.WARNING, 'create_object_directory',
+                     {'dir':self.config.object_directory},
+                     'Creating object directory {dir}')
 
             os.makedirs(self.config.object_directory)
 
@@ -103,9 +103,8 @@ class BuildSystem(object):
 
         args = self.config.configure_args
 
-        self.run_callback('configure_begin', {'args': args},
-                          formatter='Starting configure: {args}',
-                          important=True)
+        self.log(logging.WARNING, 'configure_begin', {'args': args},
+                 'Starting configure: {args}')
 
         p = subprocess.Popen(
             args,
@@ -117,8 +116,9 @@ class BuildSystem(object):
         )
         while True:
             for line in p.stdout:
-                self.run_callback('configure_output', {'line': line.strip()},
-                                  '{line}', important=False)
+                self.log(logging.DEBUG, 'configure_output',
+                         {'line': line.strip()},
+                         '{line}')
 
             if p.poll() is not None:
                 break
@@ -126,13 +126,11 @@ class BuildSystem(object):
         result = p.wait()
 
         if result != 0:
-            self.run_callback('configure_error', {'resultcode': result},
-                              'Configure Error: {resultcode}',
-                              error=True)
+            self.log(logging.ERROR, 'configure_error', {'resultcode': result},
+                     'Configure Error: {resultcode}')
         else:
-            self.run_callback('configure_finish', {},
-                              'Configure finished successfully',
-                              important=True)
+            self.log(logging.WARNING, 'configure_finish', {},
+                     'Configure finished successfully')
 
         self.bse.refresh_configure_state()
 
@@ -142,134 +140,32 @@ class BuildSystem(object):
         if not self.bse.is_configured:
             self.configure()
 
-        self.run_callback('generate_makefile_begin', {},
-                          'Beginning generation of Makefiles',
-                          important=True)
+        self.log(logging.WARNING, 'generate_makefiles_begin', {},
+                 'Beginning generation of Makefiles')
 
-        conversion = self.config.makefile_conversion
-        apply_rewrite = conversion == 'rewrite'
-        strip_false_conditionals = conversion in ('prune', 'optimized')
+        for relative, filename, m in self.bse.generate_object_directory_makefiles():
+            output_path = os.path.join(self.config.object_directory,
+                                      relative, filename)
 
-        for relative, path in self.bse.source_directory_template_files():
-            try:
-                full = os.path.join(self.config.source_directory, relative, path)
+            # Create output directory
+            output_directory = os.path.dirname(output_path)
 
-                self.run_callback('makefile-generate', {'path': full},
-                                  'Generating makefile: {path}')
+            if not os.path.exists(output_directory):
+                os.makedirs(output_directory)
+                self.log(logging.DEBUG, 'mkdir', {'dir': output_directory},
+                         'Created directory: {dir}')
 
-                self.generate_makefile(
-                    relative, path,
-                    strip_false_conditionals=strip_false_conditionals,
-                    apply_rewrite=apply_rewrite)
-            except:
-                self.run_callback(
-                    'generate_makefile_exception',
-                    {'path': os.path.join(relative, path), 'exception': traceback.format_exc()},
-                    'Exception when processing Makefile {path}\n{exception}',
-                    error=True)
+            with open(output_path, 'wb') as output:
+                for line in m.lines():
+                    print >>output, line
 
-        self.run_callback('generate_makefile_finish', {},
-                          'Finished generation of Makefiles',
-                          important=True)
+            self.log(logging.DEBUG, 'write_makefile',
+                     {'path': output_path},
+                     'Generated Makefile {path}')
 
-    def generate_makefile(self, relative_path, filename,
-                          strip_false_conditionals=False, apply_rewrite=False):
-        """Generate a Makefile from an input file.
+        self.log(logging.WARNING, 'generate_makefile_finish', {},
+                 'Finished generation of Makefiles')
 
-        Generation options can be toggled by presence of arguments:
-
-          strip_false_conditionals
-              If True, conditionals evaluated to false will be stripped from the
-              Makefile. This implies apply_rewrite=True
-
-          apply_rewrite
-             If True, the Makefile will be rewritten from PyMake's parser
-             output. This will lose formatting of the original file. However,
-             the produced file should be functionally equivalent to the
-             original. This argument likely has little use in normal
-             operation. It is exposed to debug the functionality of the
-             rewriting engine.
-        """
-        if strip_false_conditionals:
-            apply_rewrite = True
-
-        input_path = os.path.join(self.config.source_directory, relative_path, filename)
-
-        out_basename = filename
-        if out_basename[-3:] == '.in':
-            out_basename = out_basename[0:-3]
-
-        output_path = os.path.join(self.config.object_directory,
-                                   relative_path,
-                                   out_basename)
-
-        # Create output directory
-        output_directory = os.path.dirname(output_path)
-
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-            self.run_callback('mkdir', {'dir': output_directory},
-                              'Created directory: {dir}')
-
-        def missing_callback(variable):
-            self.run_callback(
-                'makefile_substitution_missing',
-                {'path': os.path.join(relative_path, out_basename), 'var': variable},
-                'Missing source variable for substitution: {var} in {path}',
-                error=True)
-
-        m = extractor.MozillaMakefile(input_path,
-                                      relative_directory=os.path.dirname(relative_path),
-                                      directory=output_directory)
-        m.perform_substitutions(self.bse, callback_on_missing=missing_callback)
-
-        if strip_false_conditionals:
-            m.statements.strip_false_conditionals()
-        elif apply_rewrite:
-            # This has the side-effect of populating the StatementCollection,
-            # which will cause lines to come from it when we eventually write
-            # out the content.
-            lines = m.statements.lines()
-
-            # Perform verification that the rewritten file is equivalent to the
-            # original. This is present for mostly testing and verification
-            # purposes. For API reasons, it should be controlled by a named
-            # argument. It should probably be left off by default because it
-            # is expensive (doubles makefile generation time).
-            rewritten = makefile.StatementCollection(buf='\n'.join(lines),
-                                                     filename=input_path)
-
-            difference = m.statements.difference(rewritten)
-            if difference is not None:
-                self.run_callback(
-                    'rewritten_makefile_consistency_failure',
-                    {
-                        'path': os.path.join(relative_path, filename),
-                        'our_expansion': str(difference['our_expansion']),
-                        'their_expansion': str(difference['their_expansion']),
-                        'why': difference['why'],
-                        'ours': str(difference['ours']),
-                        'theirs': str(difference['theirs']),
-                        'our_line': difference['our_line'],
-                        'their_line': difference['their_line'],
-                        'index': difference['index']
-                    },
-                    'Generated Makefile not equivalent: {path} ("{ours}" != "{theirs}")',
-                    error=True
-                )
-                raise Exception('Rewritten Makefile not equivalent: %s' % difference)
-
-        with open(output_path, 'wb') as output:
-            for line in m.lines():
-                print >>output, line
-
-        self.run_callback(
-            'generate_makefile_success',
-            {'path': os.path.join(relative_path, out_basename)},
-            'Generated Makefile {path}')
-
-    def run_callback(self, action, params, formatter,
-                     important=False, error=False):
-        if self.callback:
-            self.callback(action, params, formatter,
-                          important=important, error=error)
+    def log(self, level, action, params, format_str):
+        self.logger.log(level, format_str,
+                        extra={'action': action, 'params': params})

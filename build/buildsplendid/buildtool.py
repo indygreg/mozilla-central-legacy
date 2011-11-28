@@ -45,10 +45,31 @@ from . import makefile
 
 import argparse
 import json
+import logging
 import os.path
 import pymake.parser
 import sys
 import time
+
+class LogFormatter(logging.Formatter):
+    """Custom log formatting class that writes JSON or our special format."""
+
+    __slots__ = ( 'start_time', 'write_json' )
+
+    def __init__(self, start_time, write_json=False):
+        self.start_time = start_time
+        self.write_json = write_json
+
+    def format(self, record):
+        action = record.action
+        params = record.params
+
+        if self.write_json:
+            json_obj = [record.created, action, params]
+            return json.dumps(json_obj)
+        else:
+            elapsed = record.created - self.start_time
+            return '%4.2f %s' % ( elapsed, record.msg.format(**params) )
 
 # TODO use decorators to make dispatching and documentation live closer to
 # methods.
@@ -83,16 +104,24 @@ actions:
 
     __slots__ = (
         'cwd',
-        'log_handler',
+        'bs_logger',
+        'logger',
     )
 
     def __init__(self, cwd):
         assert(os.path.isdir(cwd))
 
         self.cwd = cwd
-        self.log_handler = None
+
+        # We instantiate the buildsplendid logger as early as possible and
+        # set the level to debug so everything flows to it.
+        self.bs_logger = logging.getLogger('buildsplendid')
+        self.bs_logger.setLevel(logging.DEBUG)
+
+        self.logger = logging.getLogger(__name__)
 
     def run(self, argv):
+        """Runs the build tool with arguments specified."""
         parser = self.get_argument_parser()
 
         if len(argv) == 0:
@@ -115,31 +144,26 @@ actions:
         verbose = args.verbose
         print_json = args.print_json
 
-        def action_callback(action, params, formatter, important=False,
-                            error=False):
-            """Our logging/reporting callback. It takes an enumerated string
-            action, a dictionary of parameters describing that action, a
-            formatting string for producing human readable text of that event,
-            and some flags indicating if the message is important or represents
-            an error."""
-            now = time.time()
+        # The forensic logger logs everything to JSON
+        if forensic_handle is not None:
+            forensic_formatter = LogFormatter(start_time, write_json=True)
+            forensic_handler = logging.StreamHandler(stream=forensic_handle)
+            forensic_handler.setFormatter(forensic_formatter)
+            forensic_handler.setLevel(logging.DEBUG)
+            self.bs_logger.addHandler(forensic_handler)
 
-            elapsed = now - start_time
+        # The stderr logger is always enabled. Although, it is configurable
+        # from arguments.
+        stderr_formatter = LogFormatter(start_time, write_json=print_json)
+        stderr_handler = logging.StreamHandler(stream=sys.stderr)
+        stderr_handler.setFormatter(stderr_formatter)
+        if not verbose:
+            stderr_handler.setLevel(logging.WARNING)
 
-            json_obj = [now, action, params]
+        self.bs_logger.addHandler(stderr_handler)
 
-            if forensic_handle is not None:
-                json.dump(json_obj, forensic_handle)
-                print >>forensic_handle, ''
-
-            if verbose or important or error:
-                if print_json:
-                    json.dump(json_obj, sys.stderr)
-                    print >>sys.stderr, ''
-                else:
-                    print >>sys.stderr, '%4.2f %s' % ( elapsed, formatter.format(**params) )
-
-        self.log_handler = action_callback
+        self.log(logging.INFO, 'build_tool_start', {'action': args.action},
+                 'Build tool started')
 
         conf = config.BuildConfig()
 
@@ -149,20 +173,19 @@ actions:
                 sys.exit(1)
 
             conf.load_file(settings_file)
-            action_callback('config_load', {'file': settings_file},
-                            'Loaded existing config file: {file}',
-                            important=True)
+            self.log(logging.WARNING, 'config_load', {'file': settings_file},
+                     'Loaded existing config file: {file}')
         else:
             print 'Settings file does not exist at %s\n. I will help you generate one!' % settings_file
             conf.run_commandline_wizard(source_directory, sys.stdout)
 
             if not args.no_save_settings:
                 conf.save(settings_file)
-                action_callback('config_save', {'file': settings_file},
-                                'Saved config file to {file}', important=True)
+                self.log(logging.WARNING, 'config_save', {'file': settings_file},
+                         'Saved config file to {file}')
 
         # Now that we have the config squared away, we start doing stuff.
-        bs = buildsystem.BuildSystem(conf, callback=self.log_handler)
+        bs = buildsystem.BuildSystem(conf)
 
         method_name = args.method
         stripped = vars(args)
@@ -173,7 +196,7 @@ actions:
         method = getattr(self, method_name)
         method(bs, **stripped)
 
-        action_callback('finished', {}, 'Build action finished', important=True)
+        self.log(logging.WARNING, 'finished', {}, 'Build action finished')
 
     def build(self, bs):
         bs.build()
@@ -257,6 +280,9 @@ actions:
         loader = unittest.TestLoader()
         suite = loader.discover(start_dir, pattern='*_test.py', top_level_dir=top_dir)
         unittest.TextTestRunner().run(suite)
+
+    def log(self, level, action, params, format_str):
+        self.logger.log(level, format_str, extra={'action': action, 'params': params})
 
     def get_settings_file(self, args):
         """Get the settings file for the current environment.
