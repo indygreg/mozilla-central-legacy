@@ -44,9 +44,9 @@ sys.path.append('build/pymake')
 sys.path.append('other-licenses/ply')
 sys.path.append('xpcom/idl-parser')
 
-import buildsplendid.buildtool
+import buildsplendid.cli
 import os.path
 
 # All of the code is in a module because EVERYTHING IS A LIBRARY.
-b = buildsplendid.buildtool.BuildTool(os.path.dirname(os.path.abspath(__file__)))
+b = buildsplendid.cli.BuildTool(os.path.dirname(os.path.abspath(__file__)))
 b.run(sys.argv[1:])

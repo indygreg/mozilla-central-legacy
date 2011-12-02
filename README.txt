@@ -64,9 +64,7 @@ delimited JSON arrays. Each entry consists of a tuple of:
 
 This makes parsing much, much easier since data is strongly typed. You just
 need to write a switch statement keyed off the action for each entry. Anyone
-needing to do log analysis (RelEng) will love this. Of course, power users
-could hook into the low-level build API and write custom tools if build.py
-doesn't suit them.
+needing to do log analysis (RelEng) will love this.
 
 Derecursified Makefile Generation
 ---------------------------------
@@ -128,8 +126,8 @@ improve with time.
 Here is an overview of the modules:
 
   buildsystem   High-level APIs for the entire build system. If you want to
-  buildtool     build.py functionality
   bxr           Build Cross Reference tool
+  cli           build.py functionality
   config        Config file management.
   critic        Analyze build system for best practices
   data          Dumb container classes for representing build data
