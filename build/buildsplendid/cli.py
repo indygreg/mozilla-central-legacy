@@ -177,7 +177,7 @@ actions:
                      'Loaded existing config file: {file}')
         else:
             print 'Settings file does not exist at %s\n. I will help you generate one!' % settings_file
-            conf.run_commandline_wizard(source_directory, sys.stdout)
+            conf.run_commandline_wizard(self.cwd, sys.stdout)
 
             if not args.no_save_settings:
                 conf.save(settings_file)
