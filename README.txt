@@ -255,9 +255,9 @@ was running in a VM, but the VM had 4GB dedicated memory.
 Under Linux:
 
   # Empty object directory configure
-  * 13.8s - $ make -f client.mk configure
-  * 14.1s - $ make.py -f client.mk configure
-  * 13.1s - $ build.py configure
+  * 14.5s - $ make -f client.mk configure
+  * 15.0s - $ make.py -f client.mk configure
+  * 14.0s - $ build.py configure
 
 Please note that build.py does *not* produce Makefile during configure phase.
 For that, we do:
@@ -265,7 +265,7 @@ For that, we do:
   # PyMake/Build Splendid Performance
   * 2.8s  - Parse all 1152 Makefile.in into statement list
   * 1.0s  - Read all Makefile.in, perform variable translation, and write
-  * 3.4s  - Read all Makefile.in and perform simple PyMake output translation
+  * 6.0s  - Read all Makefile.in and perform simple PyMake output translation
 
 When can this get checked in?
 -----------------------------
