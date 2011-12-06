@@ -267,6 +267,14 @@ For that, we do:
   * 1.0s  - Read all Makefile.in, perform variable translation, and write
   * 6.0s  - Read all Makefile.in and perform simple PyMake output translation
 
+Under Windows (same machine):
+
+  # Empty object directory configure
+  * 88s  - make.py -f client.mk configure
+  * 71s  - build.py configure
+  * 8.2s - build.py makefiles (after configure)
+  * 80s  - build.py makefiles
+
 When can this get checked in?
 -----------------------------
 
@@ -338,6 +346,39 @@ over time.
 
 That being said, not many parts utilize 2.7 features, so it should be simple
 enough to backport if people insist.
+
+The Future
+==========
+
+Configure and Makefile Generation
+---------------------------------
+
+Notice the configure/makefile times from the FAQ above. A few things stand out:
+
+1) configure executes about 5x slower on Windows than Linux (71s vs 14s)
+2) BS runs configure and generates Makefiles about 8s faster
+
+The savings in #2 are in the makefile generation phase. BS is faster because
+it doesn't launch new processes to write each Makefile. New processes on
+Windows have much more overhead than they do on *NIX. Multiply this overhead by
+a few hundred and it adds up to a few seconds.
+
+The configure overhead is also likely heavily due to the new process overhead.
+Keep in mind configure is just a giant shell script. And, in shell, even things
+like simple tests can be new processes.
+
+If we were serious about decreasing "configure" time on Windows (and other
+platforms to some extent), we could rewrite parts in Python. For example,
+the bits about testing for architecture are trivial in Python: just use the
+platform module! And, rewriting bits of configure has the benefit that it
+would be written in Python not shell/m4. I would be hard-pressed to find
+someone who would think the Python version would be more complicated to grok
+than the shell version.
+
+That being said, the benefits of rewriting configure are low. configure only
+needs to run when it changes or when the state of the operating system changes.
+This doesn't happen very often. So the overhead - even the gross 5x overhead on
+Windows - is tolerable. The return on investment just doesn't seem high enough.
 
 Project History
 ===============
@@ -415,7 +456,6 @@ variables are consulted when extracting metadata. This means that once I have
 extracted all data from a specific Makefile, I'm able to see which files
 remain and still have data presumably not captured by the extractor. Looking
 at the build system as a whole, the set of unhandled variables was daunting.
-
 
 ====================
 CONTENT BELOW IS OLD
