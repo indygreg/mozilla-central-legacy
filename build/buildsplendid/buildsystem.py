@@ -89,8 +89,6 @@ class BuildSystem(object):
 
             os.makedirs(self.config.object_directory)
 
-        configure_path = os.path.join(self.config.source_directory, 'configure')
-
         env = {}
         for k, v in os.environ.iteritems():
             env[k] = v
@@ -106,13 +104,20 @@ class BuildSystem(object):
         self.log(logging.WARNING, 'configure_begin', {'args': args},
                  'Starting configure: {args}')
 
+        executable = os.path.join(self.config.source_directory, 'configure')
+        args.insert(0, executable)
+
+        shell, is_msys = get_shell_info()
+        if is_msys:
+            args.insert(0, shell)
+
         p = subprocess.Popen(
             args,
             cwd=self.config.object_directory,
-            executable=configure_path,
             env=env,
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
         )
         while True:
             for line in p.stdout:
@@ -169,3 +174,36 @@ class BuildSystem(object):
     def log(self, level, action, params, format_str):
         self.logger.log(level, format_str,
                         extra={'action': action, 'params': params})
+
+_shell = None
+_is_msys = None
+
+def get_shell_info():
+    """Obtain shell info for the current process.
+
+    This was lifted from PyMake's util.checkmsyscompat().
+    """
+    global _shell, _is_msys
+
+    if _shell is not None:
+        return (_shell, _is_msys)
+
+    # Standard UNIX environment
+    if 'SHELL' in os.environ:
+        _shell = os.environ['SHELL']
+    # Mozilla Build Windows environment
+    elif 'MOZILLABUILD' in os.environ:
+        _shell = os.environ['MOZILLABUILD'] + '/msys/bin/sh.exe'
+    # Windows Command Prompt
+    elif 'COMSPEC' in os.environ:
+        _shell = os.environ['COMSPEC']
+    else:
+        raise Exception("Can't find a shell.")
+
+    _is_msys = False
+    if 'MSYSTEM' in os.environ and os.environ['MSYSTEM'] == 'MINGW32':
+        _is_msys = True
+        if not _shell.lower().endswith('.exe'):
+            _shell += '.exe'
+
+    return (_shell, _is_msys)

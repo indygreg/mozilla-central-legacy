@@ -37,6 +37,7 @@
 # This file contains code for configuring a build environment.
 
 import ConfigParser
+import os
 import os.path
 import platform
 import sys
@@ -112,6 +113,10 @@ class BuildConfig(object):
 
         # TODO this should be configurable
         args.append('--enable-application=browser')
+
+        # TODO should be conditional on DirectX SDK presence
+        if os.name == 'nt':
+            args.append('--disable-angle')
 
         return args
 
