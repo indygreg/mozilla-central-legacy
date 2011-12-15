@@ -44,6 +44,7 @@
 
 #include "prtypes.h"
 #include <stdlib.h>
+#include <assert.h>
 
 
 /*
@@ -112,8 +113,12 @@ XPT_SizeOfArena(XPTArena *arena);
 #ifdef DEBUG
 XPT_PUBLIC_API(void)
 XPT_AssertFailed(const char *s, const char *file, PRUint32 lineno);
+/*
 #define XPT_ASSERT(_expr) \
     ((_expr)?((void)0):XPT_AssertFailed(# _expr, __FILE__, __LINE__))
+*/
+#define XPT_ASSERT(_expr) assert(_expr)
+
 #else
 #define XPT_ASSERT(_expr) ((void)0)
 #endif
