@@ -19,6 +19,7 @@
 #endif
 
 #include <stdio.h>
+#include <assert.h>
 
 /** \file SkTypes.h
 */
@@ -92,7 +93,8 @@ inline void operator delete(void* p) {
 #endif
 
 #ifdef SK_DEBUG
-    #define SkASSERT(cond)              SK_DEBUGBREAK(cond)
+    /*#define SkASSERT(cond)              SK_DEBUGBREAK(cond)*/
+    #define skASSERT(cond)              assert(cond)
     #define SkDEBUGCODE(code)           code
     #define SkDECLAREPARAM(type, var)   , type var
     #define SkPARAM(var)                , var
