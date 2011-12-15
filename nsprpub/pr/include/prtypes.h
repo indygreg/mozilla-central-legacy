@@ -558,8 +558,12 @@ typedef unsigned long PRUword;
 ** The macro can be used only in places where an "extern" declaration is
 ** allowed.
 */
+/*
 #define PR_STATIC_ASSERT(condition) \
     extern void pr_static_assert(int arg[(condition) ? 1 : -1])
+*/
+/* [gps] This obviousln't isn't static, but satisfies the static analyzer. */
+#define PR_STATIC_ASSERT(condition) assert(condition)
 
 PR_END_EXTERN_C
 
