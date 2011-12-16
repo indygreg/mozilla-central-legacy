@@ -94,7 +94,7 @@ inline void operator delete(void* p) {
 
 #ifdef SK_DEBUG
     /*#define SkASSERT(cond)              SK_DEBUGBREAK(cond)*/
-    #define skASSERT(cond)              assert(cond)
+    #define SkASSERT(cond)              assert(cond)
     #define SkDEBUGCODE(code)           code
     #define SkDECLAREPARAM(type, var)   , type var
     #define SkPARAM(var)                , var
