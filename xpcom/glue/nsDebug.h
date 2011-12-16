@@ -269,8 +269,11 @@
  * platform, in such a way that execution can't be continued by other
  * code (e.g., by intercepting a signal).
  */
+/*
 #define NS_RUNTIMEABORT(msg)                                    \
   NS_DebugBreak(NS_DEBUG_ABORT, msg, nsnull, __FILE__, __LINE__)
+*/
+#define NS_RUNTIMEABORT(msg) assert(0)
 
 
 /* Macros for checking the trueness of an expression passed in within an 
