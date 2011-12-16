@@ -549,6 +549,7 @@ typedef unsigned long PRUword;
 #endif
 
 #include "obsolete/protypes.h"
+#include <assert.h>
 
 /********* ????????????? End Fix me ?????????????????????????????? *****/
 #endif /* NO_NSPR_10_SUPPORT */
@@ -563,7 +564,8 @@ typedef unsigned long PRUword;
     extern void pr_static_assert(int arg[(condition) ? 1 : -1])
 */
 /* [gps] This obviousln't isn't static, but satisfies the static analyzer. */
-#define PR_STATIC_ASSERT(condition) assert(condition)
+#define PR_STATIC_ASSERT(expr) \
+    extern void pr_static_assert(int arg[1])
 
 PR_END_EXTERN_C
 
