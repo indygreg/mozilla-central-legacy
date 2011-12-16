@@ -29,6 +29,7 @@
 #define V8_CHECKS_H_
 
 #include <string.h>
+#include <assert.h>
 
 extern "C" void V8_Fatal(const char* file, int line, const char* format, ...);
 
@@ -62,7 +63,10 @@ static inline void CheckHelper(const char* file,
 
 // The CHECK macro checks that the given condition is true; if not, it
 // prints a message to stderr and aborts.
+/*
 #define CHECK(condition) ::CheckHelper(__FILE__, __LINE__, #condition, condition)
+*/
+#define CHECK(condition) assert(condition)
 
 
 // Helper function used by the CHECK_EQ function when given int
