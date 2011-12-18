@@ -213,6 +213,9 @@ class BuildConfig(object):
         if not self.config.has_option('paths', 'object_directory'):
             self.config.set('paths', 'object_directory', object_directory)
 
+        if not self.config.has_option('build', 'application'):
+            self.config.set('build', 'application', 'browser')
+
         if not self.config.has_option('build', 'threads'):
             self.config.set('build', 'threads', multiprocessing.cpu_count())
 
