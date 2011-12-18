@@ -271,6 +271,13 @@ actions:
         else:
             raise Exception('Unsupported format type: %' % format)
 
+    def settings(self, bs):
+        config = bs.config
+
+        config.run_commandline_wizard(config.source_directory)
+        print 'TODO save to file.'
+        sys.exit(1)
+
     def unittest(self, bs):
         import unittest
 

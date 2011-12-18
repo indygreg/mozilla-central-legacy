@@ -39,22 +39,10 @@
 import ConfigParser
 import os
 import os.path
+import multiprocessing
 import platform
+import shlex
 import sys
-
-PROMPT_DEFAULT = """
-The default build options have been selected automatically:
-
-  Application:      Firefox
-  Type:             debug
-  Source Directory: %s
-  Object Directory: %s
-"""
-
-PROMPT_LACK_OF_WIZARD = """
-Eventually the wizard will be interactive. For now, it is static and you must
-edit the produced config file manually to modify behavior. Stay tuned!
-"""
 
 MAKEFILE_CONVERSION_OPTIONS = {
     'traditional': """Performs simple conversion from .in files by replacing
@@ -79,6 +67,59 @@ MAKEFILE_CONVERSION_OPTIONS = {
                     produces the fastest builds and is the default choice.""",
 }
 
+APPLICATION_OPTIONS = {
+    'browser':   'Desktop Browser (Firefox)',
+    'mail':      'Thunderbird',
+    'suite':     'Mozilal Suite (SeaMonkey)',
+    'calendar':  'Standalone Calendar (Sunbird)',
+    'xulrunner': 'XULRunner'
+}
+
+TYPE_POSITIVE_INTEGER = 1
+TYPE_STRING = 2
+TYPE_PATH = 3
+
+# Defines the set of recognized options in the config.
+OPTIONS = {
+    'paths': {
+        'source_directory': {
+            'short': 'Source Directory',
+            'help': 'Path to top-level source code directory.',
+            'type': TYPE_PATH,
+        },
+        'object_directory': {
+            'short': 'Object Directory',
+            'help': 'Path to directory where generated files will go.',
+            'type': TYPE_PATH,
+        },
+    },
+    'makefile': {
+        'conversion': {
+            'short':   'Makefile Conversion',
+            'help':    'How to generate Makefiles.',
+            'options': MAKEFILE_CONVERSION_OPTIONS,
+        }
+    },
+    'build': {
+        'application': {
+            'short':   'Application',
+            'help':    'The application to build.',
+            'options': APPLICATION_OPTIONS,
+        },
+        'threads': {
+            'short':  'Threads',
+            'help':   'How many parallel threads to launch when building.',
+            'type':   TYPE_POSITIVE_INTEGER,
+        },
+        'configure_args': {
+            'short': 'Configure Arguments',
+            'help': 'Extra arguments to pass to configure. This is effectively '
+                    'a back door. Ideally it should not exist.',
+            'type': TYPE_STRING,
+        },
+    }
+}
+
 class BuildConfig(object):
     """Represents a configuration for building."""
 
@@ -91,12 +132,13 @@ class BuildConfig(object):
     }
 
     def __init__(self, filename=None):
-        self.config = ConfigParser.ConfigParser()
+        self.config = ConfigParser.RawConfigParser()
 
         if filename:
             self.load_file(filename)
         else:
-            self.config.add_section('paths')
+            for k in sorted(OPTIONS.keys()):
+                self.config.add_section(k)
 
     @property
     def source_directory(self):
@@ -111,12 +153,16 @@ class BuildConfig(object):
         """Returns list of configure arguments for this configuration."""
         args = []
 
-        # TODO this should be configurable
-        args.append('--enable-application=browser')
+        args.append('--enable-application=%s' % (
+            self.config.get('build', 'application') ))
 
         # TODO should be conditional on DirectX SDK presence
         if os.name == 'nt':
             args.append('--disable-angle')
+
+        if self.config.has_option('build', 'configure_args'):
+            args.extend(shlex.split(
+                self.config.get('build', 'configure_args')))
 
         return args
 
@@ -138,8 +184,15 @@ class BuildConfig(object):
         return self.DEFAULTS[section][option]
 
     def load_file(self, filename):
-        # TODO perform validation of read config file
         self.config.read(filename)
+
+        for section in self.config.sections():
+            if section not in OPTIONS:
+                raise Exception('Unknown section in config file: %s' % section)
+
+            for k, v in self.config.items(section):
+                if k not in OPTIONS[section]:
+                    raise Exception('Unknown option: %s.%s' % ( section, k ))
 
     def save(self, filename):
         """Saves the build configuration to a file."""
@@ -151,19 +204,34 @@ class BuildConfig(object):
         assert(os.path.isabs(source_directory))
         assert(os.path.isdir(source_directory))
 
-        self.config.set('paths', 'source_directory', source_directory)
-
-        machine = platform.machine()
-        object_directory = os.path.join(source_directory, 'obj-ff-debug')
-
         if fh is None:
             fh = sys.stdout
 
-        print >>fh, PROMPT_DEFAULT % (
-            source_directory,
-            object_directory
-        )
+        self.config.set('paths', 'source_directory', source_directory)
 
-        print >>fh, PROMPT_LACK_OF_WIZARD
+        object_directory = os.path.join(source_directory, 'obj-ff-debug')
+        if not self.config.has_option('paths', 'object_directory'):
+            self.config.set('paths', 'object_directory', object_directory)
 
-        self.config.set('paths', 'object_directory', object_directory)
+        if not self.config.has_option('build', 'threads'):
+            self.config.set('build', 'threads', multiprocessing.cpu_count())
+
+        print >>fh, 'Current Configuration\n'
+        self.print_current_config(fh)
+        print >>fh, ''
+
+        print >>fh, 'Interactive settings wizard not yet implemented.'
+        print >>fh, 'For now, edit the settings file manually.'
+
+    def print_current_config(self, fh):
+        """Prints an English summary of the current config to a file handle."""
+
+        for section in OPTIONS.keys():
+            for option, d in OPTIONS[section].iteritems():
+                value = None
+                if self.config.has_option(section, option):
+                    value = self.config.get(section, option)
+                else:
+                    value = '(default)'
+
+                print >>fh, '{0:30} = {1}'.format(d['short'], value)
