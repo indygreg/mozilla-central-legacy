@@ -28,7 +28,7 @@ in which I fervently believe:
   other than the README in the root of the source directory. I believe that by
   making the process as simple as possible and lowering the barrier to get
   going, you increase adoption. In other words, by making the developer user
-  experience better, you retain more developers.
+  experience better, you attract and retain more developers.
 
 * Everything is a library. All the new code is written inside Python modules.
   Others should be able to hook into the core build APIs with minimal effort.
@@ -110,6 +110,28 @@ A very small modification was made to PyMake to enable non-PyMake classes to
 be fed into variable/expansion resolution. This was required because I needed
 a way to resolve variables without instantiating a full-blown
 pymake.data.Makefile instance.
+
+Other Features
+==============
+
+Build Config Strongly Defined and Validated
+-------------------------------------------
+
+The config file for BS is more strongly defined than the existing .mozconfig
+model. In the new world, we store options like "object_directory = XXX" instead
+of using somewhat cryptic syntax like "mk_add_options MOZ_OBJDIR=...". And,
+when the config is loaded, it is validated. In the existing .mozconfig world,
+the config really isn't validated well: it is easy to add an option that has
+no effect without realizing it.
+
+IMO, the new config is more transparent and user friendly.
+
+More Intelligent Config Defaults
+--------------------------------
+
+The build system automatically assumes some defaults to help you get going
+faster. For example, it will automatically build desktop Firefox and will
+set the parallelization to the number of detected cores on your machine.
 
 Technical Details
 =================
@@ -341,8 +363,9 @@ utilize.
 
 Since I view this as an alternative build system, I'm more focused on the
 long-term than supporting a minimum ubiquitous environment (like Python
-2.5 or 2.6). Long-term, Python 2.7 will be adopted, so concerns will diminish
-over time.
+2.5 or 2.6). Long-term, Python 2.7 will be adopted (and it is already adopted
+by Mozilla Build - the Windows developer environment), so concerns will
+diminish over time.
 
 That being said, not many parts utilize 2.7 features, so it should be simple
 enough to backport if people insist.
@@ -371,14 +394,20 @@ If we were serious about decreasing "configure" time on Windows (and other
 platforms to some extent), we could rewrite parts in Python. For example,
 the bits about testing for architecture are trivial in Python: just use the
 platform module! And, rewriting bits of configure has the benefit that it
-would be written in Python not shell/m4. I would be hard-pressed to find
-someone who would think the Python version would be more complicated to grok
-than the shell version.
+would be written in Python not shell/m4. I think most people would prefer
+to write and maintain things in Python over shell/m4.
 
 That being said, the benefits of rewriting configure are low. configure only
 needs to run when it changes or when the state of the operating system changes.
 This doesn't happen very often. So the overhead - even the gross 5x overhead on
 Windows - is tolerable. The return on investment just doesn't seem high enough.
+
+Graphical Config Tool
+---------------------
+
+Now that the config is in Python, it would be pretty straightforward to add
+a graphical frontend to it. A GUI using tkinter could probably be baked up
+pretty easily.
 
 Project History
 ===============

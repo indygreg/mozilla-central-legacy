@@ -140,7 +140,7 @@ class BuildSystem(object):
         self.bse.refresh_configure_state()
 
     def generate_makefiles(self):
-        """Generate Makefile's into configured object tree."""
+        """Generate Makefiles into configured object tree."""
 
         if not self.bse.is_configured:
             self.configure()
