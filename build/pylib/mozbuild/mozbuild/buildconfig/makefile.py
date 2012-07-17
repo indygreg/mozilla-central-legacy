@@ -1849,12 +1849,21 @@ class Makefile(object):
     @property
     def makefile(self):
         if self._makefile is None:
-            if self._lines is not None:
-                raise Exception('Cannot load Makefile from modified content at this time')
-
             self._makefile = pymake.data.Makefile(workdir=self.directory)
-            self._makefile.include(os.path.basename(self.filename))
-            self._makefile.finishparsing()
+
+            if self._lines is None:
+                self._makefile.include(os.path.basename(self.filename))
+                self._makefile.finishparsing()
+            else:
+                # This hackiness is because pymake doesn't offer an easier API.
+                # We basically copy pymake.data.Makefile.include
+                statements = pymake.parser.parsestring(''.join(self._lines),
+                    self.filename)
+                self._makefile.variables.append('MAKEFILE_LIST',
+                    pymake.data.Variables.SOURCE_AUTOMATIC, self.filename,
+                    None, self._makefile)
+                statements.execute(self._makefile, weak=False)
+                self._makefile.gettarget(self.filename).explicit = True
 
         return self._makefile
 
