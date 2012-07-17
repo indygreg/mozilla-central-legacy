@@ -2,119 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# This file contains a high-level class, BuildSystem, for interacting with
-# the Mozilla build system.
-
-from . import config
-from . import extractor
-from . import makefile
-
-import logging
-import os
-import os.path
-import subprocess
-import traceback
-
 class BuildSystem(object):
-    """High-level interface to the build system."""
-
-    __slots__ = (
-        # BuildSystemExtractor instance
-        'bse',
-
-        # config.BuildConfig instance
-        'config',
-
-        # logging.Logger instance
-        'logger',
-    )
-
-    def __init__(self, conf):
-        """Construct an instance from a source and target directory."""
-        assert(isinstance(conf, config.BuildConfig))
-
-        self.config = conf
-        self.bse = extractor.BuildSystemExtractor(conf)
-        self.logger = logging.getLogger(__name__)
-
-    def build(self):
-        if not self.bse.is_configured:
-            self.configure()
-
-        # TODO make conditional
-        self.generate_makefiles()
-
-    def configure(self):
-        """Runs configure on the build system."""
-
-        # TODO regenerate configure's from configure.in's if needed
-
-        # Create object directory if it doesn't exist
-        if not os.path.exists(self.config.object_directory):
-            self.log(logging.WARNING, 'create_object_directory',
-                     {'dir':self.config.object_directory},
-                     'Creating object directory {dir}')
-
-            os.makedirs(self.config.object_directory)
-
-        env = {}
-        for k, v in os.environ.iteritems():
-            env[k] = v
-
-        # Tell configure not to load a .mozconfig.
-        env['IGNORE_MOZCONFIG'] = '1'
-
-        # Tell configure scripts not to generate Makefiles, as we do that.
-        env['DONT_GENERATE_MAKEFILES'] = '1'
-
-        args = self.config.configure_args
-
-        self.log(logging.WARNING, 'configure_begin', {'args': args},
-                 'Starting configure: {args}')
-
-        executable = os.path.join(self.config.source_directory, 'configure')
-        args.insert(0, executable)
-
-        shell, is_msys = get_shell_info()
-        if is_msys:
-            args.insert(0, shell)
-
-        p = subprocess.Popen(
-            args,
-            cwd=self.config.object_directory,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            universal_newlines=True
-        )
-        while True:
-            for line in p.stdout:
-                self.log(logging.DEBUG, 'configure_output',
-                         {'line': line.strip()},
-                         '{line}')
-
-            if p.poll() is not None:
-                break
-
-        result = p.wait()
-
-        if result != 0:
-            self.log(logging.ERROR, 'configure_error', {'resultcode': result},
-                     'Configure Error: {resultcode}')
-        else:
-            self.log(logging.WARNING, 'configure_finish', {},
-                     'Configure finished successfully')
-
-        self.bse.refresh_configure_state()
-
     def generate_makefiles(self):
         """Generate Makefiles into configured object tree."""
-
-        if not self.bse.is_configured:
-            self.configure()
-
-        self.log(logging.WARNING, 'generate_makefiles_begin', {},
-                 'Beginning generation of Makefiles')
 
         for relative, filename, m in self.bse.generate_object_directory_makefiles():
             output_path = os.path.join(self.config.object_directory,
@@ -125,53 +15,7 @@ class BuildSystem(object):
 
             if not os.path.exists(output_directory):
                 os.makedirs(output_directory)
-                self.log(logging.DEBUG, 'mkdir', {'dir': output_directory},
-                         'Created directory: {dir}')
 
             with open(output_path, 'wb') as output:
                 for line in m.lines():
                     print >>output, line
-
-            self.log(logging.DEBUG, 'write_makefile',
-                     {'path': output_path},
-                     'Generated Makefile {path}')
-
-        self.log(logging.WARNING, 'generate_makefile_finish', {},
-                 'Finished generation of Makefiles')
-
-    def log(self, level, action, params, format_str):
-        self.logger.log(level, format_str,
-                        extra={'action': action, 'params': params})
-
-_shell = None
-_is_msys = None
-
-def get_shell_info():
-    """Obtain shell info for the current process.
-
-    This was lifted from PyMake's util.checkmsyscompat().
-    """
-    global _shell, _is_msys
-
-    if _shell is not None:
-        return (_shell, _is_msys)
-
-    # Standard UNIX environment
-    if 'SHELL' in os.environ:
-        _shell = os.environ['SHELL']
-    # Mozilla Build Windows environment
-    elif 'MOZILLABUILD' in os.environ:
-        _shell = os.environ['MOZILLABUILD'] + '/msys/bin/sh.exe'
-    # Windows Command Prompt
-    elif 'COMSPEC' in os.environ:
-        _shell = os.environ['COMSPEC']
-    else:
-        raise Exception("Can't find a shell.")
-
-    _is_msys = False
-    if 'MSYSTEM' in os.environ and os.environ['MSYSTEM'] == 'MINGW32':
-        _is_msys = True
-        if not _shell.lower().endswith('.exe'):
-            _shell += '.exe'
-
-    return (_shell, _is_msys)
