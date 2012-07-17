@@ -385,7 +385,7 @@ class MozillaMakefile(Makefile):
             for g in self.get_variable_split('GARBAGE'):
                 misc.garbage.add(g)
 
-        misc.included_files = [t[0] for t in self.statements.includes]
+        misc.included_files = [t[0] for t in self.statements.includes()]
 
         yield tracker
         yield misc
@@ -429,7 +429,7 @@ class MakefileCollection(object):
         for path in sorted(self.all_paths):
             m = self._makefiles.get(path, None)
             if m is None:
-                m = Makefile(path)
+                m = MozillaMakefile(path)
                 self._makefiles[path] = m
 
             yield m
@@ -795,8 +795,17 @@ class BuildSystemExtractor(Base):
         tree.object_directory = self.objdir
 
         # Extract data from Makefile.in's.
-        for makefile in self.makefiles:
-            self._load_makefile_into_tree(tree, makefile)
+        for makefile in self.makefiles.makefiles():
+            # Skip over files that cause us pain. For now, this is just things
+            # with $(shell), as that can cause weirdness.
+            if len(list(makefile.statements.shell_dependent_statements())) > 0:
+                continue
+
+            try:
+                self._load_makefile_into_tree(tree, makefile)
+            except Exception as e:
+                print 'Error loading %s' % makefile.filename
+                traceback.print_exc()
 
         # Load data from JAR manifests.
         # TODO look for jar.mn, parse, and load.
@@ -816,7 +825,7 @@ class BuildSystemExtractor(Base):
         This is basically a proxy between the MozillaMakefile data extraction
         interface and TreeInfo.
         """
-        own_variables = set(m.get_own_variable_names(include_conditionals=True))
+        own_variables = makefile.get_own_variable_names(include_conditionals=True)
 
         # Prune out lowercase variables, which are defiend as local.
         lowercase_variables = set([v for v in own_variables if v.islower()])
@@ -873,7 +882,7 @@ class BuildSystemExtractor(Base):
                 name = obj.name
 
                 if name in tree.libraries:
-                    raise Exception('Library laready defined: %s' % name)
+                    raise Exception('Library aready defined: %s' % name)
 
                 def normalize_include(path):
                     if os.path.isabs(path):
@@ -900,12 +909,13 @@ class BuildSystemExtractor(Base):
                     'output_dir': obj.directory,
                 }
 
-            elif isinstance(obj.MiscInfo):
+            elif isinstance(obj, data.MiscInfo):
                 if obj.included_files is not None:
                     for path in obj.included_files:
-                        v = self.included_files.get(path, set())
-                        v.add(makefile.filename)
-                        self.included_files[path] = v
+                        pass
+                        #v = self.included_files.get(path, set())
+                        #v.add(makefile.filename)
+                        #self.included_files[path] = v
 
         # Set math \o/
         unused_variables = own_variables - used_variables - lowercase_variables
