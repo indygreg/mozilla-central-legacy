@@ -1813,7 +1813,7 @@ class Makefile(object):
         if not os.path.exists(filename):
             raise Exception('Path does not exist: %s' % filename)
 
-        self.filename  = filename
+        self.filename = filename
 
         if directory is not None:
             self.directory = directory
@@ -1853,7 +1853,7 @@ class Makefile(object):
                 raise Exception('Cannot load Makefile from modified content at this time')
 
             self._makefile = pymake.data.Makefile(workdir=self.directory)
-            self._makefile.include(self.filename)
+            self._makefile.include(os.path.basename(self.filename))
             self._makefile.finishparsing()
 
         return self._makefile
@@ -1969,3 +1969,17 @@ class Makefile(object):
             return []
 
         return v.resolvesplit(self.makefile, self.makefile.variables)
+
+    def get_own_variable_names(self, include_conditionals=True):
+        names = set()
+
+        for stmt, conds, name, value, how in self.statements.variable_assignments():
+            if not include_conditionals and len(conds) > 0:
+                continue
+
+            names.add(name)
+
+        return names
+
+    def has_own_variable(self, name):
+        return name in self.get_own_variable_names(include_conditionals=True)
