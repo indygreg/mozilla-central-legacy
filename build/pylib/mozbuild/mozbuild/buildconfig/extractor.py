@@ -731,6 +731,11 @@ class BuildSystemExtractor(Base):
         for output_leaf in output_files:
             yield '%s.in' % output_leaf
 
+        # TODO we also need to pull in GYP files, etc. To do this properly
+        # requires co-operation with autoconf. Basically, we need autoconf to
+        # write a machine-readable file containing the set of files we are
+        # interested in.
+
     def load_all_object_directory_makefiles(self):
         """Convenience method to load all Makefiles in the object directory.
 
