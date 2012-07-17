@@ -35,6 +35,15 @@ class Build(Base, ArgumentProvider):
         with open(filename, 'wb') as fh:
             generate_bxr(self.config, fh)
 
+    def buildinfo(self):
+        from mozbuild.buildconfig.extractor import BuildSystemExtractor
+
+        bse = BuildSystemExtractor(self.config)
+        bse.load_input_build_config_files()
+        tree = bse.get_tree_info()
+
+        print tree
+
     @staticmethod
     def populate_argparse(parser):
         group = parser.add_parser('build',
@@ -61,3 +70,7 @@ class Build(Base, ArgumentProvider):
                                 help='The Build Cross Reporter Tool.')
 
         bxr.set_defaults(cls=Build, method='bxr', filename='bxr.html')
+
+        buildinfo = parser.add_parser('buildinfo',
+            help='Generate a machine-readable document describing the build.')
+        buildinfo.set_defaults(cls=Build, method='buildinfo')
