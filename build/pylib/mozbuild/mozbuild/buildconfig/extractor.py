@@ -5,10 +5,6 @@
 # This file contains classes used to extract metadata from the Mozilla build
 # system.
 
-from . import config
-from . import data
-from . import makefile
-
 import hashlib
 import logging
 import os
@@ -17,7 +13,13 @@ import sys
 import traceback
 import xpidl
 
-class MozillaMakefile(makefile.Makefile):
+import mozbuild.buildconfig.data as data
+
+from mozbuild.base import Base
+from mozbuild.buildconfig.makefile import Makefile
+from mozbuild.buildconfig.makefile import StateCollection
+
+class MozillaMakefile(Makefile):
     """A Makefile with knowledge of Mozilla's build system.
 
     This is the class used to extract metadata from the Makefiles.
@@ -59,7 +61,7 @@ class MozillaMakefile(makefile.Makefile):
 
     def __init__(self, filename, relative_directory=None, directory=None):
         """Interface for Makefiles with Mozilla build system knowledge."""
-        makefile.Makefile.__init__(self, filename, directory=directory)
+        Makefile.__init__(self, filename, directory=directory)
 
         self.relative_directory = relative_directory
         self.traits = None
@@ -81,7 +83,7 @@ class MozillaMakefile(makefile.Makefile):
         mapping['srcdir'] = os.path.join(bse.config.source_directory,
                                          self.relative_directory)
 
-        makefile.Makefile.perform_substitutions(self, mapping,
+        Makefile.perform_substitutions(self, mapping,
                                                 callback_on_missing=callback_on_missing)
 
     def get_traits(self):
@@ -401,7 +403,7 @@ class MakefileCollection(object):
         'source_directory',
         'object_directory',
 
-        # Dictionary of paths to makefile.Makefile instances (cache)
+        # Dictionary of paths to Makefile instances (cache)
         '_makefiles',
     )
 
@@ -422,12 +424,12 @@ class MakefileCollection(object):
     def makefiles(self):
         """A generator for Makefile instances from the configured paths.
 
-        Returns instances of makefile.Makefile.
+        Returns instances of Makefile.
         """
         for path in sorted(self.all_paths):
             m = self._makefiles.get(path, None)
             if m is None:
-                m = makefile.Makefile(path)
+                m = Makefile(path)
                 self._makefiles[path] = m
 
             yield m
@@ -685,8 +687,8 @@ class BuildSystemExtractor(object):
             lines = m.statements.lines()
 
             if verify_rewrite:
-                rewritten = makefile.StatementCollection(buf='\n'.join(lines),
-                                                         filename=input_path)
+                rewritten = StatementCollection(buf='\n'.join(lines),
+                                                filename=input_path)
 
                 difference = m.statements.difference(rewritten)
                 if difference is not None:
@@ -784,11 +786,11 @@ class BuildSystemExtractor(object):
         d = {}
 
         allowed_types = (
-            makefile.StatementCollection.VARIABLE_ASSIGNMENT_SIMPLE,
-            makefile.StatementCollection.VARIABLE_ASSIGNMENT_RECURSIVE
+            StatementCollection.VARIABLE_ASSIGNMENT_SIMPLE,
+            StatementCollection.VARIABLE_ASSIGNMENT_RECURSIVE
         )
 
-        statements = makefile.StatementCollection(filename=path)
+        statements = StatementCollection(filename=path)
 
         # We evaluate ifeq's because the config files /should/ be
         # static. We don't rewrite these, so there is little risk.
