@@ -887,6 +887,8 @@ class ObjectDirectoryParser(object):
 
     This holds state for a specific build instance. It is constructed from an
     object directory and gathers information from the files it sees.
+
+    I /think/ this is deprecated in favor of the above. I can't remember.
     """
 
     __slots__ = (
