@@ -29,6 +29,12 @@ class Build(Base, ArgumentProvider):
         builder = TreeBuilder(self.config)
         builder.build_tier(tier, subtier)
 
+    def bxr(self, filename):
+        from mozbuild.buildconfig.bxr import generate_bxr
+
+        with open(filename, 'wb') as fh:
+            generate_bxr(self.config, fh)
+
     @staticmethod
     def populate_argparse(parser):
         group = parser.add_parser('build',
@@ -50,3 +56,8 @@ class Build(Base, ArgumentProvider):
                 help='Action to perform on tier.')
 
         tier.set_defaults(cls=Build, method='tier')
+
+        bxr = parser.add_parser('bxr',
+                                help='The Build Cross Reporter Tool.')
+
+        bxr.set_defaults(cls=Build, method='bxr', filename='bxr.html')
