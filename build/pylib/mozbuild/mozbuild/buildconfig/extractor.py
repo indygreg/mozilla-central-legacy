@@ -784,6 +784,149 @@ class BuildSystemExtractor(Base):
         """
         pass
 
+    def get_tree_info(self):
+        """Obtains a TreeInfo instance for the parsed build configuration.
+
+        The returned object represents the currently configured build. It can
+        be used to generate files for other build backends.
+        """
+        tree = data.TreeInfo()
+        tree.top_source_directory = self.srcdir
+        tree.object_directory = self.objdir
+
+        # Extract data from Makefile.in's.
+        for makefile in self.makefiles:
+            self._load_makefile_into_tree(tree, makefile)
+
+        # Load data from JAR manifests.
+        # TODO look for jar.mn, parse, and load.
+
+        # Parse IDL files loaded into the tree.
+        for m, d in tree.xpidl_modules.iteritems():
+            for f in d['sources']:
+                filename = os.path.normpath(os.path.join(d['source_dir'], f))
+                tree.idl_sources[filename] = self._parse_idl_file(filename,
+                    tree)
+
+        return tree
+
+    def _load_makefile_into_tree(self, tree, makefile):
+        """Loads an individual MozillaMakefile instance into a TreeInfo.
+
+        This is basically a proxy between the MozillaMakefile data extraction
+        interface and TreeInfo.
+        """
+        own_variables = set(m.get_own_variable_names(include_conditionals=True))
+
+        # Prune out lowercase variables, which are defiend as local.
+        lowercase_variables = set([v for v in own_variables if v.islower()])
+
+        used_variables = set()
+
+        # Iterate over all the pieces of information extracted from the
+        # Makefile, normalize them, and add them to the TreeInfo.
+        for obj in makefile.get_data_objects():
+            used_variables |= obj.used_variables
+
+            if obj.source_dir is not None:
+                tree.source_directories.add(obj.source_dir)
+
+            if isinstance(obj, data.XPIDLInfo):
+                module = obj.module
+                assert(module is not None)
+
+                tree.xpidl_modules[module] = {
+                    'source_dir': obj.source_dir,
+                    'module': module,
+                    'sources': obj.sources,
+                }
+
+                tree.idl_directories.add(obj.source_dir)
+
+            elif isinstance(obj, data.ExportsInfo):
+                for k, v in obj.exports.iteritems():
+                    k = '/%s' % k
+
+                    if k not in tree.exports:
+                        tree.exports[k] = {}
+
+                    for f in v:
+                        search_paths = [obj.source_dir]
+                        search_paths.extend(obj.vpath)
+
+                        found = False
+
+                        for path in search_paths:
+                            filename = os.path.join(path, f)
+                            if not os.path.exists(filename):
+                                continue
+
+                            found = True
+                            tree.exports[k][f] = filename
+                            break
+
+                        if not found:
+                            raise Exception('Could not find export file: %s from %s' % (
+                                f, obj.source_dir))
+
+            elif isinstance(obj, data.LibraryInfo):
+                name = obj.name
+
+                if name in tree.libraries:
+                    raise Exception('Library laready defined: %s' % name)
+
+                def normalize_include(path):
+                    if os.path.isabs(path):
+                        return path
+
+                    return os.path.normpath(os.path.join(obj.directory,
+                        path))
+
+                includes = []
+                for path in obj.includes:
+                    includes.append(normalize_include(path))
+                for path in obj.local_includes:
+                    includes.append(normalize_include(path))
+
+                tree.libraries[name] = {
+                    'c_flags': obj.c_flags,
+                    'cpp_sources': obj.cpp_sources,
+                    'cxx_flags': obj.cxx_flags,
+                    'defines': obj.defines,
+                    'includes': includes,
+                    'pic': obj.pic,
+                    'is_static': obj.is_static,
+                    'source_dir': obj.source_dir,
+                    'output_dir': obj.directory,
+                }
+
+            elif isinstance(obj.MiscInfo):
+                if obj.included_files is not None:
+                    for path in obj.included_files:
+                        v = self.included_files.get(path, set())
+                        v.add(makefile.filename)
+                        self.included_files[path] = v
+
+        # Set math \o/
+        unused_variables = own_variables - used_variables - lowercase_variables
+        for var in unused_variables:
+            # TODO report unhandled variables in tree
+            pass
+
+    def _parse_idl_file(self, filename, tree):
+        idl_data = open(filename, 'rb').read()
+        p = xpidl.IDLParser()
+        idl = p.parse(idl_data, filename=filename)
+
+        # TODO It probably isn't correct to search *all* IDL directories
+        # because the same file may be defined multiple places.
+        idl.resolve(tree.idl_directories, p)
+
+        return {
+            'filename': filename,
+            'dependencies': [os.path.normpath(dep) for dep in idl.deps],
+        }
+
     def autoconf_for_path(self, path):
         """Obtains a dictionary of variable values from the autoconf file
         relevant for the specified path.
@@ -905,355 +1048,3 @@ class BuildSystemExtractor(Base):
                 h.update(data)
 
         return h.hexdigest()
-
-class ObjectDirectoryParser(object):
-    """A parser for an object directory.
-
-    This holds state for a specific build instance. It is constructed from an
-    object directory and gathers information from the files it sees.
-
-    I /think/ this is deprecated in favor of the above. I can't remember.
-    """
-
-    __slots__ = (
-        'dir',                      # Directory data was extracted from.
-        'parsed',
-        'top_makefile',
-        'top_source_dir',
-        'retain_metadata',          # Boolean whether Makefile metadata is being
-                                    # retained.
-        'all_makefile_paths',       # List of all filesystem paths discovered
-        'relevant_makefile_paths',  # List of all Makefiles relevant to our interest
-        'ignored_makefile_paths',   # List of Makefile paths ignored
-        'handled_makefile_paths',   # Set of Makefile paths which were processed
-        'error_makefile_paths',     # Set of Makefile paths experiencing an error
-                                    # during processing.
-        'included_files',           # Dictionary defining which makefiles were
-                                    # included from where. Keys are the included
-                                    # filename and values are sets of paths that
-                                    # included them.
-        'variables',                # Dictionary holding details about variables.
-        'ifdef_variables',          # Dictionary holding info on variables used
-                                    # in ifdefs.
-        'rules',                    # Dictionary of all rules encountered. Keys
-                                    # Makefile paths. Values are lists of dicts
-                                    # describing each rule.
-        'unhandled_variables',
-
-        'tree', # The parsed build tree
-    )
-
-    def __init__(self, directory):
-        """Construct an instance from a directory.
-
-        The given path must be absolute and must be a directory.
-        """
-        if not os.path.isabs(directory):
-            raise Exception('Path is not absolute: %s' % directory)
-
-        if not os.path.isdir(directory):
-            raise Exception('Path is not a directory: %s' % directory)
-
-        self.dir = os.path.normpath(directory)
-        self.parsed = False
-
-        top_makefile_path = os.path.join(directory, 'Makefile')
-
-        self.top_makefile = MozillaMakefile(top_makefile_path)
-        self.top_source_dir = self.top_makefile.get_top_source_dir()
-
-        # The following hold data once we are parsed.
-        self.retain_metadata         = False
-        self.all_makefile_paths      = None
-        self.relevant_makefile_paths = None
-        self.ignored_makefile_paths  = None
-        self.handled_makefile_paths  = None
-        self.error_makefile_paths    = None
-        self.included_files          = {}
-        self.unhandled_variables     = {}
-        self.rules                   = {}
-        self.variables               = {}
-        self.ifdef_variables         = {}
-
-    def load_tree(self, retain_metadata=False):
-        """Loads data from the entire build tree into the instance."""
-
-        self.retain_metadata = retain_metadata
-
-        self.top_source_dir = self.top_makefile.get_variable_string('topsrcdir')
-
-        # First, collect all the Makefiles that we can find.
-
-        all_makefiles = set()
-
-        for root, dirs, files in os.walk(self.dir):
-            for name in files:
-                if name == 'Makefile' or name[-3:] == '.mk':
-                    all_makefiles.add(os.path.normpath(os.path.join(root, name)))
-
-        # manually add other, special .mk files
-        # TODO grab these automatically
-        for path in self.SOURCE_DIR_MAKEFILES:
-            all_makefiles.add(os.path.normpath(
-                os.path.join(self.top_source_dir, path))
-            )
-
-        self.all_makefile_paths = sorted(all_makefiles)
-
-        # Prune out the directories that have known problems.
-        self.relevant_makefile_paths = []
-        self.ignored_makefile_paths = []
-        for path in self.all_makefile_paths:
-            subpath = path[len(self.dir)+1:]
-
-            relevant = True
-            for ignore in self.IGNORE_DIRECTORIES:
-                if subpath.find(ignore) == 0:
-                    relevant = False
-                    break
-
-            if relevant:
-                self.relevant_makefile_paths.append(path)
-            else:
-                self.ignored_makefile_paths.append(path)
-
-        self.handled_makefile_paths = set()
-        self.error_makefile_paths   = set()
-
-        self.tree = data.TreeInfo()
-        self.tree.object_directory = self.dir
-        self.tree.top_source_directory = self.top_source_dir
-
-        # Traverse over all relevant Makefiles
-        for path in self.relevant_makefile_paths:
-            try:
-                self.load_makefile(path, retain_metadata=retain_metadata)
-            except Exception, e:
-                print 'Exception loading Makefile: %s' % path
-                traceback.print_exc()
-                self.error_makefile_paths.add(path)
-
-        # Look for JAR Manifests in source directories and extract data from
-        # them.
-        for d in self.tree.source_directories:
-            jarfile = os.path.normpath(os.path.join(d, 'jar.mn'))
-
-            if os.path.exists(jarfile):
-                self.tree.jar_manifests[jarfile] = self.parse_jar_manifest(jarfile)
-
-        # Parse the IDL files.
-        for m, d in self.tree.xpidl_modules.iteritems():
-            for f in d['sources']:
-                try:
-                    filename = os.path.normpath(os.path.join(d['source_dir'], f))
-                    self.tree.idl_sources[filename] = self.parse_idl_file(filename)
-                except Exception, e:
-                    print 'Error parsing IDL file: %s' % filename
-                    print e
-
-    def load_makefile(self, path, retain_metadata=False):
-        """Loads an indivudal Makefile into the instance."""
-        assert(os.path.normpath(path) == path)
-        assert(os.path.isabs(path))
-
-        self.handled_makefile_paths.add(path)
-        m = MozillaMakefile(path)
-
-        own_variables = set(m.get_own_variable_names(include_conditionals=True))
-
-        if retain_metadata:
-            self.collect_makefile_metadata(m)
-
-        # We don't perform additional processing of included files. This
-        # assumes that .mk means included, which appears to currently be fair.
-        if path[-3:] == '.mk':
-            return
-
-        # prune out lowercase variables, which are defined as local
-        lowercase_variables = set()
-        for v in own_variables:
-            if v.islower():
-                lowercase_variables.add(v)
-
-        used_variables = set()
-
-        # We now register this Makefile with the monolithic data structure
-        for obj in m.get_data_objects():
-            used_variables |= obj.used_variables
-
-            if obj.source_dir is not None:
-                self.tree.source_directories.add(obj.source_dir)
-
-            if isinstance(obj, data.XPIDLInfo):
-                module = obj.module
-                assert(module is not None)
-
-                self.tree.xpidl_modules[module] = {
-                    'source_dir': obj.source_dir,
-                    'module':     module,
-                    'sources':    obj.sources,
-                }
-
-                self.tree.idl_directories.add(obj.source_dir)
-
-            elif isinstance(obj, data.ExportsInfo):
-                for k, v in obj.exports.iteritems():
-                    k = '/%s' % k
-
-                    if k not in self.tree.exports:
-                        self.tree.exports[k] = {}
-
-                    for f in v:
-                        #if f in v:
-                        #    print 'WARNING: redundant exports file: %s (from %s)' % ( f, obj.source_dir )
-
-                        search_paths = [obj.source_dir]
-                        search_paths.extend(obj.vpath)
-
-                        found = False
-
-                        for path in search_paths:
-                            filename = os.path.join(path, f)
-                            if not os.path.exists(filename):
-                                continue
-
-                            found = True
-                            self.tree.exports[k][f] = filename
-                            break
-
-                        if not found:
-                            print 'Could not find export file: %s from %s' % ( f, obj.source_dir )
-
-            elif isinstance(obj, data.LibraryInfo):
-                name = obj.name
-
-                if name in self.tree.libraries:
-                    print 'WARNING: library already defined: %s' % name
-                    continue
-
-                def normalize_include(path):
-                    if os.path.isabs(path):
-                        return path
-
-                    return os.path.normpath(os.path.join(obj.directory, path))
-
-                includes = []
-                for path in obj.includes:
-                    includes.append(normalize_include(path))
-                for path in obj.local_includes:
-                    includes.append(normalize_include(path))
-
-                self.tree.libraries[name] = {
-                    'c_flags':     obj.c_flags,
-                    'cpp_sources': obj.cpp_sources,
-                    'cxx_flags':   obj.cxx_flags,
-                    'defines':     obj.defines,
-                    'includes':    includes,
-                    'pic':         obj.pic,
-                    'is_static':   obj.is_static,
-                    'source_dir':  obj.source_dir,
-                    'output_dir':  obj.directory,
-                }
-
-            elif isinstance(obj, data.MiscInfo):
-                if obj.included_files is not None:
-                    for path in obj.included_files:
-                        v = self.included_files.get(path, set())
-                        v.add(m.filename)
-                        self.included_files[path] = v
-
-        unused_variables = own_variables - used_variables - lowercase_variables
-        for var in unused_variables:
-            entry = self.unhandled_variables.get(var, set())
-            entry.add(path)
-            self.unhandled_variables[var] = entry
-
-    def collect_makefile_metadata(self, m):
-        """Collects metadata from a Makefile into memory."""
-        assert(isinstance(m, MozillaMakefile))
-
-        own_variables = set(m.get_own_variable_names(include_conditionals=True))
-        own_variables_unconditional = set(m.get_own_variable_names(include_conditionals=False))
-
-        for v in own_variables:
-            if v not in self.variables:
-                self.variables[v] = {
-                    'paths':               set(),
-                    'conditional_paths':   set(),
-                    'unconditional_paths': set(),
-                }
-
-            info = self.variables[v]
-            info['paths'].add(m.filename)
-            if v in own_variables_unconditional:
-                info['unconditional_paths'].add(m.filename)
-            else:
-                info['conditional_paths'].add(m.filename)
-
-        for (name, expected, is_conditional, (path, line, column)) in m.statements.ifdefs:
-            if name not in self.variables:
-                self.variables[name] = {
-                    'paths':               set(),
-                    'conditional_paths':   set(),
-                    'unconditional_paths': set(),
-                }
-
-            self.variables[name]['paths'].add(m.filename)
-
-            if name not in self.ifdef_variables:
-                self.ifdef_variables[name] = {}
-
-            d = self.ifdef_variables[name]
-            if m.filename not in d:
-                d[m.filename] = []
-
-            d[m.filename].append((expected, line))
-
-        if m.filename not in self.rules:
-            self.rules[m.filename] = []
-
-        rules = self.rules[m.filename]
-
-        for rule in m.statements.rules:
-            rule['condition_strings'] = [m.condition_to_string(c) for c in rule['conditions']]
-            rules.append(rule)
-
-    def parse_jar_manifest(self, filename):
-        """Parse the contents of a JAR manifest filename into a data structure."""
-
-        # TODO hook into JarMaker.py to parse the JAR
-        return {}
-
-    def parse_idl_file(self, filename):
-        idl_data = open(filename).read()
-        p = xpidl.IDLParser()
-        idl = p.parse(idl_data, filename=filename)
-
-        # TODO it probably isn't correct to search *all* idl directories
-        # because the same file may be defined multiple places.
-        idl.resolve(self.tree.idl_directories, p)
-
-        return {
-            'filename':     filename,
-            'dependencies': [os.path.normpath(dep) for dep in idl.deps],
-        }
-
-    def get_rules_for_makefile(self, path):
-        """Obtain all the rules for a Makefile at a path."""
-
-        if not self.retain_metadata:
-            raise Exception('Metadata is not being retained. Refusing to proceed.')
-
-        return self.rules.get(path, [])
-
-    def get_target_names_from_makefile(self, path):
-        """Obtain a set of target names from a Makefile."""
-        if not self.retain_metadata:
-            raise Exception('Metadata is not being retained. Refusing to proceed.')
-
-        targets = set()
-
-        for rule in self.rules.get(path, []):
-            targets |= set(rule['targets'])
-
-        return targets
