@@ -5,6 +5,14 @@ The Build Splendid Build System
 The code in this tree contains an alternate build system for Mozilla projects.
 It is called Build Splendid, or BS for short.
 
+OLD DOCS WARNING
+================
+
+The documentation that follows is horribly out of date. It was written
+before mozbuild and mach came into existence. If you are interested in
+the code, see build/pylib/mozbuild/mozbuild/buildsystem. This is where
+the code unique to this branch lives.
+
 Quick Start
 ===========
 
