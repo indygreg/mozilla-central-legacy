@@ -5,13 +5,12 @@
 
 # This file contains functionality for the Build Cross Reference (BXR) tool.
 
-from . import config
-from . import extractor
-
 import hashlib
 import mako
 import mako.template
 import uuid
+
+from mozbuild.buildconfig.extractor import BuildSystemExtractor
 
 # This is our mako HTML template. Scroll down to see which variables are
 # available.
@@ -387,11 +386,9 @@ HTML_TEMPLATE = """
 </%def>
 """
 
-def generate_bxr(conf, fh):
+def generate_bxr(config, fh):
     """Generate the BXR HTML and write to the specified file handle."""
-    assert(isinstance(conf, config.BuildConfig))
-
-    bse = extractor.BuildSystemExtractor(conf)
+    bse = BuildSystemExtractor(config)
     bse.load_all_object_directory_makefiles()
 
     def get_variable_value(name):
@@ -537,8 +534,8 @@ def generate_bxr(conf, fh):
     try:
         t = mako.template.Template(HTML_TEMPLATE)
         print >>fh, t.render(
-            source_directory=conf.source_directory,
-            object_directory=conf.object_directory,
+            source_directory=config.source_directory,
+            object_directory=config.object_directory,
             makefiles=makefiles,
             variables=variables,
             targets=targets,

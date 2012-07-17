@@ -17,7 +17,7 @@ import mozbuild.buildconfig.data as data
 
 from mozbuild.base import Base
 from mozbuild.buildconfig.makefile import Makefile
-from mozbuild.buildconfig.makefile import StateCollection
+from mozbuild.buildconfig.makefile import StatementCollection
 
 class MozillaMakefile(Makefile):
     """A Makefile with knowledge of Mozilla's build system.
@@ -478,7 +478,7 @@ class MakefileCollection(object):
             for statement, conditions, target, pattern, prerequisites, commands in m.statements.rules():
                 yield (makefile, statement, conditions, target, pattern, prerequisites, commands)
 
-class BuildSystemExtractor(object):
+class BuildSystemExtractor(Base):
     """The entity that extracts information from the build system.
 
     This is the thing that turns Makefiles and other signals into data
@@ -561,14 +561,14 @@ class BuildSystemExtractor(object):
         'logger',
     )
 
-    def __init__(self, conf):
-        assert(isinstance(conf, config.BuildConfig))
+    def __init__(self, config):
+        Base.__init__(self, config)
 
         self.autoconfs = None
-        self.config = conf
         self.configure_state = None
         self._is_configured = None
-        self.makefiles = MakefileCollection(conf.source_directory, conf.object_directory)
+        self.makefiles = MakefileCollection(config.source_directory,
+            config.object_directory)
         self.logger = logging.getLogger(__name__)
 
     @property
