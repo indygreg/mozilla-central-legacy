@@ -31,7 +31,7 @@ def markGotSIGINT(signum, stackFrame):
 
 class XPCShellTests(object):
 
-  log = logging.getLogger()
+  log = logging.getLogger(__name__)
   oldcwd = os.getcwd()
 
   def __init__(self, log=sys.stdout):
