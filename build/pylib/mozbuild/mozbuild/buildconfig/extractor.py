@@ -481,7 +481,7 @@ class MakefileCollection(object):
 class BuildSystemExtractor(Base):
     """The entity that extracts information from the build system.
 
-    This is the thing that turns Makefiles and other signals into data
+    This is the thing that turns Makefile.in's and other signals into data
     structures. If you are looking for the core of the build system, you've
     found it!
     """
@@ -569,7 +569,6 @@ class BuildSystemExtractor(Base):
         self._is_configured = None
         self.makefiles = MakefileCollection(config.source_directory,
             config.object_directory)
-        self.logger = logging.getLogger(__name__)
 
     @property
     def is_configured(self):
@@ -711,6 +710,26 @@ class BuildSystemExtractor(Base):
                     raise Exception('Rewritten Makefile not equivalent: %s' % difference)
 
         return m
+
+    def load_input_build_config_files(self):
+        """Loads all files defininig the build configuration.
+
+        This takes whatever configure tells us is relevant to the current build
+        configuration and loads it.
+        """
+        for filename in self.get_input_config_files():
+            self.makefiles.add(filename)
+
+    def get_input_config_files(self):
+        unallmakefiles = os.path.join(self.objdir, 'unallmakefiles')
+
+        output_files = None
+
+        with open(unallmakefiles, 'rb') as fh:
+            output_files = sorted(fh.read().strip().split(' '))
+
+        for output_leaf in output_files:
+            yield '%s.in' % output_leaf
 
     def load_all_object_directory_makefiles(self):
         """Convenience method to load all Makefiles in the object directory.

@@ -389,7 +389,7 @@ HTML_TEMPLATE = """
 def generate_bxr(config, fh):
     """Generate the BXR HTML and write to the specified file handle."""
     bse = BuildSystemExtractor(config)
-    bse.load_all_object_directory_makefiles()
+    bse.load_input_build_config_files()
 
     def get_variable_value(name):
         return {
