@@ -71,7 +71,7 @@ class MakefileDerivedObject(object):
     def __init__(self, makefile):
         assert(makefile is not None)
 
-        self.directory      = makefile.dir
+        self.directory      = makefile.directory
         self.source_dir     = None
         self.top_source_dir = None
         self.used_variables = set()
