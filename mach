@@ -1,0 +1,41 @@
+#!/usr/bin/env python
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
+
+import platform
+import sys
+
+# Ensure we are running Python 2.7. We put this check here so we generate a
+# user-friendly error message rather than a cryptic stack track on module
+# import, etc.
+major, minor, patchlevel = platform.python_version_tuple()
+
+if major != '2' or minor != '7':
+    print 'Python 2.7 is required to run mach. You are running %s.' % (
+        platform.python_version() )
+    sys.exit(1)
+
+# Set up the environment before invoking any code.
+# TODO integrate with virtualenv somehow.
+sys.path.append('build/pylib/mozbuild')
+sys.path.append('build/pylib/blessings')
+sys.path.append('build/pylib/colorama')
+sys.path.append('build')
+sys.path.append('build/pymake')
+sys.path.append('other-licenses/ply')
+sys.path.append('xpcom/idl-parser')
+sys.path.append('testing/xpcshell')
+sys.path.append('testing/mozbase/mozprocess')
+sys.path.append('testing/mozbase/mozinfo')
+
+from os.path import abspath
+from os.path import dirname
+
+from mozbuild.cli.mach import Mach
+
+import os.path
+
+# All of the code is in a module because EVERYTHING IS A LIBRARY.
+mach = Mach(dirname(abspath(__file__)))
+mach.run(sys.argv[1:])
