@@ -116,6 +116,25 @@ class Statement(object):
         """
         raise Exception("%s must implement to_source()." % self.__class__)
 
+    def get_expansions(self):
+        """Obtain all the expansions defined by this statement.
+
+        This is a generator for pymake.data.Expansion instances.
+        """
+        raise Exception("%s must implement get_expansions()." % self.__class__)
+
+    def get_variable_references(self, descend=False):
+        """Obtain all variable references in this statement.
+
+        This is a generator of pymake.function.VariableRef instances.
+
+        By default, only variables contained directly inside the main
+        expansions composing this statement are returned. To descend into child
+        expansions, set `descend` to True.
+        """
+        for e in self.get_expansions():
+            for v in e.get_variable_references(descend=descend): yield v
+
     def __eq__(self, other):
         raise Exception("%s must implement __eq__." % self.__class__)
 
@@ -201,6 +220,10 @@ class Rule(Statement):
             sep,
             deps)
 
+    def get_expansions(self):
+        yield self.targetexp
+        yield self.depexp
+
     def __eq__(self, other):
         if not isinstance(other, Rule):
             return False
@@ -282,6 +305,11 @@ class StaticPatternRule(Statement):
             pattern,
             deps)
 
+    def get_expansions(self):
+        yield self.targetexp
+        yield self.patternexp
+        yield self.depexp
+
     def __eq__(self, other):
         if not isinstance(other, StaticPatternRule):
             return False
@@ -328,6 +356,9 @@ class Command(Statement):
         s = self.exp.to_source(escape_variables=True)
 
         return '\n'.join(['\t%s' % line for line in s.split('\n')])
+
+    def get_expansions(self):
+        yield self.exp
 
     def __eq__(self, other):
         if not isinstance(other, Command):
@@ -416,6 +447,13 @@ class SetVariable(Statement):
 
     def dump(self, fd, indent):
         print >>fd, "%sSetVariable<%s> %s %s\n%s %r" % (indent, self.valueloc, self.vnameexp, self.token, indent, self.value)
+
+    def get_expansions(self):
+        if self.targetexp is not None:
+            yield self.targetexp
+
+        yield self.vnameexp
+        yield data.StringExpansion(self.value, self.valueloc)
 
     def __eq__(self, other):
         if not isinstance(other, SetVariable):
@@ -518,6 +556,10 @@ class EqCondition(Condition):
         r1 = self.exp1.resolvestr(makefile, makefile.variables)
         r2 = self.exp2.resolvestr(makefile, makefile.variables)
         return (r1 == r2) == self.expected
+
+    def get_expansions(self):
+        yield self.exp1
+        yield self.exp2
 
     def __str__(self):
         return "ifeq (expected=%s) %s %s" % (self.expected, self.exp1, self.exp2)
@@ -651,6 +693,90 @@ class ConditionBlock(Statement):
 
         return '\n'.join(lines)
 
+    def get_expansions(self):
+        for condition, statements in self:
+            for e in condition.get_expansions(): yield e
+            for s in statements:
+                for e in s.get_expansions(): yield e
+
+    def filter(self, func, descend=True):
+        """Filter the statements in this block using the specified function.
+
+        This behaves like the built-in filter(). Each statement in the
+        ConditionBlock is fed into the supplied filter function. If that
+        function returns True, the statement is retained. If it returns False,
+        the statement is removed.
+        """
+        filtered = []
+        for condition, statements in self:
+            if func(condition):
+                stmts = []
+
+                for statement in statements:
+                    if isinstance(statement, ConditionBlock):
+                        statement.filter(func, descend=descend)
+                        stmts.append(statement)
+                        continue
+
+                    if func(statement):
+                        stmts.append(statement)
+
+                filtered.append((condition, stmts))
+
+        self._groups = filtered
+
+    @property
+    def is_ifdef_only(self):
+        """Whether the condition block's conditions are only ifdefs.
+
+        This only applies to the top-level conditions. It is possible that a
+        non-ifdef condition exists in a child ConditionBlock.
+        """
+        for condition, statements in self:
+            if isinstance(condition, EqCondition):
+                return False
+
+            assert isinstance(condition, IfdefCondition, ElseCondition)
+
+        return True
+
+    @property
+    def has_ifeq(self):
+        """Whether the condition block has any ifeq conditions.
+
+        This also applies to ifneq.
+        """
+        return not self.is_ifdef_only
+
+    @property
+    def statement_count(self):
+        """Obtain the number of statements in this condition block.
+
+        This does *not* include the conditions, only the statements within.
+
+        This does *not* descend into condition blocks that may be embedded
+        within.
+        """
+        i = 0
+        for condition, statements in self:
+            i += len(statements)
+
+        return i
+
+    @property
+    def statement_branch_counts(self):
+        """Obtain the counts of statements in each branch.
+
+        Returns a list of counts per branch. The index is the branch offset (0
+        being the first branch). The value is the number of statements in that
+        branch.
+        """
+        counts = []
+        for condition, statements in self:
+            counts.append(len(statements))
+
+        return counts
+
     def __eq__(self, other):
         if not isinstance(other, ConditionBlock):
             return False
@@ -780,6 +906,9 @@ class Include(Statement):
 
         return '%sinclude %s' % (prefix, self.exp.to_source())
 
+    def get_expansions(self):
+        yield self.exp
+
     def __eq__(self, other):
         if not isinstance(other, Include):
             return False
@@ -821,6 +950,9 @@ class VPathDirective(Statement):
 
     def to_source(self):
         return 'vpath %s' % self.exp.to_source()
+
+    def get_expansions(self):
+        yield self.exp
 
     def __eq__(self, other):
         if not isinstance(other, VPathDirective):
@@ -865,6 +997,9 @@ class ExportDirective(Statement):
     def to_source(self):
         return ('export %s' % self.exp.to_source()).rstrip()
 
+    def get_expansions(self):
+        yield self.exp
+
     def __eq__(self, other):
         if not isinstance(other, ExportDirective):
             return False
@@ -894,6 +1029,9 @@ class UnexportDirective(Statement):
 
     def to_source(self):
         return 'unexport %s' % self.exp.to_source()
+
+    def get_expansions(self):
+        yield self.exp
 
     def __eq__(self, other):
         if not isinstance(other, UnexportDirective):
@@ -926,6 +1064,9 @@ class EmptyDirective(Statement):
 
     def to_source(self):
         return self.exp.to_source()
+
+    def get_expansions(self):
+        yield self.exp
 
     def __eq__(self, other):
         if not isinstance(other, EmptyDirective):

@@ -92,7 +92,76 @@ def _if_else(c, t, f):
         return t()
     return f()
 
-class StringExpansion(object):
+class BaseExpansion(object):
+    """Base class for expansions.
+
+    This defines the common interface for all expansions. You should code to
+    use.
+    """
+
+    @property
+    def is_static_string(self):
+        """Returns whether the expansion is composed of static string content.
+
+        This is always True for StringExpansion. It will be True for Expansion
+        only if all elements of that Expansion are static strings.
+        """
+        raise Exception('Must be implemented in child class.')
+
+    def get_functions(self, descend=False):
+        """Obtain all functions inside this expansion.
+
+        This is a generator for pymake.functions.Function instances.
+
+        By default, this only returns functions existing as the primary
+        elements of this expansion. If `descend` is True, it will descend into
+        child expansions and extract all functions in the tree.
+        """
+        yield
+
+    def get_variable_references(self, descend=False):
+        """Obtain all variable references in this expansion.
+
+        This is a generator for pymake.functionsVariableRef instances.
+
+        To retrieve the names of variables, simply query the `vname` field on
+        the returned instances. Most of the time these will be StringExpansion
+        instances.
+        """
+        for f in self.get_functions(descend=descend):
+            if not isinstance(f, functions.VariableRef):
+                continue
+
+            yield f
+
+    @property
+    def is_filesystem_dependent(self):
+        """Whether this expansion may query the filesystem for evaluation.
+
+        This effectively asks "is any function in this expansion dependent on
+        the filesystem."""
+        for f in self.get_functions(descend=True):
+            if f.is_filesystem_dependent:
+                return True
+
+        return False
+
+    @property
+    def is_shell_dependent(self):
+        """Whether this expansion may invoke a shell for evaluation."""
+
+        for f in self.get_functions(descend=True):
+            if isinstance(f, functions.ShellFunction):
+                return True
+
+        return False
+
+class StringExpansion(BaseExpansion):
+    """An Expansion representing a static string.
+
+    This essentially wraps a single str instance.
+    """
+
     __slots__ = ('loc', 's',)
     simple = True
 
@@ -124,6 +193,10 @@ class StringExpansion(object):
         e.appendstr(self.s)
         return e
 
+    @property
+    def is_static_string(self):
+        return True
+
     def __len__(self):
         return 1
 
@@ -152,9 +225,12 @@ class StringExpansion(object):
 
         return s
 
-class Expansion(list):
-    """
-    A representation of expanded data, such as that for a recursively-expanded variable, a command, etc.
+class Expansion(BaseExpansion, list):
+    """A representation of expanded data.
+
+    This is effectively an ordered list of StringExpansion and
+    pymake.function.Function instances. Every item in the collection appears in
+    the same context in a make file.
     """
 
     __slots__ = ('loc',)
@@ -286,6 +362,22 @@ class Expansion(list):
 
     def resolvesplit(self, makefile, variables, setting=[]):
         return self.resolvestr(makefile, variables, setting).split()
+
+    @property
+    def is_static_string(self):
+        for e, is_func in self:
+            if is_func:
+                return False
+
+        return True
+
+    def get_functions(self, descend=False):
+        for e, is_func in self:
+            if is_func:
+                yield e
+
+            if descend:
+                raise Exception('TODO implement descend.')
 
     def __repr__(self):
         return "<Expansion with elements: %r>" % ([e for e, isfunc in self],)

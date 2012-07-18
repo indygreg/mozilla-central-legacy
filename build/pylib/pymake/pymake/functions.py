@@ -73,6 +73,29 @@ class Function(object):
 
         return '$(%s %s)' % (self.name, ','.join(args))
 
+    def get_expansions(self, descend=False):
+        """Obtain all Expansions referenced by this Function.
+
+        This is a generator for pymake.data.BaseExpansion instances.
+        """
+        # Our default implementation simply returns arguments. More advanced
+        # functions like variable references may need their own implementation.
+        for a in self._arguments:
+            yield a
+
+            if not descend:
+                continue
+
+            for e in a.get_expansions(descend=True): yield e
+
+    @property
+    def is_filesystem_dependent(self):
+        """Exposes whether this function depends on the filesystem for results.
+
+        If True, the function touches the filesystem as part of evaluation.
+        """
+        return False
+
     def __len__(self):
         return len(self._arguments)
 
@@ -153,6 +176,9 @@ class VariableRef(Function):
 
         return '$(%s)' % self.vname.to_source()
 
+    def get_expansions(self, descend=False):
+        yield self.vname
+
     def __repr__(self):
         return "VariableRef<%s>(%r)" % (self.loc, self.vname)
 
@@ -202,6 +228,9 @@ class SubstitutionRef(Function):
             self.vname.to_source(),
             self.substfrom.to_source(),
             self.substto.to_source())
+
+    def get_expansions(self, descend=False):
+        raise Exception("TODO implement.")
 
     def __repr__(self):
         return "SubstitutionRef<%s>(%r:%r=%r)" % (
@@ -503,7 +532,9 @@ class WildcardFunction(Function):
                            for p in patterns
                            for x in glob(makefile.workdir, p)]))
 
-    __slots__ = Function.__slots__
+    @property
+    def is_filesystem_dependent(self):
+        return True
 
 class RealpathFunction(Function):
     name = 'realpath'
@@ -513,6 +544,9 @@ class RealpathFunction(Function):
     def resolve(self, makefile, variables, fd, setting):
         fd.write(' '.join([os.path.realpath(os.path.join(makefile.workdir, path)).replace('\\', '/')
                            for path in self._arguments[0].resolvesplit(makefile, variables, setting)]))
+
+    def is_filesystem_dependent(self):
+        return True
 
 class AbspathFunction(Function):
     name = 'abspath'
