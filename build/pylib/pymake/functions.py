@@ -352,7 +352,7 @@ class BasenameFunction(Function):
         util.joiniter(fd, self.basenames(self._arguments[0].resolvesplit(makefile, variables, setting)))
 
 class AddSuffixFunction(Function):
-    name = 'addprefix'
+    name = 'addsuffix'
     minargs = 2
     maxargs = 2
 
@@ -364,7 +364,7 @@ class AddSuffixFunction(Function):
         fd.write(' '.join([w + suffix for w in self._arguments[1].resolvesplit(makefile, variables, setting)]))
 
 class AddPrefixFunction(Function):
-    name = 'addsuffix'
+    name = 'addprefix'
     minargs = 2
     maxargs = 2
 
