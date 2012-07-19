@@ -9,9 +9,9 @@ import os.path
 
 import mozbuild.buildconfig.data as data
 
-from mozbuild.buildconfig.generator.generator import Generator
+from mozbuild.buildconfig.generator.base import Generator
 
-class SimpleMakefileGenerator(Generator):
+class MakefileGenerator(Generator):
     """Generator that produces Makefiles.
 
     This is mostly tailored to the existing, legacy build system.
@@ -21,7 +21,7 @@ class SimpleMakefileGenerator(Generator):
 
         self.reformat = False
         self.strip_false_conditionals = False
-        self.verify_reformat = True
+        self.verify_reformat = False
 
     def generate(self):
         for makefile in self.frontend.makefiles.makefiles():
@@ -33,14 +33,23 @@ class SimpleMakefileGenerator(Generator):
     def _generate_makefile(self, makefile):
         assert makefile.filename.endswith('.in')
 
-        output_path = os.path.join(self.objdir.makefile.filename)
-        output_path = output_path.rstrip('.in')
+        basename = os.path.basename(makefile.filename)
+        input_directory = makefile.directory
+        leaf = input_directory[len(self.srcdir) + 1:]
 
-        print output_path
+        output_path = os.path.join(self.objdir, leaf, basename).rstrip('.in')
+
+        variables = dict(self.frontend.autoconf)
+        variables['top_srcdir'] = self.srcdir
+        variables['srcdir'] = input_directory
 
         # The first step is variable subsitution.
-        makefile.perform_substitutions(self.autoconf, error_on_missing=True)
+        makefile.perform_substitutions(variables, raise_on_missing=True)
 
+        print 'Writing %s' % output_path
+        with open(output_path, 'w') as fh:
+            for line in makefile.lines():
+                print >>fh, line
 
 class OldMakefileGenerator(object):
     """This class contains logic for taking a build representation and

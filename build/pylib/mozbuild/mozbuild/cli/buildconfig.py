@@ -24,6 +24,25 @@ class BuildConfig(Base, ArgumentProvider):
 
         print tree
 
+    def generate(self, backend):
+        from mozbuild.buildconfig.frontend import BuildFrontend
+        from mozbuild.buildconfig.generator.makefile import MakefileGenerator
+
+        frontend = BuildFrontend(self.config)
+        frontend.load_autoconf_input_files()
+
+        generator = None
+        if backend == 'legacy':
+            generator = MakefileGenerator(frontend)
+        elif backend == 'reformat':
+            generator = MakefileGenerator(frontend)
+            generator.reformat = True
+            generator.verify_reformat = True
+        else:
+            raise Exception('Unknown backend format: %s' % backend)
+
+        generator.generate()
+
     @staticmethod
     def populate_argparse(parser):
         bxr = parser.add_parser('bxr',
@@ -34,3 +53,12 @@ class BuildConfig(Base, ArgumentProvider):
         buildinfo = parser.add_parser('buildinfo',
             help='Generate a machine-readable document describing the build.')
         buildinfo.set_defaults(cls=BuildConfig, method='buildinfo')
+
+        bb = parser.add_parser('buildbuild',
+                               help='Generate build backend files.')
+        backends = set(['legacy', 'reformat'])
+
+        bb.add_argument('backend', default='legacy', choices=backends,
+            nargs='?', help='Backend files to generate.')
+
+        bb.set_defaults(cls=BuildConfig, method='generate')
