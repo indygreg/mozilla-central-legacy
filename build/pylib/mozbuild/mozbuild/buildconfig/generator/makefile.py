@@ -5,7 +5,7 @@
 # This file contains code for turning the Python build system data structures
 # into Makefiles.
 
-import os.path
+import os
 
 import mozbuild.buildconfig.data as data
 
@@ -28,28 +28,52 @@ class MakefileGenerator(Generator):
             self._generate_makefile(makefile)
 
     def clean(self):
-        pass
+        for makefile in self.frontend.makefiles.makefiles():
+            path = self._output_path_from_makefile(makefile)
 
-    def _generate_makefile(self, makefile):
-        assert makefile.filename.endswith('.in')
+            if not os.path.exists(path):
+                continue
 
+            print 'Removing output file: %s' % path
+            os.unlink(path)
+
+    def _output_path_from_makefile(self, makefile):
         basename = os.path.basename(makefile.filename)
         input_directory = makefile.directory
         leaf = input_directory[len(self.srcdir) + 1:]
 
-        output_path = os.path.join(self.objdir, leaf, basename).rstrip('.in')
+        return os.path.join(self.objdir, leaf, basename).rstrip('.in')
+
+    def _generate_makefile(self, makefile):
+        assert makefile.filename.endswith('.in')
+
+        output_path = self._output_path_from_makefile(makefile)
 
         variables = dict(self.frontend.autoconf)
         variables['top_srcdir'] = self.srcdir
-        variables['srcdir'] = input_directory
+        variables['srcdir'] = makefile.directory
 
         # The first step is variable subsitution.
         makefile.perform_substitutions(variables, raise_on_missing=True)
 
         print 'Writing %s' % output_path
+
+        output_dir = os.path.dirname(output_path)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, 0777)
+
         with open(output_path, 'w') as fh:
-            for line in makefile.lines():
-                print >>fh, line
+            # This is hacky and is needed until makefile.py uses pymake's API.
+            if self.reformat:
+                from pymake.parser import parsestring
+
+                source = '\n'.join(makefile.lines())
+                statements = parsestring(source, output_path)
+                print >>fh, statements.to_source()
+
+            else:
+                for line in makefile.lines():
+                    print >>fh, line
 
 class OldMakefileGenerator(object):
     """This class contains logic for taking a build representation and

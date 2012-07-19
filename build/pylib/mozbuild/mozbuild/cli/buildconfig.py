@@ -41,6 +41,7 @@ class BuildConfig(Base, ArgumentProvider):
         else:
             raise Exception('Unknown backend format: %s' % backend)
 
+        generator.clean()
         generator.generate()
 
     @staticmethod
@@ -62,3 +63,4 @@ class BuildConfig(Base, ArgumentProvider):
             nargs='?', help='Backend files to generate.')
 
         bb.set_defaults(cls=BuildConfig, method='generate')
+
