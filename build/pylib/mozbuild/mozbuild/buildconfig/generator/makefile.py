@@ -24,8 +24,8 @@ class MakefileGenerator(Generator):
         self.verify_reformat = False
 
     def generate(self):
-        for makefile in self.frontend.makefiles.makefiles():
-            self._generate_makefile(makefile)
+        for makefile in self.makefiles():
+            self._write_makefile(makefile)
 
     def clean(self):
         for makefile in self.frontend.makefiles.makefiles():
@@ -36,6 +36,12 @@ class MakefileGenerator(Generator):
 
             print 'Removing output file: %s' % path
             os.unlink(path)
+
+    def makefiles(self):
+        """Generator for converted Makefile instances."""
+        for makefile in self.frontend.makefiles.makefiles():
+            self._generate_makefile(makefile)
+            yield makefile
 
     def _output_path_from_makefile(self, makefile):
         basename = os.path.basename(makefile.filename)
@@ -55,6 +61,9 @@ class MakefileGenerator(Generator):
 
         # The first step is variable subsitution.
         makefile.perform_substitutions(variables, raise_on_missing=True)
+
+    def _write_makefile(self, makefile):
+        output_path = self._output_path_from_makefile(makefile)
 
         print 'Writing %s' % output_path
 
@@ -76,18 +85,33 @@ class MakefileGenerator(Generator):
                 for line in makefile.lines():
                     print >>fh, line
 
-class OldMakefileGenerator(object):
-    """This class contains logic for taking a build representation and
-    converting it into a giant Makefile."""
+class HybridMakefileGenerator(Generator):
+    """The writes some optimized make files alongside legacy make files.
 
-    __slots__ = (
-        'tree',
-    )
+    It writes out optimized, non-recursive make files from data extracted from
+    the frontend. It strips variables associated with these pieces and
+    preserves what remains for the legacy build system to handle.
+    """
 
-    def __init__(self, tree):
-        assert(isinstance(tree, data.TreeInfo))
+    def __init__(self, frontend):
+        Generator.__init__(self, frontend)
 
-        self.tree = tree
+        # Avoid fragile base class problem.
+        self.vanilla = MakefileGenerator(frontend)
+
+    def generate(self):
+        self.tree = self.frontend.get_tree_info()
+
+        with open(os.path.join(self.objdir, 'optimized.mk'), 'wb') as fh:
+            self.generate_makefile(fh)
+
+        # TODO strip used variables.
+        # TODO call public API
+        for makefile in self.vanilla.makefiles():
+            self.vanilla._write_makefile(makefile)
+
+    def clean(self):
+        self.vanilla.clean()
 
     def get_converted_path(self, path):
         """Convert a string filesystem path into its Makefile equivalent, with
@@ -110,7 +134,7 @@ class OldMakefileGenerator(object):
         self._print_header(state)
         self._print_idl_rules(state)
         self._print_file_exports(state)
-        self._print_libraries(state)
+        #self._print_libraries(state)
         self._print_footer(state)
 
     def _print_header(self, state):
@@ -123,14 +147,21 @@ class OldMakefileGenerator(object):
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
         print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
         print >>fh, 'TEMP_DIR := $(DIST_DIR)/tmp'
-        print >>fh, 'NSINSTALL := $(OBJECT_DIR)/config/nsinstall'
         print >>fh, 'COPY := cp'
         print >>fh, 'CXX := g++'
         print >>fh, ''
 
+        # Import main build system variables.
+        print >>fh, 'DEPTH := .'
+        print >>fh, 'topsrcdir := %s' % self.srcdir
+        print >>fh, 'srcdir := %s' % self.srcdir
+        print >>fh, 'include $(topsrcdir)/config/config.mk'
+        print >>fh, ''
+
         # The first defined target in a Makefile is the default one. The name
         # 'default' reinforces this.
-        print >>fh, 'default: export libraries\n'
+        #print >>fh, 'default: export libraries\n'
+        print >>fh, 'default: export\n'
 
         print >>fh, 'export: distdirs idl file_exports\n'
         print >>fh, 'libraries: export object_files\n'
@@ -141,7 +172,7 @@ class OldMakefileGenerator(object):
 
         # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR) $(TEMP_DIR):'
-        print >>fh, '\t$(NSINSTALL) -D -m 775 "$@"\n'
+        print >>fh, '\t$(NSINSTALL_PY) -D -m 775 "$@"\n'
 
     def _print_footer(self, state):
         fh = state['fh']
@@ -196,7 +227,7 @@ class OldMakefileGenerator(object):
 
             # Create a symlink from the source IDL file to the dist directory
             print >>fh, '%s: %s' % ( dist_idl_filename, converted_filename )
-            print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % converted_filename
+            print >>fh, '\t$(NSINSTALL_PY) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % converted_filename
 
             # The conversion target and rule
             dependencies = [self.get_converted_path(f) for f in metadata['dependencies']]
@@ -217,7 +248,7 @@ class OldMakefileGenerator(object):
         out_dirs = ['$(DIST_INCLUDE_DIR)%s' % d for d in dirs]
 
         print >>fh, '%s:' % ' '.join(out_dirs)
-        print >>fh, '\t$(NSINSTALL) -D -m 775 "$@"\n'
+        print >>fh, '\t$(NSINSTALL_PY) -D -m 775 "$@"\n'
 
         export_targets = []
 
@@ -239,7 +270,7 @@ class OldMakefileGenerator(object):
                 source_converted = self.get_converted_path(source_filename)
 
                 print >>fh, '%s: %s' % ( out_filename, source_converted )
-                print >>fh, '\t$(NSINSTALL) -R -m 644 "%s" "%s"\n' % ( source_converted, out_dir )
+                print >>fh, '\t$(NSINSTALL_PY) -R -m 644 "%s" "%s"\n' % ( source_converted, out_dir )
 
                 export_targets.append(out_filename)
 

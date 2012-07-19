@@ -27,6 +27,7 @@ class BuildConfig(Base, ArgumentProvider):
 
     def generate(self, backend):
         from mozbuild.buildconfig.frontend import BuildFrontend
+        from mozbuild.buildconfig.generator.makefile import HybridMakefileGenerator
         from mozbuild.buildconfig.generator.makefile import MakefileGenerator
 
         frontend = BuildFrontend(self.config)
@@ -39,6 +40,8 @@ class BuildConfig(Base, ArgumentProvider):
             generator = MakefileGenerator(frontend)
             generator.reformat = True
             generator.verify_reformat = True
+        elif backend == 'hybridmake':
+            generator = HybridMakefileGenerator(frontend)
         else:
             raise Exception('Unknown backend format: %s' % backend)
 
@@ -58,7 +61,7 @@ class BuildConfig(Base, ArgumentProvider):
 
         bb = parser.add_parser('buildbuild',
                                help='Generate build backend files.')
-        backends = set(['legacy', 'reformat'])
+        backends = set(['legacy', 'reformat', 'hybridmake'])
 
         bb.add_argument('backend', default='legacy', choices=backends,
             nargs='?', help='Backend files to generate.')
