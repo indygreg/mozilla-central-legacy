@@ -16,6 +16,7 @@ from mozbuild.logger import LoggingManager
 # Import sub-command modules
 # TODO do this via auto-discovery. Update README once this is done.
 from mozbuild.cli.build import Build
+from mozbuild.cli.buildconfig import BuildConfig
 from mozbuild.cli.configure import Configure
 from mozbuild.cli.selftest import SelfTest
 from mozbuild.cli.testing import Testing
@@ -213,6 +214,7 @@ e.g. %(prog)s build --help
         # Register argument action providers with us.
         handlers = [
             Build,
+            BuildConfig,
             Configure,
             SelfTest,
             Testing,

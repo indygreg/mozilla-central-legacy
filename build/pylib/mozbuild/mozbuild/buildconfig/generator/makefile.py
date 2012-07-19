@@ -25,12 +25,22 @@ class SimpleMakefileGenerator(Generator):
 
     def generate(self):
         for makefile in self.frontend.makefiles.makefiles():
-            assert makefile.filename.endswith('.in')
+            self._generate_makefile(makefile)
 
-            output_path = os.path.join(self.objdir.makefile.filename)
-            output_path = output_path.rstrip('.in')
+    def clean(self):
+        pass
 
-            print output_path
+    def _generate_makefile(self, makefile):
+        assert makefile.filename.endswith('.in')
+
+        output_path = os.path.join(self.objdir.makefile.filename)
+        output_path = output_path.rstrip('.in')
+
+        print output_path
+
+        # The first step is variable subsitution.
+        makefile.perform_substitutions(self.autoconf, error_on_missing=True)
+
 
 class OldMakefileGenerator(object):
     """This class contains logic for taking a build representation and

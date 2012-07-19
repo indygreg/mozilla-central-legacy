@@ -12,3 +12,6 @@ class Generator(Base):
 
     def generate(self):
         raise Exception('generate() must be implemented in %s' % __name__)
+
+    def clean(self):
+        raise Exception('clean() must be implemented in %s' % __name__)

@@ -11,6 +11,7 @@ import mozbuild.buildconfig.data as data
 
 from mozbuild.base import Base
 from mozbuild.buildconfig.makefile import MakefileCollection
+from mozbuild.buildconfig.makefile import StatementCollection
 from mozbuild.buildconfig.mozillamakefile import MozillaMakefile
 
 # Constants for identifying build file types
@@ -78,6 +79,7 @@ class BuildFrontend(Base):
         Base.__init__(self, config)
 
         self.makefiles = MakefileCollection(self.srcdir, self.objdir)
+        self.autoconf = None
 
     @property
     def autoconf_output_files(self):
@@ -129,10 +131,14 @@ class BuildFrontend(Base):
         This loads the subset of config files that autoconf says is active. It
         may be incomplete.
         """
+        self.load_autoconf_file()
+
         for relative in self.autoconf_input_files:
             self.load_input_file(relative)
 
     def load_all_input_files(self):
+        self.load_autoconf_file()
+
         for relative in self.all_input_files:
             self.load_input_file(relative)
 
@@ -147,6 +153,11 @@ class BuildFrontend(Base):
 
         m = MozillaMakefile(os.path.join(self.srcdir, relative))
         self.makefiles.add(m)
+
+    def load_autoconf_file(self):
+        path = os.path.join(self.objdir, 'config', 'autoconf.mk')
+
+        self.autoconf = BuildFrontend.convert_autoconf_to_dict(path)
 
     def get_tree_info(self):
         """Obtains a TreeInfo instance for the parsed build configuration.

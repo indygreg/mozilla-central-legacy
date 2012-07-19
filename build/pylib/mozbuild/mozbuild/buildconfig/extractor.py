@@ -30,9 +30,6 @@ class BuildSystemExtractor(Base):
     """
 
     __slots__ = (
-        # Holds dictionary of autoconf values for different paths.
-        'autoconfs',
-
         # BuildConfig instance
         'config',
 
@@ -174,17 +171,6 @@ class BuildSystemExtractor(Base):
             'filename': filename,
             'dependencies': [os.path.normpath(dep) for dep in idl.deps],
         }
-
-    def autoconf_for_path(self, path):
-        """Obtains a dictionary of variable values from the autoconf file
-        relevant for the specified path.
-        """
-        assert(self.is_configured)
-        for managed in BuildSystemExtractor.EXTERNALLY_MANAGED_PATHS:
-            if path.find(managed) == 0:
-                return self.autoconfs[managed]
-
-        return self.autoconfs['']
 
     def log(self, level, action, params, format_str):
         self.logger.log(level, format_str,
