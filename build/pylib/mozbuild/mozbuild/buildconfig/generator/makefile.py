@@ -71,6 +71,7 @@ class MakefileGenerator(Generator):
                 statements = parsestring(source, output_path)
                 print >>fh, statements.to_source()
 
+                # TODO verify rewrite.
             else:
                 for line in makefile.lines():
                     print >>fh, line
