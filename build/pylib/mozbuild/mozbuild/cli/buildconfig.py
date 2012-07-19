@@ -16,11 +16,12 @@ class BuildConfig(Base, ArgumentProvider):
             generate_bxr(self.config, fh)
 
     def buildinfo(self):
-        from mozbuild.buildconfig.extractor import BuildSystemExtractor
+        from mozbuild.buildconfig.frontend import BuildFrontend
 
-        bse = BuildSystemExtractor(self.config)
-        bse.load_input_build_config_files()
-        tree = bse.get_tree_info()
+        frontend = BuildFrontend(self.config)
+        frontend.load_autoconf_input_files()
+
+        tree = frontend.get_tree_info()
 
         print tree
 
