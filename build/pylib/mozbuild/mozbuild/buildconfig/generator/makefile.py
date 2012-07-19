@@ -5,11 +5,34 @@
 # This file contains code for turning the Python build system data structures
 # into Makefiles.
 
-from .. import data
-
 import os.path
 
-class MakefileGenerator(object):
+import mozbuild.buildconfig.data as data
+
+from mozbuild.buildconfig.generator.generator import Generator
+
+class SimpleMakefileGenerator(Generator):
+    """Generator that produces Makefiles.
+
+    This is mostly tailored to the existing, legacy build system.
+    """
+    def __init__(self, frontend):
+        Generator.__init__(self, frontend)
+
+        self.reformat = False
+        self.strip_false_conditionals = False
+        self.verify_reformat = True
+
+    def generate(self):
+        for makefile in self.frontend.makefiles.makefiles():
+            assert makefile.filename.endswith('.in')
+
+            output_path = os.path.join(self.objdir.makefile.filename)
+            output_path = output_path.rstrip('.in')
+
+            print output_path
+
+class OldMakefileGenerator(object):
     """This class contains logic for taking a build representation and
     converting it into a giant Makefile."""
 

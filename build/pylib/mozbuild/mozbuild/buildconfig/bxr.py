@@ -10,7 +10,7 @@ import mako
 import mako.template
 import uuid
 
-from mozbuild.buildconfig.extractor import BuildSystemExtractor
+from mozbuild.buildconfig.frontend import BuildFrontend
 
 # This is our mako HTML template. Scroll down to see which variables are
 # available.
@@ -388,8 +388,9 @@ HTML_TEMPLATE = """
 
 def generate_bxr(config, fh):
     """Generate the BXR HTML and write to the specified file handle."""
-    bse = BuildSystemExtractor(config)
-    bse.load_input_build_config_files()
+    frontend = BuildFrontend(config)
+    frontend.load_autoconf_input_files()
+    #frontend.load_all_input_files()
 
     def get_variable_value(name):
         return {
@@ -407,7 +408,7 @@ def generate_bxr(config, fh):
     shell_statements = {}      # Path to list of tuples
     filesystem_statements = {} # Path to list of tuples
 
-    for m in bse.makefiles.makefiles():
+    for m in frontend.makefiles.makefiles():
         key = m.filename
         statements = m.statements
         metadata = makefiles.get(key, None)
