@@ -1992,3 +1992,85 @@ class Makefile(object):
 
     def has_own_variable(self, name):
         return name in self.get_own_variable_names(include_conditionals=True)
+
+class MakefileCollection(object):
+    """Holds APIs for interacting with multiple Makefiles.
+
+    This is a convenience class so all methods interacting with sets of
+    Makefiles reside in one location.
+    """
+    __slots__ = (
+        'source_directory',
+        'object_directory',
+
+        # Dictionary of paths to Makefile instances (cache)
+        '_makefiles',
+    )
+
+    def __init__(self, source_directory, object_directory):
+        assert(os.path.isabs(source_directory))
+        assert(os.path.isabs(object_directory))
+
+        self.source_directory = source_directory
+        self.object_directory = object_directory
+
+        self._makefiles = {}
+
+    def add(self, makefile):
+        """Adds a Makefile this collection."""
+        assert isinstance(makefile, Makefile)
+
+        self._makefiles[makefile.filename] = makefile
+
+    def makefiles(self):
+        """A generator for Makefile instances from the configured paths.
+
+        Returns instances of Makefile.
+        """
+        for k in sorted(self._makefiles.keys()):
+            yield self._makefiles[k]
+
+    def includes(self):
+        """Obtain information about all the includes in the Makefiles.
+
+        This is a generator of tuples. Eah tuple has the items:
+
+          ( makefile, statement, conditions, path )
+        """
+        for m in self.makefiles():
+            for statement, conditions, path in m.statements.includes():
+                yield (m, statement, conditions, path)
+
+    def variable_assignments(self):
+        """A generator of variable assignments.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, name, value, type )
+        """
+        for m in self.makefiles():
+            for statement, conditions, name, value, type in m.statements.variable_assignments():
+                yield (makefile, statement, conditions, name, value, type)
+
+    def rules(self):
+        """A generator for rules in all the Makefiles.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, target, prerequisite, commands )
+        """
+        for m in self.makefiles():
+            for statement, conditions, target, prerequisites, commands in m.statements.rules():
+                yield (makefile, statement, conditions, target, prerequisites, commands)
+
+    def static_pattern_rules(self):
+        """A generator for static pattern rules in all the Makefiles.
+
+        Each returned item is a tuple of:
+
+          ( makefile, statement, conditions, target, pattern, prerequisite, commands )
+        """
+        for m in self.makefiles():
+            for statement, conditions, target, pattern, prerequisites, commands in m.statements.rules():
+                yield (makefile, statement, conditions, target, pattern, prerequisites, commands)
+
