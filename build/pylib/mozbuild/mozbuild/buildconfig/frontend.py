@@ -198,13 +198,6 @@ class BuildFrontend(Base):
         # Load data from JAR manifests.
         # TODO look for jar.mn, parse, and load.
 
-        # Parse IDL files loaded into the tree.
-        for m, d in tree.xpidl_modules.iteritems():
-            for f in d['sources']:
-                filename = os.path.normpath(os.path.join(d['source_dir'], f))
-                tree.idl_sources[filename] = self._parse_idl_file(filename,
-                    tree)
-
         return tree
 
     def _load_makefile_into_tree(self, tree, makefile):
@@ -281,14 +274,12 @@ class BuildFrontend(Base):
             # TODO report unhandled variables in tree
             pass
 
-    def _parse_idl_file(self, filename, tree):
+    def parse_idl_file(self, filename, directories):
         idl_data = open(filename, 'rb').read()
         p = xpidl.IDLParser()
         idl = p.parse(idl_data, filename=filename)
 
-        # TODO It probably isn't correct to search *all* IDL directories
-        # because the same file may be defined multiple places.
-        idl.resolve(tree.idl_directories, p)
+        idl.resolve(directories, p)
 
         return {
             'filename': filename,

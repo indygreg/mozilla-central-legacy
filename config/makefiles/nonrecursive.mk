@@ -10,10 +10,15 @@ DIST_INCLUDE_DIR := $(DIST_DIR)/include
 DIST_IDL_DIR := $(DIST_DIR)/idl
 TEMP_DIR := $(OBJECT_DIR)/tmp
 
-IDL_GENERATE_HEADER := $(PYTHON) $(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py \
+IDL_GENERATE_HEADER := PYTHONPATH=$(TOP_SOURCE_DIR)/other-licenses/ply \
+  $(PYTHON) $(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py \
   -I $(DIST_IDL_DIR) --cachedir=$(TEMP_DIR)
 
-export: $(EXPORT_TARGETS)
+# export mimimcs the export tier:
+#   * .h files are copied into dist/include
+#   * .idl files are copied into dist/idl
+#   * .idl files are converted into .h files in dist/include
+export: $(EXPORT_TARGETS) $(IDL_DIST_FILES) $(IDL_H_FILES)
 
 .PHONY: $(PHONIES) dirs
 
