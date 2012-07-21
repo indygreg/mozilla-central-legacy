@@ -4,6 +4,8 @@
 
 # This file contains code for extracting metadata from a Mozilla Makefile.
 
+import os.path
+
 import mozbuild.buildconfig.data as data
 
 from mozbuild.buildconfig.makefile import Makefile
@@ -268,16 +270,47 @@ class MozillaMakefile(Makefile):
         # to an output directory.
         if self.EXPORTS in traits:
             exports = data.ExportsInfo(self)
+
+            def handle_export(namespace, filename):
+                exports.output_directories.add(namespace)
+                output_leaf = os.path.join(namespace,
+                    os.path.basename(filename))
+
+                if os.path.isabs(filename):
+                    exports.filenames[filename] = output_leaf
+                    return
+
+                # Resolve the actual path to the source file.
+                # Normally it is in the source directory. But, it could also be
+                # in a VPATH.
+                search_paths = [exports.source_dir]
+                search_paths.extend(exports.vpath)
+
+                # TODO in some rare cases there are files in the object
+                # directory. We can either search there or change these to use
+                # a different rule.
+
+                for path in search_paths:
+                    test_path = os.path.join(path, filename)
+
+                    if not os.path.exists(test_path):
+                        continue
+
+                    exports.filenames[test_path] = output_leaf
+                    return
+
+                raise Exception('Could not find source file: %s' % filename)
+
             exports.add_used_variable('EXPORTS')
             for export in self.get_variable_split('EXPORTS'):
-                exports.add_export(export, namespace=None)
+                handle_export('', export)
 
             exports.add_used_variable('EXPORTS_NAMESPACES')
             for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
                 varname = 'EXPORTS_%s' % namespace
                 exports.add_used_variable(varname)
                 for s in self.get_variable_split(varname):
-                    exports.add_export(s, namespace=namespace)
+                    handle_export(namespace, s)
 
             yield exports
 
@@ -293,15 +326,23 @@ class MozillaMakefile(Makefile):
             else:
                 raise Exception('XPIDL trait without XPIDL_MODULE or MODULE defined')
 
+            def add_idl(leaf):
+                assert not os.path.isabs(leaf)
+
+                path = os.path.join(idl.source_dir, leaf)
+                assert os.path.exists(path)
+
+                idl.sources.add(path)
+
             idl.add_used_variable('XPIDLSRCS')
             if self.has_own_variable('XPIDLSRCS'):
                 for f in self.get_variable_split('XPIDLSRCS'):
-                    idl.sources.add(f)
+                    add_idl(f)
 
             # rules.mk merges SDK_XPIDLSRCS together, so we treat as the same
             if self.has_own_variable('SDK_XPIDLSRCS'):
                 for f in self.get_variable_split('SDK_XPIDLSRCS'):
-                    idl.sources.add(f)
+                    add_idl(f)
 
             yield idl
 
