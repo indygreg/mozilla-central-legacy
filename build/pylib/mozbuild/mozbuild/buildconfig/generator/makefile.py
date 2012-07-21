@@ -6,6 +6,9 @@
 # into Makefiles.
 
 import os
+import traceback
+
+from pymake.builder import Makefile
 
 import mozbuild.buildconfig.data as data
 
@@ -29,7 +32,7 @@ class MakefileGenerator(Generator):
 
     def clean(self):
         for makefile in self.frontend.makefiles.makefiles():
-            path = self._output_path_from_makefile(makefile)
+            path = self.output_path_from_makefile(makefile)
 
             if not os.path.exists(path):
                 continue
@@ -43,7 +46,7 @@ class MakefileGenerator(Generator):
             self._generate_makefile(makefile)
             yield makefile
 
-    def _output_path_from_makefile(self, makefile):
+    def output_path_from_makefile(self, makefile):
         basename = os.path.basename(makefile.filename)
         input_directory = makefile.directory
         leaf = input_directory[len(self.srcdir) + 1:]
@@ -53,7 +56,7 @@ class MakefileGenerator(Generator):
     def _generate_makefile(self, makefile):
         assert makefile.filename.endswith('.in')
 
-        output_path = self._output_path_from_makefile(makefile)
+        output_path = self.output_path_from_makefile(makefile)
 
         variables = dict(self.frontend.autoconf)
         variables['top_srcdir'] = self.srcdir
@@ -63,7 +66,7 @@ class MakefileGenerator(Generator):
         makefile.perform_substitutions(variables, raise_on_missing=True)
 
     def _write_makefile(self, makefile):
-        output_path = self._output_path_from_makefile(makefile)
+        output_path = self.output_path_from_makefile(makefile)
 
         print 'Writing %s' % output_path
 
@@ -88,9 +91,14 @@ class MakefileGenerator(Generator):
 class HybridMakefileGenerator(Generator):
     """The writes some optimized make files alongside legacy make files.
 
-    It writes out optimized, non-recursive make files from data extracted from
-    the frontend. It strips variables associated with these pieces and
-    preserves what remains for the legacy build system to handle.
+    This generator looks at extracted data from the original Makefile.in's. For
+    the pieces it knows how to handle, it writes out an optimized,
+    non-recursive make file (splendid.mk) in the output directory containing
+    all the rules it knows how to handle. It writes out a single make file in
+    the top-level directory which simply includes all the splendid.mk files.
+
+    It removes references to data from the input Makefile.in and writes out the
+    Makefile with the remaining content to the object directory.
     """
 
     def __init__(self, frontend):
@@ -98,20 +106,56 @@ class HybridMakefileGenerator(Generator):
 
         # Avoid fragile base class problem.
         self.vanilla = MakefileGenerator(frontend)
+        self.splendid_files = set()
+
+        # Make sucks at managing output directories. So, during generation, we
+        # collect the set of output directories we know we need to create and
+        # we create them, like a boss.
+        self.output_directories = set()
 
     def generate(self):
-        self.tree = self.frontend.get_tree_info()
+        #self.tree = self.frontend.get_tree_info()
 
-        with open(os.path.join(self.objdir, 'optimized.mk'), 'wb') as fh:
-            self.generate_makefile(fh)
+        #with open(os.path.join(self.objdir, 'optimized.mk'), 'wb') as fh:
+        #    self.generate_makefile(fh)
 
-        # TODO strip used variables.
-        # TODO call public API
         for makefile in self.vanilla.makefiles():
-            self.vanilla._write_makefile(makefile)
+            try:
+                self.process_makefile(makefile)
+            except:
+                print 'Error processing %s' % makefile.filename
+                traceback.print_exc()
+
+        print 'Creating output directories'
+        for path in sorted(self.output_directories):
+            if not os.path.exists(path):
+                os.makedirs(path, 0777)
+
+        with open(os.path.join(self.objdir, 'main.mk'), 'wb') as fh:
+            self.print_main_makefile(fh)
 
     def clean(self):
         self.vanilla.clean()
+
+    def process_makefile(self, original):
+        # TODO MozillaMakefile should use proper statements API.
+        output_path = self.vanilla.output_path_from_makefile(original)
+
+        strip_variables = set()
+        splendid_path = os.path.join(os.path.dirname(output_path), 'splendid.mk')
+        with open(splendid_path, 'wb') as fh:
+            strip_variables = self.write_splendid_makefile(original, fh)
+
+        self.splendid_files.add(splendid_path)
+
+        # TODO Strip out variables we handle ourselves.
+        makefile = Makefile(output_path)
+
+        for statement in original.statements._statements:
+            makefile.append(statement.statement)
+
+        with open(output_path, 'wb') as fh:
+            fh.write(makefile.to_source())
 
     def get_converted_path(self, path):
         """Convert a string filesystem path into its Makefile equivalent, with
@@ -123,19 +167,122 @@ class HybridMakefileGenerator(Generator):
         else:
             return path
 
-    def generate_makefile(self, fh):
-        """Convert the tree info into a Makefile"""
+    def write_splendid_makefile(self, makefile, fh):
+        """Writes a splendid, non-recursive make file."""
 
-        state = {
-            'fh':      fh,
-            'phonies': set()
-        }
+        print >>fh, '# This file is automatically generated. Do NOT edit.'
 
-        self._print_header(state)
-        self._print_idl_rules(state)
-        self._print_file_exports(state)
-        #self._print_libraries(state)
-        self._print_footer(state)
+        strip_variables = set()
+
+        for obj in makefile.get_data_objects():
+            method = None
+            if isinstance(obj, data.ExportsInfo):
+                method = self._write_exports
+            elif isinstance(obj, data.XPIDLInfo):
+                method = self._write_idl
+
+            if method:
+                method(makefile, fh, obj)
+
+    def _write_exports(self, makefile, fh, obj):
+        # Install exported files into proper location. These are
+        # typically header files.
+
+        inc_dir = os.path.join(self.objdir, 'dist', 'include')
+
+        directories = sorted(obj.output_directories)
+        out_directories = [os.path.join(inc_dir, d) for d in directories]
+        self.output_directories |= set(out_directories)
+        print >>fh, 'CREATE_DIRS += %s' % ' '.join(out_directories)
+
+        output_filenames = []
+
+        for input_filename, output_leaf in obj.filenames.iteritems():
+            output_directory = os.path.join(inc_dir,
+                os.path.dirname(output_leaf))
+            output_filename = os.path.join(inc_dir, output_leaf)
+            output_filenames.append(output_filename)
+
+            print >>fh, '%s: %s' % (output_filename, input_filename)
+            print >>fh, '\t$(INSTALL) -R -m 644 "%s" "%s"\n' % (input_filename,
+                output_directory)
+
+        print >>fh, 'EXPORT_TARGETS += %s\n' % ' \\\n  '.join(output_filenames)
+        print >>fh, 'PHONIES += EXPORT_TARGETS'
+
+    def _write_idl(self, makefile, fh, obj):
+        # IDLs are copied to a common idl directory then they are processed.
+        # The copying must complete before processing starts.
+
+        idl_output_directory = os.path.join(self.objdir, 'dist', 'idl')
+        header_output_directory = os.path.join(self.objdir, 'dist', 'include')
+
+        idl_output_paths = []
+
+        for source in sorted(obj.sources):
+            basename = os.path.basename(source)
+            header_basename = os.path.splitext(basename)[0] + '.h'
+
+            output_idl_path = os.path.join(idl_output_directory, basename)
+            output_header_path = os.path.join(header_output_directory,
+                header_basename)
+
+            # Install the original IDL file into the IDL directory.
+            print >>fh, '%s: %s' % (output_idl_path, source)
+            print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (source,
+                output_idl_directory)
+
+            idl_output_paths.append(output_idl_path)
+
+            idl_deps_path = os.path.join(self.objdir, 'deps',
+                '%s.deps' % basename)
+
+            # TODO write out IDL dependencies file via rule and hook up to
+            # prereqs for IDL generation.
+
+        return
+
+        # Each IDL file produces a .h file of the same name.
+        # IDL files also have a complex list of dependencies. So, we create
+        # each rule independently.
+        output_directory = os.path.join(self.tree.object_directory, 'dist', 'include')
+        source_filenames = self.tree.idl_sources.keys()
+        source_filenames.sort()
+        for filename in source_filenames:
+            # The conversion target and rule
+            dependencies = [self.get_converted_path(f) for f in metadata['dependencies']]
+            print >>fh, '%s: %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
+            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % converted_filename
+
+        print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
+        print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
+        print >>fh, 'idl: idl_install_idls idl_generate_headers\n'
+        state['phonies'] |= set(['idl_install_idls', 'idl_generate_headers', 'idl'])
+
+    def print_main_makefile(self, fh):
+        print >>fh, '# This file is automatically generated. Do NOT edit.'
+
+        print >>fh, 'TOP_SOURCE_DIR := %s' % self.srcdir
+        print >>fh, 'OBJECT_DIR := %s' % self.objdir
+
+        print >>fh, 'DEPTH := .'
+        print >>fh, 'topsrcdir := %s' % self.srcdir
+        print >>fh, 'srcdir := %s' % self.srcdir
+        print >>fh, 'include $(topsrcdir)/config/config.mk'
+
+        print >>fh, 'default:'
+        print >>fh, '\t-echo "Use mach to build with this file."; \\'
+        print >>fh, '\texit 1;'
+        print >>fh, '\n'
+
+        for path in sorted(self.splendid_files):
+            print >>fh, 'include %s' % path
+
+        print >>fh, 'include $(TOP_SOURCE_DIR)/config/makefiles/nonrecursive.mk'
+
+    ######################
+    # CONTENT BELOW IS OLD
+    ######################
 
     def _print_header(self, state):
         fh = state['fh']
@@ -161,14 +308,14 @@ class HybridMakefileGenerator(Generator):
         # The first defined target in a Makefile is the default one. The name
         # 'default' reinforces this.
         #print >>fh, 'default: export libraries\n'
-        print >>fh, 'default: export\n'
+        print >>fh, 'default:\n'
 
-        print >>fh, 'export: distdirs idl file_exports\n'
-        print >>fh, 'libraries: export object_files\n'
+        print >>fh, 'export: distdirs idl\n'
+        print >>fh, 'libraries: object_files\n'
 
         print >>fh, 'distdirs: $(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR)\n'
 
-        state['phonies'] |= set(['default', 'export', 'libraries', 'distdirs'])
+        state['phonies'] |= set(['default', 'libraries', 'distdirs'])
 
         # Directory creation targets
         print >>fh, '$(DIST_DIR) $(DIST_INCLUDE_DIR) $(DIST_IDL_DIR) $(TEMP_DIR):'
@@ -180,103 +327,6 @@ class HybridMakefileGenerator(Generator):
         # Define .PHONY target with collected list
         print >>fh, '.PHONY: %s\n' % ' \\\n  '.join(state['phonies'])
 
-    def _print_idl_rules(self, state):
-        """Prints all the IDL rules."""
-
-        fh = state['fh']
-
-        base_command = ' '.join([
-            'PYTHONPATH="$(TOP_SOURCE_DIR)/other-licenses/ply:$(TOP_SOURCE_DIR)/xpcom/idl-parser"',
-            'python',
-            '$(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py',
-            '-I $(DIST_IDL_DIR)',
-            '--cachedir=$(TEMP_DIR)',
-        ])
-
-        print >>fh, 'IDL_GENERATE_HEADER := %s' % base_command
-        print >>fh, ''
-
-        copy_targets = []
-        convert_targets = []
-
-        # Each IDL is first copied to the output directory before any
-        # conversion takes place.
-
-        # Each IDL file produces a .h file of the same name.
-        # IDL files also have a complex list of dependencies. So, we create
-        # each rule independently.
-        output_directory = os.path.join(self.tree.object_directory, 'dist', 'include')
-        source_filenames = self.tree.idl_sources.keys()
-        source_filenames.sort()
-        for filename in source_filenames:
-            metadata = self.tree.idl_sources[filename]
-
-            basename = os.path.basename(filename)
-            header_basename = os.path.splitext(basename)[0] + '.h'
-
-            dist_idl_filename = os.path.normpath(os.path.join('$(DIST_IDL_DIR)', basename))
-
-            out_header_filename = os.path.normpath(os.path.join(
-                '$(DIST_INCLUDE_DIR)', header_basename
-            ))
-
-            converted_filename = self.get_converted_path(filename)
-
-            copy_targets.append(dist_idl_filename)
-            convert_targets.append(out_header_filename)
-
-            # Create a symlink from the source IDL file to the dist directory
-            print >>fh, '%s: %s' % ( dist_idl_filename, converted_filename )
-            print >>fh, '\t$(NSINSTALL_PY) -R -m 644 "%s" $(DIST_IDL_DIR)\n' % converted_filename
-
-            # The conversion target and rule
-            dependencies = [self.get_converted_path(f) for f in metadata['dependencies']]
-            print >>fh, '%s: %s' % ( out_header_filename, ' \\\n  '.join(dependencies) )
-            print >>fh, '\t$(IDL_GENERATE_HEADER) -o "$@" "%s"\n' % converted_filename
-
-        print >>fh, 'idl_install_idls: %s\n' % ' \\\n  '.join(copy_targets)
-        print >>fh, 'idl_generate_headers: idl_install_idls \\\n  %s\n' % '  \\\n  '.join(convert_targets)
-        print >>fh, 'idl: idl_install_idls idl_generate_headers\n'
-        state['phonies'] |= set(['idl_install_idls', 'idl_generate_headers', 'idl'])
-
-    def _print_file_exports(self, state):
-        """Prints targets for exporting files."""
-
-        fh = state['fh']
-
-        dirs = sorted(self.tree.exports.keys())
-        out_dirs = ['$(DIST_INCLUDE_DIR)%s' % d for d in dirs]
-
-        print >>fh, '%s:' % ' '.join(out_dirs)
-        print >>fh, '\t$(NSINSTALL_PY) -D -m 775 "$@"\n'
-
-        export_targets = []
-
-        for dir in dirs:
-            out_dir = '$(DIST_INCLUDE_DIR)%s' % dir
-
-            if out_dir[-1:] != '/':
-                out_dir += '/'
-
-            source_filenames = sorted(self.tree.exports[dir].values())
-
-            # We could have a unified target for all sources and invoke nsinstall
-            # once, but that would be a lot of work for nsinstall. We go with
-            # explicit per-filename targets. These should be highly
-            # parallelized, so it shouldn't be a big issue.
-            for source_filename in source_filenames:
-                basename = os.path.basename(source_filename)
-                out_filename = '%s%s' % ( out_dir, basename )
-                source_converted = self.get_converted_path(source_filename)
-
-                print >>fh, '%s: %s' % ( out_filename, source_converted )
-                print >>fh, '\t$(NSINSTALL_PY) -R -m 644 "%s" "%s"\n' % ( source_converted, out_dir )
-
-                export_targets.append(out_filename)
-
-        export_targets.sort()
-        print >>fh, 'file_exports: %s\n' % ' \\\n  '.join(export_targets)
-        state['phonies'].add('file_exports')
 
     def _print_libraries(self, state):
         """Prints library targets."""
