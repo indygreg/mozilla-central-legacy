@@ -302,13 +302,16 @@ class MozillaMakefile(Makefile):
                 raise Exception('Could not find source file: %s' % filename)
 
             exports.used_variables.add('EXPORTS')
+            exports.exclusive_variables.add('EXPORTS')
             for export in self.get_variable_split('EXPORTS'):
                 handle_export('', export)
 
             exports.used_variables.add('EXPORTS_NAMESPACES')
+            exports.exclusive_variables.add('EXPORTS_NAMESPACES')
             for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
                 varname = 'EXPORTS_%s' % namespace
                 exports.used_variables.add(varname)
+                exports.exclusive_variables.add(varname)
                 for s in self.get_variable_split(varname):
                     handle_export(namespace, s)
 
