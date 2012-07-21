@@ -150,66 +150,66 @@ class MozillaMakefile(Makefile):
 
         # It is possible for the name to be not defined if the trait was
         # in a conditional that wasn't true.
-        l.add_used_variable('LIBRARY_NAME')
+        l.used_variables.add('LIBRARY_NAME')
         name = self.get_variable_string('LIBRARY_NAME')
         l.name = name
 
-        l.add_used_variable('DEFINES')
+        l.used_variables.add('DEFINES')
         for define in self.get_variable_split('DEFINES'):
             if define[0:2] == '-D':
                 l.defines.add(define[2:])
             else:
                 l.defines.add(define)
 
-        l.add_used_variable('CFLAGS')
+        l.used_variables.add('CFLAGS')
         for f in self.get_variable_split('CFLAGS'):
             l.c_flags.add(f)
 
-        l.add_used_variable('CXXFLAGS')
+        l.used_variables.add('CXXFLAGS')
         for f in self.get_variable_split('CXXFLAGS'):
             l.cxx_flags.add(f)
 
-        l.add_used_variable('CPPSRCS')
+        l.used_variables.add('CPPSRCS')
         for f in self.get_variable_split('CPPSRCS'):
             l.cpp_sources.add(f)
 
         # LIBXUL_LIBRARY implies static library generation and presence in
         # libxul.
-        l.add_used_variable('LIBXUL_LIBRARY')
+        l.used_variables.add('LIBXUL_LIBRARY')
         if self.has_own_variable('LIBXUL_LIBRARY'):
             l.is_static = True
 
         # FORCE_STATIC_LIB forces generation of a static library
-        l.add_used_variable('FORCE_STATIC_LIB')
+        l.used_variables.add('FORCE_STATIC_LIB')
         if self.has_own_variable('FORCE_STATIC_LIB'):
             l.is_static = True
 
-        l.add_used_variable('FORCE_SHARED_LIB')
+        l.used_variables.add('FORCE_SHARED_LIB')
         if self.has_own_variable('FORCE_SHARED_LIB'):
             l.is_shared = True
 
-        l.add_used_variable('USE_STATIC_LIBS')
+        l.used_variables.add('USE_STATIC_LIBS')
         if self.has_own_variable('USE_STATIC_LIBS'):
             l.use_static_libs = True
 
         # IS_COMPONENT is used for verification. It also has side effects for
         # linking flags.
-        l.add_used_variable('IS_COMPONENT')
+        l.used_variables.add('IS_COMPONENT')
         if self.has_own_variable('IS_COMPONENT'):
             l.is_component = self.get_variable_string('IS_COMPONENT') == '1'
 
-        l.add_used_variable('EXPORT_LIBRARY')
+        l.used_variables.add('EXPORT_LIBRARY')
         if self.has_own_variable('EXPORT_LIBRARY'):
             l.export_library = self.get_variable_string('EXPORT_LIBRARY') == '1'
 
-        l.add_used_variable('INCLUDES')
+        l.used_variables.add('INCLUDES')
         for s in self.get_variable_split('INCLUDES'):
             if s[0:2] == '-I':
                 l.includes.add(s[2:])
             else:
                 l.includes.add(s)
 
-        l.add_used_variable('LOCAL_INCLUDES')
+        l.used_variables.add('LOCAL_INCLUDES')
         for s in self.get_variable_split('LOCAL_INCLUDES'):
             if s[0:2] == '-I':
                 l.local_includes.add(s[2:])
@@ -217,11 +217,11 @@ class MozillaMakefile(Makefile):
                 l.local_includes.add(s)
 
         # SHORT_LIBNAME doesn't appears to be used, but we preserve it anyway.
-        l.add_used_variable('SHORT_LIBNAME')
+        l.used_variables.add('SHORT_LIBNAME')
         if self.has_own_variable('SHORT_LIBNAME'):
             l.short_libname = self.get_variable_string('SHORT_LIBNAME')
 
-        l.add_used_variable('SHARED_LIBRARY_LIBS')
+        l.used_variables.add('SHARED_LIBRARY_LIBS')
         for lib in self.get_variable_split('SHARED_LIBRARY_LIBS'):
             l.shared_library_libs.add(lib)
 
@@ -242,15 +242,15 @@ class MozillaMakefile(Makefile):
         misc = data.MiscInfo(self)
         tracker = data.UsedVariableInfo(self)
         for v in self.COMMON_VARIABLES:
-            tracker.add_used_variable(v)
+            tracker.used_variables.add(v)
 
         for v in self.UNUSED_VARIABLES:
-            tracker.add_used_variable(v)
+            tracker.used_variables.add(v)
 
         traits = self.get_traits()
 
         if self.MODULE in traits:
-            tracker.add_used_variable('MODULE')
+            tracker.used_variables.add('MODULE')
             # TODO emit MakefileDerivedObject instance
             #tree.register_module(self.get_module(), self.dir)
 
@@ -264,7 +264,7 @@ class MozillaMakefile(Makefile):
             pass
 
         # MODULE_NAME is only used for error checking, it appears.
-        tracker.add_used_variable('MODULE_NAME')
+        tracker.used_variables.add('MODULE_NAME')
 
         # EXPORTS and friends holds information on what files to copy
         # to an output directory.
@@ -301,14 +301,14 @@ class MozillaMakefile(Makefile):
 
                 raise Exception('Could not find source file: %s' % filename)
 
-            exports.add_used_variable('EXPORTS')
+            exports.used_variables.add('EXPORTS')
             for export in self.get_variable_split('EXPORTS'):
                 handle_export('', export)
 
-            exports.add_used_variable('EXPORTS_NAMESPACES')
+            exports.used_variables.add('EXPORTS_NAMESPACES')
             for namespace in self.get_variable_split('EXPORTS_NAMESPACES'):
                 varname = 'EXPORTS_%s' % namespace
-                exports.add_used_variable(varname)
+                exports.used_variables.add(varname)
                 for s in self.get_variable_split(varname):
                     handle_export(namespace, s)
 
@@ -317,8 +317,8 @@ class MozillaMakefile(Makefile):
         # XP IDL file generation
         if self.XPIDL in traits:
             idl = data.XPIDLInfo(self)
-            idl.add_used_variable('XPIDL_MODULE')
-            idl.add_used_variable('MODULE')
+            idl.used_variables.add('XPIDL_MODULE')
+            idl.used_variables.add('MODULE')
             if self.has_own_variable('XPIDL_MODULE'):
                 idl.module = self.get_variable_string('XPIDL_MODULE')
             elif self.has_own_variable('MODULE'):
@@ -334,13 +334,15 @@ class MozillaMakefile(Makefile):
 
                 idl.sources.add(path)
 
-            idl.add_used_variable('XPIDLSRCS')
+            idl.used_variables.add('XPIDLSRCS')
             if self.has_own_variable('XPIDLSRCS'):
+                idl.exclusive_variables.add('XPIDLSRCS')
                 for f in self.get_variable_split('XPIDLSRCS'):
                     add_idl(f)
 
             # rules.mk merges SDK_XPIDLSRCS together, so we treat as the same
             if self.has_own_variable('SDK_XPIDLSRCS'):
+                idl.exclusive_variables.add('SDK_XPIDLSRCS')
                 for f in self.get_variable_split('SDK_XPIDLSRCS'):
                     add_idl(f)
 
@@ -351,47 +353,47 @@ class MozillaMakefile(Makefile):
             ti = data.TestInfo(self)
 
             # Regular test files
-            ti.add_used_variable('_TEST_FILES')
+            ti.used_variables.add('_TEST_FILES')
             if self.has_own_variable('_TEST_FILES'):
                 for f in self.get_variable_split('_TEST_FILES'):
                     ti.test_files.add(f)
 
             # Identifies directories holding xpcshell test files
-            ti.add_used_variable('XPCSHELL_TESTS')
+            ti.used_variables.add('XPCSHELL_TESTS')
             if self.has_own_variable('XPCSHELL_TESTS'):
                 for dir in self.get_variable_split('XPCSHELL_TESTS'):
                     ti.xpcshell_test_dirs.add(dir)
 
             # Files for browser tests
-            ti.add_used_variable('_BROWSER_TEST_FILES')
+            ti.used_variables.add('_BROWSER_TEST_FILES')
             if self.has_own_variable('_BROWSER_TEST_FILES'):
                 for f in self.get_variable_split('_BROWSER_TEST_FILES'):
                     ti.browser_test_files.add(f)
 
             # Files for chrome tests
-            ti.add_used_variable('_CHROME_TEST_FILES')
+            ti.used_variables.add('_CHROME_TEST_FILES')
             if self.has_own_variable('_CHROME_TEST_FILES'):
                 for f in self.get_variable_split('_CHROME_TEST_FILES'):
                     ti.chrome_test_files.add(f)
 
             yield ti
 
-        misc.add_used_variable('GRE_MODULE')
+        misc.used_variables.add('GRE_MODULE')
         if self.has_own_variable('GRE_MODULE'):
             misc.is_gre_module = True
 
-        #misc.add_used_variable('PLATFORM_DIR')
+        #misc.used_variables.add('PLATFORM_DIR')
         #for d in self.get_variable_split('PLATFORM_DIR'):
         #    misc.platform_dirs.add(d)
 
-        #misc.add_used_variable('CHROME_DEPS')
+        #misc.used_variables.add('CHROME_DEPS')
         #for d in self.get_variable_split('CHROME_DEPS'):
         #    misc.chrome_dependencies.add(d)
 
         # DEFINES is used by JarMaker too. Unfortunately, we can't detect
         # when to do JarMaker from Makefiles (bug 487182 might fix it), so
         # we just pass it along.
-        misc.add_used_variable('DEFINES')
+        misc.used_variables.add('DEFINES')
         if self.has_own_variable('DEFINES'):
             for define in self.get_variable_split('DEFINES'):
                 if define[0:2] == '-D':
@@ -400,17 +402,17 @@ class MozillaMakefile(Makefile):
                     misc.defines.add(define)
 
         # TODO add an info object for JavaScript-related
-        misc.add_used_variable('EXTRA_JS_MODULES')
+        misc.used_variables.add('EXTRA_JS_MODULES')
         if self.has_own_variable('EXTRA_JS_MODULES'):
             for js in self.get_variable_split('EXTRA_JS_MODULES'):
                 misc.extra_js_module.add(js)
 
-        misc.add_used_variable('EXTRA_COMPONENTS')
+        misc.used_variables.add('EXTRA_COMPONENTS')
         if self.has_own_variable('EXTRA_COMPONENTS'):
             for c in self.get_variable_split('EXTRA_COMPONENTS'):
                 misc.extra_components.add(c)
 
-        misc.add_used_variable('GARBAGE')
+        misc.used_variables.add('GARBAGE')
         if self.has_own_variable('GARBAGE'):
             for g in self.get_variable_split('GARBAGE'):
                 misc.garbage.add(g)

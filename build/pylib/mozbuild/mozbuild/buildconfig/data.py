@@ -63,6 +63,7 @@ class MakefileDerivedObject(object):
         'source_dir',       # Source directory for this Makefile
         'top_source_dir',   # The top source code directory
         'used_variables',   # Keeps track of variables consulted to build this object
+        'exclusive_variables', # Variables exclusive to our data object.
         'vpath',            # List of VPATH entries for this Makefile. The
                             # VPATH is order dependent, so we store a list,
                             # not a set.
@@ -71,11 +72,12 @@ class MakefileDerivedObject(object):
     def __init__(self, makefile):
         assert(makefile is not None)
 
-        self.directory      = makefile.directory
-        self.source_dir     = None
+        self.directory = makefile.directory
+        self.source_dir = None
         self.top_source_dir = None
         self.used_variables = set()
-        self.vpath          = []
+        self.exclusive_variables = set()
+        self.vpath = []
 
         if makefile.has_own_variable('srcdir'):
             self.source_dir = makefile.get_variable_string('srcdir')
@@ -85,21 +87,6 @@ class MakefileDerivedObject(object):
 
         if makefile.has_own_variable('VPATH'):
             self.vpath = makefile.get_variable_split('VPATH')
-
-    def add_used_variable(self, name):
-        """Register a variable as used to create the object.
-
-        This is strictly an optional feature. It can be used to keep track
-        of which variables are relevant to an object. If you add all the
-        used variables from all the derived objects from a single Makefile
-        together, you can also see which variables were never used. This can
-        be used to eliminate dead code or improve the Makefile parsing
-        process.
-        """
-        self.used_variables.add(name)
-
-    def get_used_variables(self):
-        return self.used_variables
 
 class LibraryInfo(MakefileDerivedObject):
     """Represents a library in the Mozilla build system.
