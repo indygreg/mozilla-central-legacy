@@ -1799,11 +1799,12 @@ class Makefile(object):
     the docs for caveats.
     """
     __slots__ = (
-        'filename',      # Filename of the Makefile
-        'directory',     # Directory holding the Makefile
-        '_makefile',     # PyMake Makefile instance
-        '_statements',   # StatementCollection for this file.
-        '_lines',        # List of lines containing (modified) Makefile lines
+        'filename', # Filename of the Makefile
+        'directory', # Directory holding the Makefile
+        '_makefile', # PyMake Makefile instance
+        '_statements', # StatementCollection for this file.
+        '_lines', # List of lines containing (modified) Makefile lines
+        '_resolved_variable_strings', # Cache of values of resolved variables.
     )
 
     RE_SUB = re.compile(r"@([a-z0-9_]+?)@")
@@ -1828,9 +1829,10 @@ class Makefile(object):
         # this is loaded, PyMake will perform some evaluation during the
         # constructor. If the environment isn't sane (e.g. no proper shell),
         # PyMake will explode.
-        self._makefile   = None
+        self._makefile = None
         self._statements = None
-        self._lines      = None
+        self._lines = None
+        self._resolved_variable_strings = {}
 
     @property
     def statements(self):
@@ -1931,9 +1933,10 @@ class Makefile(object):
 
                 lines.append(newline)
 
-        self._makefile   = None
+        self._makefile = None
         self._statements = None
-        self._lines      = lines
+        self._lines = lines
+        self._resolved_variable_strings = {}
 
     def variable_defined(self, name, search_includes=False):
         """Returns whether a variable is defined in the Makefile.
@@ -1954,11 +1957,18 @@ class Makefile(object):
         if the variable is not defined, None is returned.
         """
         if resolve:
+            cached = self._resolved_variable_strings.get(name, None)
+            if cached is not None:
+                return cached
+
             v = self.makefile.variables.get(name, True)[2]
             if v is None:
                 return None
 
-            return v.resolvestr(self.makefile, self.makefile.variables)
+            value = v.resolvestr(self.makefile, self.makefile.variables)
+
+            self._resolved_variable_strings[name] = value
+            return value
         else:
             if self.variable_assignments is None:
                 self._load_variable_assignments()
