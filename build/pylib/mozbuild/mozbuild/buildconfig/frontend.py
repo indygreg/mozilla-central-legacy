@@ -229,42 +229,12 @@ class BuildFrontend(Base):
                 tree.source_directories.add(obj.source_dir)
 
             if isinstance(obj, data.XPIDLInfo):
-                module = obj.module
-                assert(module is not None)
-
-                tree.xpidl_modules[module] = {
-                    'source_dir': obj.source_dir,
-                    'module': module,
-                    'sources': obj.sources,
-                }
-
-                tree.idl_directories.add(obj.source_dir)
+                # TODO
+                pass
 
             elif isinstance(obj, data.ExportsInfo):
-                for k, v in obj.exports.iteritems():
-                    k = '/%s' % k
-
-                    if k not in tree.exports:
-                        tree.exports[k] = {}
-
-                    for f in v:
-                        search_paths = [obj.source_dir]
-                        search_paths.extend(obj.vpath)
-
-                        found = False
-
-                        for path in search_paths:
-                            filename = os.path.join(path, f)
-                            if not os.path.exists(filename):
-                                continue
-
-                            found = True
-                            tree.exports[k][f] = filename
-                            break
-
-                        if not found:
-                            raise Exception('Could not find export file: %s from %s' % (
-                                f, obj.source_dir))
+                # TODO
+                pass
 
             elif isinstance(obj, data.LibraryInfo):
                 name = obj.name
