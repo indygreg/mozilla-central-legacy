@@ -152,34 +152,22 @@ class ExportsInfo(MakefileDerivedObject):
     """Represents a set of objects to export, typically headers."""
 
     __slots__ = (
-        'exports', # dict of str -> set of namespace to filenames
+        'filenames', # dict of str -> str of input paths to output paths
+        'output_directories', # set of str of output directory leafs.
     )
 
     def __init__(self, makefile):
         MakefileDerivedObject.__init__(self, makefile)
 
-        self.exports = {}
-
-    def add_export(self, name, namespace=None):
-        """Adds an export for the library.
-
-        Exports can belong to namespaces. If no namespace is passed, exports
-        will belong to the global/default namespace."""
-
-        key = namespace
-        if key is None:
-            key = ''
-
-        d = self.exports.get(key, set())
-        d.add(name)
-        self.exports[key] = d
+        self.filenames = {}
+        self.output_directories = set()
 
 class XPIDLInfo(MakefileDerivedObject):
     """Holds information related to XPIDL files."""
 
     __slots__ = (
-        'module',      # Name of XPIDL module
-        'sources',     # Set of source IDL filenames
+        'module', # Name of XPIDL module
+        'sources', # Set of source IDL filenames
     )
 
     def __init__(self, makefile):
