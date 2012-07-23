@@ -221,7 +221,10 @@ class Base(object):
                 processOutputLine=[handleLine], universal_newlines=True)
 
         p.run()
-        p.waitForFinish()
+        status = p.waitForFinish()
+
+        if status != 0:
+            raise Exception('Process executed with non-0 exit code: %s' % args)
 
     def _is_windows(self):
         return os.name in ('nt', 'ce')
