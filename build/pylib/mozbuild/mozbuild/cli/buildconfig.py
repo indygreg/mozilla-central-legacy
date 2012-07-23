@@ -27,31 +27,42 @@ class BuildConfig(Base, ArgumentProvider):
 
     def generate(self, backend):
         from mozbuild.buildconfig.frontend import BuildFrontend
-        from mozbuild.buildconfig.generator.makefile import HybridMakefileGenerator
-        from mozbuild.buildconfig.generator.makefile import MakefileGenerator
+
+        frontend = BuildFrontend(self.config)
+        frontend.load_autoconf_input_files()
+        be = self.backend_from_name(backend, frontend)
+        be.generate()
+
+    def build(self, backend):
+        from mozbuild.buildconfig.frontend import BuildFrontend
 
         frontend = BuildFrontend(self.config)
         frontend.load_autoconf_input_files()
 
-        generator = None
-        if backend == 'legacy':
-            generator = MakefileGenerator(frontend)
-        elif backend == 'reformat':
-            generator = MakefileGenerator(frontend)
-            generator.reformat = True
-            generator.verify_reformat = True
-        elif backend == 'hybridmake':
-            generator = HybridMakefileGenerator(frontend)
+        be = self.backend_from_name(backend, frontend)
+        be.build()
+
+    def backend_from_name(self, name, frontend):
+        from mozbuild.buildconfig.backend.legacy import LegacyBackend
+        from mozbuild.buildconfig.backend.hybridmake import HybridMakeBackend
+
+        if name == 'legacy':
+            return LegacyBackend(frontend)
+        elif name == 'reformat':
+            backend = LegacyBackend(frontend)
+            backend.reformat = True
+            backend.verify_reformat = True
+
+            return backend
+        elif name == 'hybridmake':
+            return HybridMakeBackend(frontend)
         else:
             raise Exception('Unknown backend format: %s' % backend)
-
-        generator.clean()
-        generator.generate()
 
     @staticmethod
     def populate_argparse(parser):
         bxr = parser.add_parser('bxr',
-                                help='The Build Cross Reporter Tool.')
+            help='The Build Cross Reporter Tool.')
 
         bxr.set_defaults(cls=BuildConfig, method='bxr', filename='bxr.html')
 
@@ -59,12 +70,18 @@ class BuildConfig(Base, ArgumentProvider):
             help='Generate a machine-readable document describing the build.')
         buildinfo.set_defaults(cls=BuildConfig, method='buildinfo')
 
-        bb = parser.add_parser('buildbuild',
-                               help='Generate build backend files.')
+        bb = parser.add_parser('buildconfig',
+            help='Configure build backend.')
         backends = set(['legacy', 'reformat', 'hybridmake'])
 
         bb.add_argument('backend', default='legacy', choices=backends,
             nargs='?', help='Backend files to generate.')
 
         bb.set_defaults(cls=BuildConfig, method='generate')
+
+        build = parser.add_parser('buildbuild',
+            help='Build using the specified backend.')
+        build.add_argument('backend', default='legacy', choices=backends,
+            nargs='?', help='Backend to use.')
+        build.set_defaults(cls=BuildConfig, method='build')
 
