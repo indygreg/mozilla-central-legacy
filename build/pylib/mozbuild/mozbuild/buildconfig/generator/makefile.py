@@ -268,7 +268,7 @@ class HybridMakefileGenerator(Generator):
         print >>fh, 'include $(topsrcdir)/config/config.mk'
 
         print >>fh, 'default:'
-        print >>fh, '\t-echo "Use mach to build with this file."; \\'
+        print >>fh, '\t@echo "Use mach to build with this file."; \\'
         print >>fh, '\texit 1;'
         print >>fh, '\n'
 
