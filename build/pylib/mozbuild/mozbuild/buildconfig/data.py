@@ -96,6 +96,7 @@ class LibraryInfo(MakefileDerivedObject):
 
     __slots__ = (
         'c_flags',             # C compiler_flags
+        'compile_cxxflags', # Full C++ compiler flags.
         'cpp_sources',         # C++ source files
         'cxx_flags',           # C++ compiler flags
         'defines',             # set of #define strings to use when compiling this library
@@ -104,6 +105,7 @@ class LibraryInfo(MakefileDerivedObject):
                                # TODO is includes the same as local_includes?
         'local_includes',      # Set of extra paths to search for included files in
         'name',                # The name of the library
+        'nspr_cflags', # Flags used to build against NSPR.
         'pic',                 # Whether to generate position-independent code
         'is_component',        # Whether the library is a component, whatever that means
         'is_shared',           # Whether the library is shared
@@ -119,20 +121,21 @@ class LibraryInfo(MakefileDerivedObject):
         """Create a new library instance."""
         MakefileDerivedObject.__init__(self, makefile)
 
-        self.c_flags             = set()
-        self.cpp_sources         = set()
-        self.cxx_flags           = set()
-        self.defines             = set()
-        self.export_library      = None
-        self.includes            = set()
-        self.local_includes      = set()
-        self.pic                 = None
-        self.is_component        = None
-        self.is_shared           = None
-        self.is_static           = None
+        self.c_flags = set()
+        self.cpp_sources = set()
+        self.cxx_flags = set()
+        self.defines = set()
+        self.export_library = None
+        self.includes = set()
+        self.local_includes = set()
+        self.nspr_cflags = set()
+        self.pic = None
+        self.is_component = None
+        self.is_shared = None
+        self.is_static = None
         self.shared_library_libs = set()
-        self.short_libname       = None
-        self.use_static_libs     = None
+        self.short_libname = None
+        self.use_static_libs = None
 
 
 class ExportsInfo(MakefileDerivedObject):

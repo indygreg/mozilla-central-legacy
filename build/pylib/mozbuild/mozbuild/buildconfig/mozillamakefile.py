@@ -161,17 +161,37 @@ class MozillaMakefile(Makefile):
             else:
                 l.defines.add(define)
 
-        l.used_variables.add('CFLAGS')
-        for f in self.get_variable_split('CFLAGS'):
+        l.used_variables.add('HOST_CFLAGS')
+        for f in self.get_variable_split('HOST_CFLAGS'):
             l.c_flags.add(f)
 
-        l.used_variables.add('CXXFLAGS')
-        for f in self.get_variable_split('CXXFLAGS'):
+        l.used_variables.add('HOST_CXXFLAGS')
+        for f in self.get_variable_split('HOST_CXXFLAGS'):
             l.cxx_flags.add(f)
 
+        l.used_variables.add('NSPR_CFLAGS')
+        for f in self.get_variable_split('NSPR_CFLAGS'):
+            l.nspr_cflags.add(f)
+
+        def find_source(p):
+            if os.path.isabs(p):
+                return p
+
+            search_paths = [l.source_dir]
+            search_paths.extend(l.vpath)
+
+            for try_dir in search_paths:
+                try_path = os.path.join(try_dir, p)
+
+                if os.path.exists(try_path):
+                    return try_path
+
+            raise Exception('Could not find source file: %s' % p)
+
         l.used_variables.add('CPPSRCS')
+        l.exclusive_variables.add('CPPSRCS')
         for f in self.get_variable_split('CPPSRCS'):
-            l.cpp_sources.add(f)
+            l.cpp_sources.add(find_source(f))
 
         # LIBXUL_LIBRARY implies static library generation and presence in
         # libxul.
@@ -224,6 +244,8 @@ class MozillaMakefile(Makefile):
         l.used_variables.add('SHARED_LIBRARY_LIBS')
         for lib in self.get_variable_split('SHARED_LIBRARY_LIBS'):
             l.shared_library_libs.add(lib)
+
+        l.compile_cxxflags = self.get_variable_string('COMPILE_CXXFLAGS')
 
         return l
 

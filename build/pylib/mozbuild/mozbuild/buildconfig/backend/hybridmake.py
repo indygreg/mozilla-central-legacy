@@ -107,6 +107,8 @@ class HybridMakeBackend(BackendBase):
                 method = self._write_exports
             elif isinstance(obj, data.XPIDLInfo):
                 method = self._write_idl
+            elif isinstance(obj, data.LibraryInfo):
+                method = self._write_library
 
             if method:
                 strip_variables |= method(makefile, fh, obj)
@@ -224,6 +226,48 @@ class HybridMakeBackend(BackendBase):
             print >>fh, '\t$(IDL_UPDATE_INTERFACES_MANIFEST) "interfaces %s"' % (
             xpt_module_basename)
             print >>fh, '\t$(IDL_UPDATE_CHROME_MANIFEST)'
+            print >>fh, ''
+
+        return obj.exclusive_variables
+
+    def _write_library(self, makefile, fh, obj):
+        def normalize_path(p):
+            if os.path.isabs(p):
+                return p
+
+            full = os.path.join(makefile.directory, p)
+
+            return os.path.realpath(full)
+
+        base_args = ['-c']
+
+        for define in obj.defines:
+            base_args.append('-D%s' % define)
+
+        for include in obj.includes:
+            base_args.append('-I%s' % normalize_path(include))
+
+        base_args.extend(obj.nspr_cflags)
+
+        c_args = list(base_args)
+        c_args.extend(obj.c_flags)
+
+        cpp_args = list(base_args)
+        cpp_args.extend(obj.cxx_flags)
+
+        for source in obj.cpp_sources:
+            basename = os.path.splitext(os.path.basename(source))[0]
+            object_basename = '%s.o' % basename
+
+            object_path = os.path.join(makefile.directory, object_basename)
+
+            print >>fh, 'CPP_OBJECT_FILES += %s' % object_path
+
+            # TODO capture dependencies properly.
+            print >>fh, '%s: %s' % (object_path, source)
+            print >>fh, '\tcd %s; \\' % makefile.directory
+            print >>fh, '\t$(CCC) -o $@ -c %s %s %s' % (obj.compile_cxxflags,
+                basename + '.deps', source)
             print >>fh, ''
 
         return obj.exclusive_variables

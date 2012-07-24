@@ -33,7 +33,7 @@ IDL_UPDATE_CHROME_MANIFEST := $(PYTHON) $(TOP_SOURCE_DIR)/config/buildlist.py \
 export: $(EXPORT_TARGETS) $(IDL_DIST_FILES) $(IDL_H_FILES)
 
 # XPT files are linked together.
-libs: $(IDL_XPT_FILES) $(IDL_XPT_INSTALL_FILES)
+libs: $(IDL_XPT_FILES) $(IDL_XPT_INSTALL_FILES) $(CPP_OBJECT_FILES)
 
 .PHONY: $(PHONIES) dirs
 
