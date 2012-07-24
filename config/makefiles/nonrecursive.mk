@@ -14,11 +14,19 @@ IDL_GENERATE_HEADER := PYTHONPATH=$(TOP_SOURCE_DIR)/other-licenses/ply \
   $(PYTHON) $(TOP_SOURCE_DIR)/xpcom/idl-parser/header.py \
   -I $(DIST_IDL_DIR) --cachedir=$(TEMP_DIR)
 
+IDL_GENERATE_XPT := $(PYTHON_PATH) \
+  $(PLY_INCLUDE) \
+  -I$(TOP_SOURCE_DIR)/xpcom/typelib/xpt/tools \
+  $(LIBXUL_DIST)/sdk/bin/typelib.py $(XPIDL_FLAGS)
+
 # export mimimcs the export tier:
 #   * .h files are copied into dist/include
 #   * .idl files are copied into dist/idl
 #   * .idl files are converted into .h files in dist/include
 export: $(EXPORT_TARGETS) $(IDL_DIST_FILES) $(IDL_H_FILES)
+
+# XPT files are linked together.
+libs: $(IDL_XPT_FILES)
 
 .PHONY: $(PHONIES) dirs
 

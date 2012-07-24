@@ -64,9 +64,11 @@ class HybridMakeBackend(BackendBase):
     def _generate_makefile(self, original):
         # TODO MozillaMakefile should use proper statements API.
         output_path = makefile_output_path(self.srcdir, self.objdir, original)
+        output_directory = os.path.dirname(output_path)
+        original.directory = output_directory
 
         strip_variables = set()
-        splendid_path = os.path.join(os.path.dirname(output_path), 'splendid.mk')
+        splendid_path = os.path.join(output_directory, 'splendid.mk')
         with open(splendid_path, 'wb') as fh:
             strip_variables = self.write_splendid_makefile(original, fh)
 
@@ -141,13 +143,20 @@ class HybridMakeBackend(BackendBase):
         idl_output_directory = os.path.join(self.objdir, 'dist', 'idl')
         header_output_directory = os.path.join(self.objdir, 'dist', 'include')
 
+        gen_directory = os.path.join(makefile.directory, '_xpidlgen')
+        self.output_directories.add(gen_directory)
+
         for source in sorted(obj.sources):
             basename = os.path.basename(source)
-            header_basename = os.path.splitext(basename)[0] + '.h'
+            stripped_name = os.path.splitext(basename)[0]
+            header_basename = stripped_name + '.h'
+            xpt_basename = stripped_name + '.xpt'
 
             output_idl_path = os.path.join(idl_output_directory, basename)
             output_header_path = os.path.join(header_output_directory,
                 header_basename)
+
+            xpt_output_path = os.path.join(gen_directory, xpt_basename)
 
             # Record the final destination of this IDL in a variable so that
             # variable can be used as a prerequisite.
@@ -170,6 +179,18 @@ class HybridMakeBackend(BackendBase):
             print >>fh, '%s: $(IDL_DIST_FILES)' % output_header_path
             print >>fh, '\t$(IDL_GENERATE_HEADER) -o $@ %s' % output_idl_path
             print >>fh, ''
+
+            # Generate intermediate .xpt file.
+            print >>fh, 'IDL_XPT_FILES += %s' % xpt_output_path
+            print >>fh, '%s: %s' % (xpt_output_path, output_idl_path)
+            print >>fh, '\t$(IDL_GENERATE_XPT) %s -o $@' % output_idl_path
+
+        # Link .xpt files into final .xpt file.
+        if obj.link_together:
+            pass
+
+        # Install final .xpt file into dist.
+        # TODO
 
         return obj.exclusive_variables
 
@@ -204,10 +225,11 @@ class HybridMakeBackend(BackendBase):
 
         # We have to run all the tiers separately because the main Makefile's
         # default target removes output directories, which is silly.
+        self._run_make(target='export_tier_base')
+        self._run_make(filename='hybridmake.mk', target='export')
         self._run_make(target='tier_base')
         self._run_make(target='tier_nspr')
         self._run_make(target='tier_js')
-        self._run_make(filename='hybridmake.mk', target='export')
         self._run_make(target='export_tier_platform')
         # self._run_make(filename='hybridmake.mk', target='libs')
         self._run_make(target='libs_tier_platform')
