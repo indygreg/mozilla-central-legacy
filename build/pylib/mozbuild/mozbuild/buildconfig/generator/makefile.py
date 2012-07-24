@@ -182,8 +182,6 @@ class HybridMakefileGenerator(Generator):
             method = None
             if isinstance(obj, data.ExportsInfo):
                 method = self._write_exports
-            elif isinstance(obj, data.XPIDLInfo):
-                method = self._write_idl
 
             if method:
                 strip_variables |= method(makefile, fh, obj)
@@ -215,44 +213,6 @@ class HybridMakefileGenerator(Generator):
 
         print >>fh, 'EXPORT_TARGETS += %s\n' % ' \\\n  '.join(output_filenames)
         print >>fh, 'PHONIES += EXPORT_TARGETS'
-
-        return obj.exclusive_variables
-
-    def _write_idl(self, makefile, fh, obj):
-        # IDLs are copied to a common idl directory then they are processed.
-        # The copying must complete before processing starts.
-        idl_output_directory = os.path.join(self.objdir, 'dist', 'idl')
-        header_output_directory = os.path.join(self.objdir, 'dist', 'include')
-
-        for source in sorted(obj.sources):
-            basename = os.path.basename(source)
-            header_basename = os.path.splitext(basename)[0] + '.h'
-
-            output_idl_path = os.path.join(idl_output_directory, basename)
-            output_header_path = os.path.join(header_output_directory,
-                header_basename)
-
-            # Record the final destination of this IDL in a variable so that
-            # variable can be used as a prerequisite.
-            print >>fh, 'IDL_DIST_FILES += %s' % output_idl_path
-            print >>fh, 'IDL_H_FILES += %s' % output_header_path
-            print >>fh, ''
-
-            # Install the original IDL file into the IDL directory.
-            print >>fh, '%s: %s' % (output_idl_path, source)
-            print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (source,
-                idl_output_directory)
-            print >>fh, ''
-
-            # TODO write out IDL dependencies file via rule and hook up to
-            # prereqs for IDL generation. This requires a bit more code to be
-            # written. For now, we omit the dependencies, which is very wrong.
-            idl_deps_path = os.path.join(self.objdir, 'deps',
-                '%s.deps' % basename)
-
-            print >>fh, '%s: $(IDL_DIST_FILES)' % output_header_path
-            print >>fh, '\t$(IDL_GENERATE_HEADER) -o $@ %s' % output_idl_path
-            print >>fh, ''
 
         return obj.exclusive_variables
 
@@ -289,7 +249,6 @@ class HybridMakefileGenerator(Generator):
         print >>fh, 'OBJECT_DIR := %s' % self.tree.object_directory
         print >>fh, 'DIST_DIR := $(OBJECT_DIR)/dist'
         print >>fh, 'DIST_INCLUDE_DIR := $(DIST_DIR)/include'
-        print >>fh, 'DIST_IDL_DIR := $(DIST_DIR)/idl'
         print >>fh, 'TEMP_DIR := $(DIST_DIR)/tmp'
         print >>fh, 'COPY := cp'
         print >>fh, 'CXX := g++'
