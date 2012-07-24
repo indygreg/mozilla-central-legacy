@@ -153,8 +153,10 @@ class XPIDLInfo(MakefileDerivedObject):
     """Holds information related to XPIDL files."""
 
     __slots__ = (
-        'module', # Name of XPIDL module
-        'sources', # Set of source IDL filenames
+        'module', # Name of XPIDL module.
+        'sources', # Set of source IDL filenames.
+        'write_manifest', # Whether to write manifest file.
+        'link_together', # Whether to link together into a final XPT.
     )
 
     def __init__(self, makefile):
@@ -162,6 +164,8 @@ class XPIDLInfo(MakefileDerivedObject):
 
         self.module  = None
         self.sources = set()
+        self.write_manifest = True
+        self.link_together = True
 
 class TestInfo(MakefileDerivedObject):
     """Represents info relevant to testing."""
