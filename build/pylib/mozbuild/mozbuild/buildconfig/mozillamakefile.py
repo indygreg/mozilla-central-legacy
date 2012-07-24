@@ -358,7 +358,10 @@ class MozillaMakefile(Makefile):
             if len(idl.sources) < 2 and idl.module in idl.sources:
                 idl.link_together = False
 
-            yield idl
+            # Some files give off the scent but don't actually define any IDLs.
+            # Here, we prevent empty output.
+            if len(idl.sources):
+                yield idl
 
         # Test definitions
         if self.TEST in traits:
