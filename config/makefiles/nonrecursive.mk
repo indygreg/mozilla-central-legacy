@@ -8,6 +8,7 @@ DIST_DIR := $(OBJECT_DIR)/dist
 DIST_IDL_DIR := $(DIST_DIR)/idl
 DIST_INCLUDE_DIR := $(DIST_DIR)/include
 DIST_IDL_DIR := $(DIST_DIR)/idl
+DIST_COMPONENTS_DIR := $(DIST_DIR)/bin/components
 TEMP_DIR := $(OBJECT_DIR)/tmp
 
 IDL_GENERATE_HEADER := PYTHONPATH=$(TOP_SOURCE_DIR)/other-licenses/ply \
@@ -19,6 +20,12 @@ IDL_GENERATE_XPT := $(PYTHON_PATH) \
   -I$(TOP_SOURCE_DIR)/xpcom/typelib/xpt/tools \
   $(LIBXUL_DIST)/sdk/bin/typelib.py $(XPIDL_FLAGS)
 
+IDL_UPDATE_INTERFACES_MANIFEST := $(PYTHON) $(TOP_SOURCE_DIR)/config/buildlist.py \
+  $(DIST_COMPONENTS_DIR)/interfaces.manifest
+
+IDL_UPDATE_CHROME_MANIFEST := $(PYTHON) $(TOP_SOURCE_DIR)/config/buildlist.py \
+  $(DIST_COMPONENTS_DIR)/chrome.manifest "manifest components/interfaces.manifest"
+
 # export mimimcs the export tier:
 #   * .h files are copied into dist/include
 #   * .idl files are copied into dist/idl
@@ -26,7 +33,7 @@ IDL_GENERATE_XPT := $(PYTHON_PATH) \
 export: $(EXPORT_TARGETS) $(IDL_DIST_FILES) $(IDL_H_FILES)
 
 # XPT files are linked together.
-libs: $(IDL_XPT_FILES)
+libs: $(IDL_XPT_FILES) $(IDL_XPT_INSTALL_FILES)
 
 .PHONY: $(PHONIES) dirs
 

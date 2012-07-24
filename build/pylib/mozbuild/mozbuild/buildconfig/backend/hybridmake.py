@@ -146,9 +146,22 @@ class HybridMakeBackend(BackendBase):
         # The copying must complete before processing starts.
         idl_output_directory = os.path.join(self.objdir, 'dist', 'idl')
         header_output_directory = os.path.join(self.objdir, 'dist', 'include')
+        components_directory = os.path.join(self.objdir, 'dist', 'bin',
+            'components')
+
+        self.output_directories.add(idl_output_directory)
+        self.output_directories.add(header_output_directory)
+        self.output_directories.add(components_directory)
 
         gen_directory = os.path.join(makefile.directory, '_xpidlgen')
         self.output_directories.add(gen_directory)
+
+        output_xpt_files = set()
+        xpt_module_basename = '%s.xpt' % obj.module
+        xpt_module_path = os.path.join(gen_directory, xpt_module_basename)
+
+        xpt_final_path = os.path.join(components_directory,
+            xpt_module_basename)
 
         for source in sorted(obj.sources):
             basename = os.path.basename(source)
@@ -161,6 +174,7 @@ class HybridMakeBackend(BackendBase):
                 header_basename)
 
             xpt_output_path = os.path.join(gen_directory, xpt_basename)
+            output_xpt_files.add(xpt_output_path)
 
             # Record the final destination of this IDL in a variable so that
             # variable can be used as a prerequisite.
@@ -188,13 +202,29 @@ class HybridMakeBackend(BackendBase):
             print >>fh, 'IDL_XPT_FILES += %s' % xpt_output_path
             print >>fh, '%s: %s' % (xpt_output_path, output_idl_path)
             print >>fh, '\t$(IDL_GENERATE_XPT) %s -o $@' % output_idl_path
+            print >>fh, ''
 
         # Link .xpt files into final .xpt file.
         if obj.link_together:
-            pass
+            print >>fh, 'IDL_XPT_FILES += %s' % xpt_module_path
+            print >>fh, '%s: %s' % (xpt_module_path,
+                ' '.join(output_xpt_files))
+            print >>fh, '\t$(XPIDL_LINK) %s %s' % (xpt_module_path,
+                ' '.join(output_xpt_files))
+            print >>fh, ''
 
         # Install final .xpt file into dist.
-        # TODO
+        print >>fh, 'IDL_XPT_INSTALL_FILES += %s' % xpt_final_path
+        print >>fh, '%s: %s' % (xpt_final_path, xpt_module_path)
+        print >>fh, '\t$(INSTALL) -R -m 664 %s %s' % (xpt_module_path,
+            '$(DIST_COMPONENTS_DIR)')
+        print >>fh, ''
+
+        if obj.write_manifest:
+            print >>fh, '\t$(IDL_UPDATE_INTERFACES_MANIFEST) "interfaces %s"' % (
+            xpt_module_basename)
+            print >>fh, '\t$(IDL_UPDATE_CHROME_MANIFEST)'
+            print >>fh, ''
 
         return obj.exclusive_variables
 
@@ -235,7 +265,7 @@ class HybridMakeBackend(BackendBase):
         self._run_make(target='tier_nspr')
         self._run_make(target='tier_js')
         self._run_make(target='export_tier_platform')
-        # self._run_make(filename='hybridmake.mk', target='libs')
+        self._run_make(filename='hybridmake.mk', target='libs')
         self._run_make(target='libs_tier_platform')
         self._run_make(target='tools_tier_platform')
         self._run_make(target='export_tier_app')
