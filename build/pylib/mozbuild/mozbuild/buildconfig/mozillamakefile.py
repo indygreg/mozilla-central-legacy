@@ -245,7 +245,15 @@ class MozillaMakefile(Makefile):
         for lib in self.get_variable_split('SHARED_LIBRARY_LIBS'):
             l.shared_library_libs.add(lib)
 
-        l.compile_cxxflags = self.get_variable_string('COMPILE_CXXFLAGS')
+        flags_vars = ['STL_FLAGS', 'VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES',
+            'DSO_CFLAGS', 'DSO_PIC_CFLAGS', 'CXXFLAGS', 'RTL_FLAGS',
+            'OS_CPPFLAGS']
+
+        flags_values = [self.get_variable_string(f) for f in flags_vars]
+        flags_values = [f for f in flags_values if f is not None]
+        l.compile_cxxflags = ' '.join(flags_values)
+        l.compile_cxxflags += '-include $(OBJECT_DIR)/mozilla-config.h ' + \
+            '-DMOZILLA_CLIENT'
 
         return l
 

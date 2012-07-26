@@ -51,6 +51,8 @@ class HybridMakeBackend(BackendBase):
         for makefile in self.makefiles:
             try:
                 self._generate_makefile(makefile)
+            except KeyboardInterrupt as ki:
+                raise ki
             except:
                 print 'Error processing %s' % makefile.filename
                 traceback.print_exc()
@@ -266,8 +268,8 @@ class HybridMakeBackend(BackendBase):
             # TODO capture dependencies properly.
             print >>fh, '%s: %s' % (object_path, source)
             print >>fh, '\tcd %s; \\' % makefile.directory
-            print >>fh, '\t$(CCC) -o $@ -c %s %s %s' % (obj.compile_cxxflags,
-                basename + '.deps', source)
+            print >>fh, '\t$(CCC) -o $@ -c %s %s' % (obj.compile_cxxflags,
+                source)
             print >>fh, ''
 
         return obj.exclusive_variables
