@@ -15,6 +15,7 @@ from mozbuild.base import Base
 from mozbuild.buildconfig.makefile import MakefileCollection
 from mozbuild.buildconfig.makefile import StatementCollection
 from mozbuild.buildconfig.mozillamakefile import MozillaMakefile
+from mozbuild.buildconfig.backend.utils import substitute_makefile
 
 # Constants for identifying build file types
 BUILD_FILE_MAKE_TEMPLATE = 1
@@ -59,6 +60,16 @@ IGNORE_BUILD_FILES = (
     # Uses order-only prerequisites, which PyMake can't handle.
     # Bug 703843 tracks fixing.
     'build/unix/elfhack/Makefile.in',
+
+    # Trips over $(error) in CPPSRCS assignment.
+    'xpcom/reflect/xptcall/src/md/unix/Makefile.in',
+
+    # Requires GYP generation.
+    'media/webrtc/trunk/Makefile.in',
+    'media/webrtc/trunk/testing/Makefile.in',
+
+    # L10NBASEDIR not defined by autoconf.
+    'extensions/spellcheck/locales/Makefile.in',
 )
 
 CONFIGURE_IGNORE_FILES = (
@@ -144,17 +155,72 @@ class BuildFrontend(Base):
         for relative in self.all_input_files:
             self.load_input_file(relative)
 
+    def load_input_files_from_root_makefile(self):
+        """Loads all input files found from scanning the root Makefile.in.
+
+        This loads the root Makefile.in and finds all other Makefile.in by
+        looking at the DIRS variables.
+        """
+        self.load_autoconf_file()
+
+        root_path = os.path.join(self.srcdir, 'Makefile.in')
+
+        m = MozillaMakefile(root_path, directory=self.objdir)
+        substitute_makefile(m, self)
+
+        for tier in m.get_variable_split('TIERS'):
+            dirs_varname = 'tier_%s_dirs' % tier
+
+            dirs = m.get_variable_split(dirs_varname)
+
+            for tier_dir in dirs:
+                skip = False
+                for ignore in EXTERNALLY_MANAGED_PATHS:
+                    if tier_dir.startswith(ignore):
+                        skip = True
+                        break
+
+                if skip:
+                    continue
+
+                self.load_and_traverse_makefile(tier_dir)
+
+    def load_and_traverse_makefile(self, relative):
+        """Loads a Makefile.in and traverse into children.
+
+        This looks at the DIRS variables in a Makefile.in to determine paths to
+        other Makefile.in's.
+        """
+
+        relative_path = os.path.join(relative, 'Makefile.in')
+        source_path = os.path.join(self.srcdir, relative_path)
+
+        if relative_path in IGNORE_BUILD_FILES:
+            return None
+
+        m = MozillaMakefile(source_path, os.path.join(self.objdir, relative))
+        substitute_makefile(m, self)
+
+        for d in m.get_variable_split('DIRS'):
+            reldir = os.path.join(relative, d)
+
+            self.load_and_traverse_makefile(reldir)
+
+        return m
+
     def load_input_file(self, relative):
         """Load an input from the source directory at the specified path."""
 
         if not relative.endswith('Makefile.in'):
-            return
+            return None
 
         if relative in IGNORE_BUILD_FILES:
-            return
+            return None
 
         m = MozillaMakefile(os.path.join(self.srcdir, relative))
         self.makefiles.add(m)
+
+        return m
 
     def load_autoconf_file(self):
         path = os.path.join(self.objdir, 'config', 'autoconf.mk')
