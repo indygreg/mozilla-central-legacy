@@ -109,8 +109,9 @@ class HybridMakeBackend(BackendBase):
                 method = self._write_exports
             elif isinstance(obj, data.XPIDLInfo):
                 method = self._write_idl
-            elif isinstance(obj, data.LibraryInfo):
-                method = self._write_library
+            # Not ready for prime time.
+            #elif isinstance(obj, data.LibraryInfo):
+            #    method = self._write_library
 
             if method:
                 strip_variables |= method(makefile, fh, obj)
