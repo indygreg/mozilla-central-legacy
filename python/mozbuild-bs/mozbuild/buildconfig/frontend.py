@@ -353,7 +353,7 @@ class BuildFrontend(Base):
             # Filter out ignored directories
             ignored = False
             for ignore in ignore_relative:
-                if relative.find(ignore) == 0:
+                if relative.startswith(ignore):
                     ignored = True
                     break
 
@@ -361,7 +361,7 @@ class BuildFrontend(Base):
                 continue
 
             for ignore in ignore_full:
-                if root.find(ignore) == 0:
+                if root.startswith(ignore):
                     ignored = True
                     break
 
