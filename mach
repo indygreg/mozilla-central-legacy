@@ -18,9 +18,8 @@ if major != '2' or minor != '7':
 
 # Set up the environment before invoking any code.
 # TODO integrate with virtualenv somehow.
-sys.path.append('build/pylib/mozbuild')
-sys.path.append('build/pylib/blessings')
-sys.path.append('build/pylib/colorama')
+sys.path.append('python/mozbuild-bs')
+sys.path.append('python/blessings')
 sys.path.append('python/pymake')
 sys.path.append('build')
 sys.path.append('other-licenses/ply')
