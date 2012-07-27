@@ -21,7 +21,7 @@ if major != '2' or minor != '7':
 sys.path.append('build/pylib/mozbuild')
 sys.path.append('build/pylib/blessings')
 sys.path.append('build/pylib/colorama')
-sys.path.append('build/pylib/pymake')
+sys.path.append('python/pymake')
 sys.path.append('build')
 sys.path.append('other-licenses/ply')
 sys.path.append('xpcom/idl-parser')
