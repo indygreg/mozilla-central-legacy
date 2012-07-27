@@ -117,7 +117,7 @@ class BuildFrontend(Base):
 
         This crawls the filesystem and finds every input file.
         """
-        it = BuildFrontend.get_build_files_in_tree(
+        it = BuildFrontend.get_frontend_files(
             self.srcdir,
             ignore_relative=EXTERNALLY_MANAGED_PATHS,
             ignore_full=[self.objdir])
