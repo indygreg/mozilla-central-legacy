@@ -142,6 +142,23 @@ class MozillaMakefile(Makefile):
     def get_transformed_reldir(self):
         return self.get_reldir().replace('\\', '_').replace('/', '_')
 
+    def resolve_absolute_path(self, path, obj):
+        assert isinstance(obj, data.MakefileDerivedObject)
+
+        if os.path.isabs(path):
+            return path
+
+        search_dirs = [obj.directory, obj.source_dir]
+        search_dirs.extend(obj.vpath)
+
+        for search_dir in search_dirs:
+            try_path = os.path.join(search_dir, path)
+
+            if os.path.exists(try_path):
+                return try_path
+
+        raise Exception('Could not find source file: %s' % path)
+
     def get_library_info(self):
         """Obtain information for the library defined by this Makefile.
 
@@ -173,25 +190,10 @@ class MozillaMakefile(Makefile):
         for f in self.get_variable_split('NSPR_CFLAGS'):
             l.nspr_cflags.add(f)
 
-        def find_source(p):
-            if os.path.isabs(p):
-                return p
-
-            search_paths = [l.source_dir]
-            search_paths.extend(l.vpath)
-
-            for try_dir in search_paths:
-                try_path = os.path.join(try_dir, p)
-
-                if os.path.exists(try_path):
-                    return try_path
-
-            raise Exception('Could not find source file: %s' % p)
-
         l.used_variables.add('CPPSRCS')
         l.exclusive_variables.add('CPPSRCS')
         for f in self.get_variable_split('CPPSRCS'):
-            l.cpp_sources.add(find_source(f))
+            l.cpp_sources.add(self.resolve_absolute_path(f, l))
 
         # LIBXUL_LIBRARY implies static library generation and presence in
         # libxul.
@@ -302,34 +304,12 @@ class MozillaMakefile(Makefile):
             exports = data.ExportsInfo(self)
 
             def handle_export(namespace, filename):
+                filename = self.resolve_absolute_path(filename, exports)
                 exports.output_directories.add(namespace)
                 output_leaf = os.path.join(namespace,
                     os.path.basename(filename))
 
-                if os.path.isabs(filename):
-                    exports.filenames[filename] = output_leaf
-                    return
-
-                # Resolve the actual path to the source file.
-                # Normally it is in the source directory. But, it could also be
-                # in a VPATH.
-                search_paths = [exports.source_dir]
-                search_paths.extend(exports.vpath)
-
-                # TODO in some rare cases there are files in the object
-                # directory. We can either search there or change these to use
-                # a different rule.
-
-                for path in search_paths:
-                    test_path = os.path.join(path, filename)
-
-                    if not os.path.exists(test_path):
-                        continue
-
-                    exports.filenames[test_path] = output_leaf
-                    return
-
-                raise Exception('Could not find source file: %s' % filename)
+                exports.filenames[filename] = output_leaf
 
             exports.used_variables.add('EXPORTS')
             exports.exclusive_variables.add('EXPORTS')
