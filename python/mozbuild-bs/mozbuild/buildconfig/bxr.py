@@ -386,11 +386,14 @@ HTML_TEMPLATE = """
 </%def>
 """
 
-def generate_bxr(config, fh):
+def generate_bxr(config, fh, load_all=False):
     """Generate the BXR HTML and write to the specified file handle."""
     frontend = BuildFrontend(config)
-    frontend.load_autoconf_input_files()
-    #frontend.load_all_input_files()
+
+    if load_all:
+        frontend.load_all_input_files()
+    else:
+        frontend.load_autoconf_input_files()
 
     def get_variable_value(name):
         return {
@@ -410,6 +413,10 @@ def generate_bxr(config, fh):
 
     for m in frontend.makefiles.makefiles():
         key = m.filename
+
+        if key.startswith(config.source_directory):
+            key = key[len(config.source_directory) + 1:]
+
         statements = m.statements
         metadata = makefiles.get(key, None)
         if metadata is None:

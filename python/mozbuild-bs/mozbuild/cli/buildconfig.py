@@ -9,11 +9,11 @@ class BuildConfig(Base, ArgumentProvider):
     def __init__(self, config):
         Base.__init__(self, config)
 
-    def bxr(self, filename):
+    def bxr(self, filename, load_all=False):
         from mozbuild.buildconfig.bxr import generate_bxr
 
         with open(filename, 'wb') as fh:
-            generate_bxr(self.config, fh)
+            generate_bxr(self.config, fh, load_all=load_all)
 
     def buildinfo(self):
         from mozbuild.buildconfig.frontend import BuildFrontend
@@ -63,6 +63,9 @@ class BuildConfig(Base, ArgumentProvider):
     def populate_argparse(parser):
         bxr = parser.add_parser('bxr',
             help='The Build Cross Reporter Tool.')
+        bxr.add_argument('--all', default=False, action='store_true',
+            dest='load_all',
+            help='Load all files, not just autoconf configured ones.')
 
         bxr.set_defaults(cls=BuildConfig, method='bxr', filename='bxr.html')
 
