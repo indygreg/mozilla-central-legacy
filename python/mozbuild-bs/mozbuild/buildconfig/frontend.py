@@ -70,6 +70,8 @@ IGNORE_BUILD_FILES = (
 
     # L10NBASEDIR not defined by autoconf.
     'extensions/spellcheck/locales/Makefile.in',
+    'toolkit/locales/Makefile.in',
+    'browser/locales/Makefile.in',
 )
 
 CONFIGURE_IGNORE_FILES = (
@@ -201,10 +203,15 @@ class BuildFrontend(Base):
         m = MozillaMakefile(source_path, os.path.join(self.objdir, relative))
         substitute_makefile(m, self)
 
-        for d in m.get_variable_split('DIRS'):
-            reldir = os.path.join(relative, d)
+        def process_dir(d):
+            reldir = os.path.normpath(os.path.join(relative, d))
 
             self.load_and_traverse_makefile(reldir)
+
+        read_vars = ['DIRS', 'PARALLEL_DIRS', 'TOOL_DIRS', 'TEST_DIRS']
+        for var in read_vars:
+            for d in m.get_variable_split(var):
+                process_dir(d)
 
         return m
 
