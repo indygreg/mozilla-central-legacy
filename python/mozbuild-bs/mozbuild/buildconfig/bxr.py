@@ -371,7 +371,7 @@ HTML_TEMPLATE = """
         if line is not None:
             uri += '#l%s' % line
     elif flavor == 'github':
-        uri = 'https://github.com/doublec/mozilla-central/blob/master/%s' % newpath
+        uri = 'https://github.com/mozilla/mozilla-central/blob/master/%s' % newpath
 
         if line is not None:
             uri += '#L%s' % line
