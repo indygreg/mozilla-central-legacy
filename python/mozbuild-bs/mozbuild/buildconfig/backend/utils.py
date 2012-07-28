@@ -20,8 +20,6 @@ def makefile_output_path(srcdir, objdir, makefile):
     return os.path.join(objdir, leaf, basename)
 
 def substitute_makefile(makefile, frontend):
-    assert makefile.filename.endswith('.in')
-
     variables = dict(frontend.autoconf)
     variables['top_srcdir'] = frontend.srcdir
     variables['srcdir'] = makefile.directory
