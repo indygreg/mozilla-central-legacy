@@ -9,11 +9,12 @@ class BuildConfig(Base, ArgumentProvider):
     def __init__(self, config):
         Base.__init__(self, config)
 
-    def bxr(self, filename, load_all=False):
+    def bxr(self, filename, load_all=False, load_from_make=False):
         from mozbuild.buildconfig.bxr import generate_bxr
 
         with open(filename, 'wb') as fh:
-            generate_bxr(self.config, fh, load_all=load_all)
+            generate_bxr(self.config, fh, load_all=load_all,
+                load_from_make=load_from_make)
 
     def buildinfo(self):
         from mozbuild.buildconfig.frontend import BuildFrontend
@@ -66,6 +67,9 @@ class BuildConfig(Base, ArgumentProvider):
         bxr.add_argument('--all', default=False, action='store_true',
             dest='load_all',
             help='Load all files, not just autoconf configured ones.')
+        bxr.add_argument('--make', default=False, action='store_true',
+            dest='load_from_make',
+            help='Load files by discovering through the root Makefile.in')
 
         bxr.set_defaults(cls=BuildConfig, method='bxr', filename='bxr.html')
 

@@ -386,12 +386,14 @@ HTML_TEMPLATE = """
 </%def>
 """
 
-def generate_bxr(config, fh, load_all=False):
+def generate_bxr(config, fh, load_all=False, load_from_make=False):
     """Generate the BXR HTML and write to the specified file handle."""
     frontend = BuildFrontend(config)
 
     if load_all:
         frontend.load_all_input_files()
+    elif load_from_make:
+        frontend.load_input_files_from_root_makefile()
     else:
         frontend.load_autoconf_input_files()
 
