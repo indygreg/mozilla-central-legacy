@@ -201,6 +201,7 @@ class BuildFrontend(Base):
             return None
 
         m = MozillaMakefile(source_path, os.path.join(self.objdir, relative))
+        m.env['DONT_LOAD_RULES'] = '1'
         substitute_makefile(m, self)
 
         def process_dir(d):
