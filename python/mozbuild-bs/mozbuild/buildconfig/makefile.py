@@ -1801,6 +1801,7 @@ class Makefile(object):
     __slots__ = (
         'filename', # Filename of the Makefile
         'directory', # Directory holding the Makefile
+        'env', # Environment variables to pass into constructed Makefile.
         '_makefile', # PyMake Makefile instance
         '_statements', # StatementCollection for this file.
         '_lines', # List of lines containing (modified) Makefile lines
@@ -1820,6 +1821,8 @@ class Makefile(object):
             self.directory = directory
         else:
             self.directory = os.path.dirname(filename)
+
+        self.env = dict(os.environ)
 
         # Each Makefile instance can look at two sets of data, the low-level
         # statements or the high-level Makefile from PyMake. Each data set is
@@ -1851,7 +1854,8 @@ class Makefile(object):
     @property
     def makefile(self):
         if self._makefile is None:
-            self._makefile = pymake.data.Makefile(workdir=self.directory)
+            self._makefile = pymake.data.Makefile(workdir=self.directory,
+                env=self.env)
 
             if self._lines is None:
                 self._makefile.include(os.path.basename(self.filename))
