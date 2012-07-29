@@ -22,6 +22,10 @@ ifndef INCLUDED_VERSION_MK
 include $(topsrcdir)/config/version.mk
 endif
 
+# This is here to short-circuit rules.mk. It is used to "extract" data
+# from Makefile's using the pymake API.
+ifndef DONT_LOAD_RULES
+
 USE_AUTOTARGETS_MK = 1
 include $(topsrcdir)/config/makefiles/makeutils.mk
 
@@ -1683,3 +1687,5 @@ include $(topsrcdir)/config/makefiles/autotargets.mk
 ifneq ($(NULL),$(AUTO_DEPS))
   default all libs tools export:: $(AUTO_DEPS)
 endif
+
+endif # DONT_LOAD_RULES
