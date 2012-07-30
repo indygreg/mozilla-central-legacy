@@ -201,12 +201,14 @@ class HybridMakeBackend(BackendBase):
                 '%s.deps' % basename)
 
             print >>fh, '%s: $(IDL_DIST_FILES)' % output_header_path
+            print >>fh, '\techo %s; \\' % basename
             print >>fh, '\t$(IDL_GENERATE_HEADER) -o $@ %s' % output_idl_path
             print >>fh, ''
 
             # Generate intermediate .xpt file.
             print >>fh, 'IDL_XPT_FILES += %s' % xpt_output_path
             print >>fh, '%s: %s' % (xpt_output_path, output_idl_path)
+            print >>fh, '\techo %s; \\' % os.path.basename(xpt_output_path)
             print >>fh, '\t$(IDL_GENERATE_XPT) %s -o $@' % output_idl_path
             print >>fh, ''
 
@@ -215,6 +217,7 @@ class HybridMakeBackend(BackendBase):
             print >>fh, 'IDL_XPT_FILES += %s' % xpt_module_path
             print >>fh, '%s: %s' % (xpt_module_path,
                 ' '.join(output_xpt_files))
+            print >>fh, '\techo %s; \\' % os.path.basename(xpt_module_path)
             print >>fh, '\t$(XPIDL_LINK) %s %s' % (xpt_module_path,
                 ' '.join(output_xpt_files))
             print >>fh, ''
@@ -270,6 +273,7 @@ class HybridMakeBackend(BackendBase):
             # TODO capture dependencies properly.
             print >>fh, '%s: %s' % (object_path, source)
             print >>fh, '\tcd %s; \\' % makefile.directory
+            print >>fh, '\techo %s; \\' % os.path.basename(source)
             print >>fh, '\t$(CCC) -o $@ -c %s %s' % (obj.compile_cxxflags,
                 source)
             print >>fh, ''
