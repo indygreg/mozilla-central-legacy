@@ -91,7 +91,8 @@ class Base(object):
         return os.path.join(self.objdir, path)
 
     def _run_make(self, directory=None, filename=None, target=None, log=True,
-            srcdir=False, allow_parallel=True, line_handler=None, env=None):
+            srcdir=False, allow_parallel=True, line_handler=None, env=None,
+            ignore_errors=False):
         """Invoke make.
 
         directory -- Relative directory to look for Makefile in.
@@ -112,7 +113,10 @@ class Base(object):
             args.extend(['-f', filename])
 
         if allow_parallel:
-            args.append('-j%d' % self.config.thread_count)
+            args.append('-j%d' % (self.config.thread_count * 3 / 2))
+
+        if ignore_errors:
+            args.append('-k')
 
         # Silent mode by default.
         args.append('-s')
@@ -152,6 +156,7 @@ class Base(object):
             'env': env,
             'log_level': logging.INFO,
             'require_unix_environment': True,
+            'ignore_errors': ignore_errors,
         }
 
         if log:
@@ -167,7 +172,7 @@ class Base(object):
 
     def _run_command(self, args=None, cwd=None, env=None, explicit_env=None,
                      log_name=None, log_level=logging.INFO, line_handler=None,
-                     require_unix_environment=False):
+                     require_unix_environment=False, ignore_errors=False):
         """Runs a single command to completion.
 
         Takes a list of arguments to run where the first item is the
@@ -223,7 +228,7 @@ class Base(object):
         p.run()
         status = p.waitForFinish()
 
-        if status != 0:
+        if status != 0 and not ignore_errors:
             raise Exception('Process executed with non-0 exit code: %s' % args)
 
     def _is_windows(self):
