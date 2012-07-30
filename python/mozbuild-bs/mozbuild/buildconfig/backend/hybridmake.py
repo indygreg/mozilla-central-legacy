@@ -14,6 +14,14 @@ from mozbuild.buildconfig.backend.base import BackendBase
 from mozbuild.buildconfig.backend.utils import makefile_output_path
 from mozbuild.buildconfig.backend.utils import substitute_makefile
 
+IGNORE_PATHS = [
+    'security/manager',
+
+    'services/crypto/component',
+
+    'toolkit/identity',
+]
+
 class HybridMakeBackend(BackendBase):
     """The "hybrid make" backend.
 
@@ -71,18 +79,30 @@ class HybridMakeBackend(BackendBase):
         output_directory = os.path.dirname(output_path)
         original.directory = output_directory
 
-        splendid_path = os.path.join(output_directory, 'splendid.mk')
-        buf = StringIO()
-        strip_variables = self.write_splendid_makefile(original, buf)
+        reldir = original.directory[len(self.objdir) + 1:]
 
-        # We don't always have content for the non-recursive file. Only write
-        # if necessary.
-        if len(buf.getvalue()):
-            with open(splendid_path, 'wb') as fh:
-                print >>fh, buf.getvalue()
+        ignored = False
+        for ignore_path in IGNORE_PATHS:
+            if reldir.startswith(ignore_path):
+                ignored = True
+                break
 
-            self.add_generate_output_file(splendid_path, [original.filename])
-            self.splendid_files.add(splendid_path)
+        strip_variables = set()
+
+        if not ignored:
+            splendid_path = os.path.join(output_directory, 'splendid.mk')
+            buf = StringIO()
+            strip_variables = self.write_splendid_makefile(original, buf)
+
+            # We don't always have content for the non-recursive file. Only write
+            # if necessary.
+            if len(buf.getvalue()):
+                with open(splendid_path, 'wb') as fh:
+                    print >>fh, buf.getvalue()
+
+                self.add_generate_output_file(splendid_path,
+                    [original.filename])
+                self.splendid_files.add(splendid_path)
 
         makefile = Makefile(output_path)
 
@@ -110,9 +130,8 @@ class HybridMakeBackend(BackendBase):
                 method = self._write_exports
             elif isinstance(obj, data.XPIDLInfo):
                 method = self._write_idl
-            # Not ready for prime time.
-            #elif isinstance(obj, data.LibraryInfo):
-            #    method = self._write_library
+            elif isinstance(obj, data.LibraryInfo):
+                method = self._write_library
 
             if method:
                 strip_variables |= method(makefile, fh, obj)
@@ -329,6 +348,22 @@ class HybridMakeBackend(BackendBase):
         self._run_make(target='tier_nspr')
         self._run_make(target='tier_js')
         self._run_make(target='export_tier_platform')
+
+        # We should be able to use the hybridmake libs target immediately.
+        # Unfortunately, there are some dependencies on Makefile-specific
+        # rules we need to manually do first.
+
+        # DictionaryHelpers.h is installed by a one-off rule.
+        self._run_make(directory='js/xpconnect/src', target='libs',
+            ignore_errors=True)
+
+        # etld_data.inc is a one-off rule.
+        self._run_make(directory='netwerk/dns', target='etld_data.inc')
+
+        # charsetalias.properties.h is installed by a one-off rule.
+        self._run_make(directory='intl/locale/src',
+            target='charsetalias.properties.h')
+
         self._run_make(filename='hybridmake.mk', target='libs')
         self._run_make(target='libs_tier_platform')
         self._run_make(target='tools_tier_platform')
