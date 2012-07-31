@@ -237,8 +237,11 @@ class HybridMakeBackend(BackendBase):
                 header_deps_path, source)
             print >>fh, ''
 
+            # Include the dependency file for this header.
+            print >>fh, '-include %s' % header_deps_path
+
             # Install the generated .h header into the dist directory.
-            print >>fh, '%s: $(IDL_H_FILES)' % install_header_path
+            print >>fh, '%s: %s' % (install_header_path, output_header_path)
             print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
                 output_header_path, header_output_directory)
             print >>fh, ''
