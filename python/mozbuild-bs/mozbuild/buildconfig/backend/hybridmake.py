@@ -73,6 +73,9 @@ class HybridMakeBackend(BackendBase):
         self.add_generate_output_file(hybrid_path, dependencies)
         self.output_directories.add(os.path.join(self.objdir, 'tmp'))
 
+        for path in self.output_directories:
+            self.mkdir(path)
+
     def _generate_makefile(self, original):
         # TODO MozillaMakefile should use proper statements API.
         output_path = makefile_output_path(self.srcdir, self.objdir, original)
