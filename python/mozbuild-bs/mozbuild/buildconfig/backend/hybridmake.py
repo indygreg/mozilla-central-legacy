@@ -185,7 +185,9 @@ class HybridMakeBackend(BackendBase):
         self.output_directories.add(components_directory)
 
         gen_directory = os.path.join(makefile.directory, '_xpidlgen')
+        deps_directory = os.path.join(makefile.directory, '.deps')
         self.output_directories.add(gen_directory)
+        self.output_directories.add(deps_directory)
 
         output_xpt_files = set()
         xpt_module_basename = '%s.xpt' % obj.module
@@ -207,6 +209,8 @@ class HybridMakeBackend(BackendBase):
             xpt_output_path = os.path.join(gen_directory, xpt_basename)
             output_xpt_files.add(xpt_output_path)
 
+            deps_path = os.path.join(deps_directory, '%s.pp' % header_basename)
+
             # Record the final destination of this IDL in a variable so that
             # variable can be used as a prerequisite.
             print >>fh, 'IDL_DIST_FILES += %s' % output_idl_path
@@ -227,7 +231,8 @@ class HybridMakeBackend(BackendBase):
 
             print >>fh, '%s: $(IDL_DIST_FILES)' % output_header_path
             print >>fh, '\techo %s; \\' % basename
-            print >>fh, '\t$(IDL_GENERATE_HEADER) -o $@ %s' % output_idl_path
+            print >>fh, '\t$(IDL_GENERATE_HEADER) -d %s -o $@ %s' % (
+                deps_path, output_idl_path)
             print >>fh, ''
 
             # Generate intermediate .xpt file.
