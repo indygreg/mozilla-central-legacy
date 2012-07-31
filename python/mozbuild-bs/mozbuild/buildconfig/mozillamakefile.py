@@ -171,6 +171,9 @@ class MozillaMakefile(Makefile):
         name = self.get_variable_string('LIBRARY_NAME')
         l.name = name
 
+        # TODO We used to care about all the individual variables before. We no
+        # longer do. The following can arguably be deleted since we just grab
+        # all of the flags below.
         l.used_variables.add('DEFINES')
         for define in self.get_variable_split('DEFINES'):
             if define[0:2] == '-D':
@@ -247,15 +250,40 @@ class MozillaMakefile(Makefile):
         for lib in self.get_variable_split('SHARED_LIBRARY_LIBS'):
             l.shared_library_libs.add(lib)
 
+        # This is the new way of obtaining the flags. It emulates
+        # COMPILE_CXXFLAGS. We could probably use that pymake.data.Expansion
+        # directly...
         flags_vars = ['STL_FLAGS', 'VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES',
             'DSO_CFLAGS', 'DSO_PIC_CFLAGS', 'CXXFLAGS', 'RTL_FLAGS',
             'OS_CPPFLAGS']
 
         flags_values = [self.get_variable_string(f) for f in flags_vars]
         flags_values = [f for f in flags_values if f is not None]
-        l.compile_cxxflags = ' '.join(flags_values)
-        l.compile_cxxflags += '-include $(OBJECT_DIR)/mozilla-config.h ' + \
-            '-DMOZILLA_CLIENT'
+
+        # TODO this isn't the best way to parse command-line arguments.
+        flags_str = ' '.join(flags_values)
+        flags_seq = flags_str.split()
+
+        for i, value in enumerate(flags_seq):
+            value = value.strip()
+
+            # TODO handle non-GCC like compilers.
+            if not value.startswith('-I'):
+                continue
+
+            path = value[2:]
+
+            if not os.path.isabs(path):
+                path = os.path.join(l.directory, path)
+
+            normalized = os.path.normpath(path)
+
+            flags_seq[i] = value[0:2] + normalized
+
+        flags_seq.append('-include $(OBJECT_DIR)/mozilla-config.h')
+        flags_seq.append('-DMOZILLA_CLIENT')
+
+        l.compile_cxxflags = ' '.join(flags_seq)
 
         return l
 
