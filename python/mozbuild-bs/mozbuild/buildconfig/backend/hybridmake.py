@@ -239,6 +239,7 @@ class HybridMakeBackend(BackendBase):
 
             # Include the dependency file for this header.
             print >>fh, '-include %s' % header_deps_path
+            print >>fh, ''
 
             # Install the generated .h header into the dist directory.
             print >>fh, '%s: %s' % (install_header_path, output_header_path)
