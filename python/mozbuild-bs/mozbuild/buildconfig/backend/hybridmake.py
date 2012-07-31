@@ -325,11 +325,13 @@ class HybridMakeBackend(BackendBase):
 
             print >>fh, 'CPP_OBJECT_FILES += %s' % object_path
 
-            # TODO capture dependencies properly.
             print >>fh, '%s: %s' % (object_path, source)
-            print >>fh, '\tcd %s; \\' % makefile.directory
             print >>fh, '\techo %s; \\' % os.path.basename(source)
             print >>fh, '\t$(CCC) -o $@ -c %s %s' % (flags, source)
+            print >>fh, ''
+
+            # Include dependency file.
+            print >>fh, '-include %s' % deps_path
             print >>fh, ''
 
         # We don't return exclusive_variables because we don't yet have feature
