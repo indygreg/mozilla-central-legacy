@@ -309,7 +309,10 @@ class MozillaMakefile(Makefile):
                 output_leaf = os.path.join(namespace,
                     os.path.basename(filename))
 
-                exports.filenames[filename] = output_leaf
+                exports.filenames.append({
+                    'source': filename,
+                    'dest': output_leaf,
+                })
 
             exports.used_variables.add('EXPORTS')
             exports.exclusive_variables.add('EXPORTS')

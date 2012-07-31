@@ -139,17 +139,24 @@ class LibraryInfo(MakefileDerivedObject):
 
 
 class ExportsInfo(MakefileDerivedObject):
-    """Represents a set of objects to export, typically headers."""
+    """Represents a set of objects to export, typically headers.
+
+    Files to be exported and tracked in the filenames member. It is a list of
+    dicts. Each dict contains the following keys:
+
+        source -- str filename to be exported
+        dest -- str destination relative path
+    """
 
     __slots__ = (
-        'filenames', # dict of str -> str of input paths to output paths
+        'filenames', # list of dicts containing metadata.
         'output_directories', # set of str of output directory leafs.
     )
 
     def __init__(self, makefile):
         MakefileDerivedObject.__init__(self, makefile)
 
-        self.filenames = {}
+        self.filenames = []
         self.output_directories = set()
 
 class XPIDLInfo(MakefileDerivedObject):

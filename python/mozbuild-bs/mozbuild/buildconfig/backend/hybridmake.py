@@ -151,7 +151,10 @@ class HybridMakeBackend(BackendBase):
 
         output_filenames = []
 
-        for input_filename, output_leaf in obj.filenames.iteritems():
+        for item in obj.filenames:
+            input_filename = item['source']
+            output_leaf = item['dest']
+
             output_directory = os.path.join(inc_dir,
                 os.path.dirname(output_leaf))
             output_filename = os.path.join(inc_dir, output_leaf)
