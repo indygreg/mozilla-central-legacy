@@ -203,17 +203,23 @@ class HybridMakeBackend(BackendBase):
             xpt_basename = stripped_name + '.xpt'
 
             output_idl_path = os.path.join(idl_output_directory, basename)
-            output_header_path = os.path.join(header_output_directory,
+            output_header_path = os.path.join(gen_directory, header_basename)
+            install_header_path = os.path.join(header_output_directory,
                 header_basename)
 
             xpt_output_path = os.path.join(gen_directory, xpt_basename)
             output_xpt_files.add(xpt_output_path)
 
-            deps_path = os.path.join(deps_directory, '%s.pp' % header_basename)
+            header_deps_path = os.path.join(deps_directory,
+                '%s.pp' % header_basename)
+
+            xpt_deps_path = os.path.join(deps_directory,
+                '%s.pp' % xpt_basename)
 
             # Record the final destination of this IDL in a variable so that
             # variable can be used as a prerequisite.
-            print >>fh, 'IDL_DIST_FILES += %s' % output_idl_path
+            print >>fh, 'IDL_DIST_IDL_FILES += %s' % output_idl_path
+            print >>fh, 'IDL_DIST_H_FILES += %s' % install_header_path
             print >>fh, 'IDL_H_FILES += %s' % output_header_path
             print >>fh, ''
 
@@ -223,23 +229,26 @@ class HybridMakeBackend(BackendBase):
                 idl_output_directory)
             print >>fh, ''
 
-            # TODO write out IDL dependencies file via rule and hook up to
-            # prereqs for IDL generation. This requires a bit more code to be
-            # written. For now, we omit the dependencies, which is very wrong.
-            idl_deps_path = os.path.join(self.objdir, 'deps',
-                '%s.deps' % basename)
-
-            print >>fh, '%s: $(IDL_DIST_FILES)' % output_header_path
+            # Generate the .h header from the IDL file.
+            print >>fh, '%s: %s $(IDL_DIST_IDL_FILES)' % (output_header_path,
+                source)
             print >>fh, '\techo %s; \\' % basename
             print >>fh, '\t$(IDL_GENERATE_HEADER) -d %s -o $@ %s' % (
-                deps_path, output_idl_path)
+                header_deps_path, source)
+            print >>fh, ''
+
+            # Install the generated .h header into the dist directory.
+            print >>fh, '%s: $(IDL_H_FILES)' % install_header_path
+            print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
+                output_header_path, header_output_directory)
             print >>fh, ''
 
             # Generate intermediate .xpt file.
             print >>fh, 'IDL_XPT_FILES += %s' % xpt_output_path
             print >>fh, '%s: %s' % (xpt_output_path, output_idl_path)
             print >>fh, '\techo %s; \\' % os.path.basename(xpt_output_path)
-            print >>fh, '\t$(IDL_GENERATE_XPT) %s -o $@' % output_idl_path
+            print >>fh, '\t$(IDL_GENERATE_XPT) %s -d %s -o $@' % (
+                output_idl_path, xpt_deps_path)
             print >>fh, ''
 
         # Link .xpt files into final .xpt file.

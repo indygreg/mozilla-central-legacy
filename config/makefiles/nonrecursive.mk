@@ -30,7 +30,7 @@ IDL_UPDATE_CHROME_MANIFEST := $(PYTHON) $(TOP_SOURCE_DIR)/config/buildlist.py \
 #   * .h files are copied into dist/include
 #   * .idl files are copied into dist/idl
 #   * .idl files are converted into .h files in dist/include
-export: $(EXPORT_TARGETS) $(IDL_DIST_FILES) $(IDL_H_FILES)
+export: $(EXPORT_TARGETS) $(IDL_H_FILES) $(IDL_DIST_IDL_FILES) $(IDL_DIST_H_FILES)
 
 # XPT files are linked together.
 libs: $(IDL_XPT_FILES) $(IDL_XPT_INSTALL_FILES) $(CPP_OBJECT_FILES)
