@@ -255,6 +255,10 @@ class HybridMakeBackend(BackendBase):
                 output_idl_path, xpt_deps_path)
             print >>fh, ''
 
+            # Include xpt dependency file.
+            print >>fh, '-include %s' % xpt_deps_path
+            print >>fh, ''
+
         # Link .xpt files into final .xpt file.
         if obj.link_together:
             print >>fh, 'IDL_XPT_FILES += %s' % xpt_module_path
