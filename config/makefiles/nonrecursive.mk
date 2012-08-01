@@ -40,7 +40,7 @@ libs_prerequisites := \
   $(NULL)
 
 # XPT files are linked together.
-libs: libs_prerequisites
+libs: $(libs_prerequisites)
 
 .PHONY: $(PHONIES) dirs libs_prerequisites
 
