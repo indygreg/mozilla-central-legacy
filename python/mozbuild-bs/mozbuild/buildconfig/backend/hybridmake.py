@@ -334,6 +334,28 @@ class HybridMakeBackend(BackendBase):
             print >>fh, '-include %s' % deps_path
             print >>fh, ''
 
+        # C files are very similar to C++ files.
+        for source in obj.c_sources:
+            basename = os.path.splitext(os.path.basename(source))[0]
+            object_basename = '%s.o' % basename
+            deps_basename = '%s.pp' % object_basename
+
+            object_path = os.path.join(makefile.directory, object_basename)
+            deps_path = os.path.join(deps_dir, deps_basename)
+
+            # TODO don't hardcode GCC/Clang flags.
+            flags = '%s -MD -MF %s' % (obj.c_flags, deps_path)
+
+            print >>fh, 'C_OBJECT_FILES += %s' % object_path
+
+            print >>fh, '%s: %s' % (object_path, source)
+            print >>fh, '\techo %s; \\' % os.path.basename(source)
+            print >>fh, '\t$(CC) -o $@ -c %s %s' % (flags, source)
+            print >>fh, ''
+
+            print >>fh, '-include %s' % deps_path
+            print >>fh, ''
+
         # We don't return exclusive_variables because we don't yet have feature
         # parity with rules.mk and stripping these variables causes rules.mk to
         # get confused. We rely on our rules above having the same side-effects
