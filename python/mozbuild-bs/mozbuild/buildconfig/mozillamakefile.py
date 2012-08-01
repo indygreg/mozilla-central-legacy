@@ -159,6 +159,37 @@ class MozillaMakefile(Makefile):
 
         raise Exception('Could not find source file: %s' % path)
 
+    def normalize_compiler_flags(self, l, varnames):
+        var_values = [self.get_variable_string(f) for f in varnames]
+        var_values = [f for f in var_values if f is not None]
+
+        # TODO need more robust parsing.
+        arguments = ' '.join(var_values).split()
+
+        for i, value in enumerate(arguments):
+            value = value.strip()
+
+            # Normalize includes to absolute paths. The Makefile's often deal
+            # with relative paths. If we fail to do this, we have two problems.
+            # First, we would need to cd into the Makefile's directory for
+            # compilation. We could do that. The more important problem is that
+            # when specifying relative paths, the dependency output file will
+            # use relative paths. Since the dependency files may get included
+            # from any directory, this is no good. We need absolute paths
+            # everywhere.
+            # TODO handle non-GCC like compilers.
+            if value.startswith('-I'):
+                path = value[2:]
+
+                if not os.path.isabs(path):
+                    path = os.path.join(l.directory, path)
+
+                normalized = os.path.normpath(path)
+
+                arguments[i] = value[0:2] + normalized
+
+        return arguments
+
     def get_library_info(self):
         """Obtain information for the library defined by this Makefile.
 
@@ -197,6 +228,11 @@ class MozillaMakefile(Makefile):
         l.exclusive_variables.add('CPPSRCS')
         for f in self.get_variable_split('CPPSRCS'):
             l.cpp_sources.add(self.resolve_absolute_path(f, l))
+
+        l.used_variables.add('CSRCS')
+        l.exclusive_variables.add('CSRCS')
+        for f in self.get_variable_split('CSRCS'):
+            l.c_sources.add(self.resolve_absolute_path(f, l))
 
         # LIBXUL_LIBRARY implies static library generation and presence in
         # libxul.
@@ -257,33 +293,20 @@ class MozillaMakefile(Makefile):
             'DSO_CFLAGS', 'DSO_PIC_CFLAGS', 'CXXFLAGS', 'RTL_FLAGS',
             'OS_CPPFLAGS']
 
-        flags_values = [self.get_variable_string(f) for f in flags_vars]
-        flags_values = [f for f in flags_values if f is not None]
+        cxx_arguments = self.normalize_compiler_flags(l, flags_vars)
+        cxx_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
+        cxx_arguments.append('-DMOZILLA_CLIENT')
 
-        # TODO this isn't the best way to parse command-line arguments.
-        flags_str = ' '.join(flags_values)
-        flags_seq = flags_str.split()
+        l.compile_cxxflags = ' '.join(cxx_arguments)
 
-        for i, value in enumerate(flags_seq):
-            value = value.strip()
+        flags_vars = ['VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES', 'DSO_CFLAGS',
+            'DSO_PIC_CFLAGS', 'CFLAGS', 'RTL_FLAGS', 'OS_CFLAGS']
 
-            # TODO handle non-GCC like compilers.
-            if not value.startswith('-I'):
-                continue
+        c_arguments = self.normalize_compiler_flags(l, flags_vars)
+        c_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
+        c_arguments.append('-DMOZILLA_CLIENT')
 
-            path = value[2:]
-
-            if not os.path.isabs(path):
-                path = os.path.join(l.directory, path)
-
-            normalized = os.path.normpath(path)
-
-            flags_seq[i] = value[0:2] + normalized
-
-        flags_seq.append('-include $(OBJECT_DIR)/mozilla-config.h')
-        flags_seq.append('-DMOZILLA_CLIENT')
-
-        l.compile_cxxflags = ' '.join(flags_seq)
+        l.compile_cflags = ' '.join(c_arguments)
 
         return l
 

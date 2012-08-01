@@ -95,10 +95,17 @@ class LibraryInfo(MakefileDerivedObject):
     """
 
     __slots__ = (
-        'c_flags',             # C compiler_flags
+        # C compilation.
+        'c_sources', # C source files.
+        'c_flags', # C compiler_flags
+        'compile_cflags',
+
+        # C++ compilation.
+        'cpp_sources', # C++ source files.
         'compile_cxxflags', # Full C++ compiler flags.
-        'cpp_sources',         # C++ source files
         'cxx_flags',           # C++ compiler flags
+
+        # Legacy.
         'defines',             # set of #define strings to use when compiling this library
         'export_library',      # Whether to export the library
         'includes',            # Set of extra paths for included files
@@ -121,6 +128,7 @@ class LibraryInfo(MakefileDerivedObject):
         """Create a new library instance."""
         MakefileDerivedObject.__init__(self, makefile)
 
+        self.c_sources = set()
         self.c_flags = set()
         self.cpp_sources = set()
         self.cxx_flags = set()
