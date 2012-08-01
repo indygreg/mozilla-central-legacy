@@ -344,7 +344,7 @@ class HybridMakeBackend(BackendBase):
             deps_path = os.path.join(deps_dir, deps_basename)
 
             # TODO don't hardcode GCC/Clang flags.
-            flags = '%s -MD -MF %s' % (obj.c_flags, deps_path)
+            flags = '%s -MD -MF %s' % (obj.compile_cflags, deps_path)
 
             print >>fh, 'C_OBJECT_FILES += %s' % object_path
 
