@@ -2,10 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# This file defines configuration settings for mozbuild. You can think of it as
+# an alternative to mozconfig files. There are a number of settings missing.
+# These can get added as needed.
+
 import ConfigParser
 import logging
 import os
-import os.path
 import multiprocessing
 import shlex
 import sys
@@ -52,8 +55,8 @@ OPTIONS = {
         },
         'configure_args': {
             'short': 'Configure Arguments',
-            'help': 'Extra arguments to pass to configure. This is effectively '
-                    'a back door. Ideally it should not exist.',
+            'help': 'Extra arguments to pass to configure. This is '
+                    'effectively a back door. Ideally it should not exist.',
             'type': TYPE_STRING,
         },
         'debug': {
@@ -96,8 +99,9 @@ OPTIONS = {
     },
 }
 
+
 class BuildConfig(object):
-    """Represents a configuration for the build system."""
+    """Represents a configuration for the build environment."""
 
     __slots__ = (
         'config',
@@ -108,7 +112,8 @@ class BuildConfig(object):
 
     DEFAULTS = {
         'build': {
-            'debug': True,
+            'application': 'browser',
+            'debug': False,
             'optimize': False,
             'threads': multiprocessing.cpu_count(),
             'macos_sdk': None,
@@ -138,11 +143,11 @@ class BuildConfig(object):
 
     @property
     def debug_build(self):
-        return self.get_value('build', 'debug')
+        return self.get_value_boolean('build', 'debug')
 
     @property
     def optimized_build(self):
-        return self.get_value('build', 'optimize')
+        return self.get_value_boolean('build', 'optimize')
 
     @property
     def thread_count(self):
@@ -158,7 +163,7 @@ class BuildConfig(object):
         args = []
 
         args.append('--enable-application=%s' % (
-            self.config.get('build', 'application') ))
+            self.get_value('build', 'application')))
 
         # TODO should be conditional on DirectX SDK presence
         if os.name == 'nt':
@@ -179,9 +184,24 @@ class BuildConfig(object):
 
         return args
 
+    def populate_default_paths(self, source_dir):
+        assert os.path.isabs(source_dir)
+
+        self.config.set('paths', 'source_directory', source_dir)
+        self.config.set('paths', 'object_directory', os.path.join(source_dir,
+            'objdir'))
+
     def get_value(self, section, option):
         if self.config.has_option(section, option):
             return self.config.get(section, option)
+
+        default_section = self.DEFAULTS.get(section, {})
+
+        return default_section[option]
+
+    def get_value_boolean(self, section, option):
+        if self.config.has_option(section, option):
+            return self.config.getboolean(section, option)
 
         default_section = self.DEFAULTS.get(section, {})
 
@@ -239,41 +259,3 @@ class BuildConfig(object):
                 env[k] = self.get_value(section, option)
 
         return env
-
-    def run_commandline_wizard(self, source_directory, fh=None):
-        """Runs a command-line wizard to obtain config options."""
-        assert(os.path.isabs(source_directory))
-        assert(os.path.isdir(source_directory))
-
-        if fh is None:
-            fh = sys.stdout
-
-        self.config.set('paths', 'source_directory', source_directory)
-
-        object_directory = os.path.join(source_directory, 'objdir')
-        if not self.config.has_option('paths', 'object_directory'):
-            self.config.set('paths', 'object_directory', object_directory)
-
-        if not self.config.has_option('build', 'application'):
-            self.config.set('build', 'application', 'browser')
-
-        print >>fh, 'Current Configuration\n'
-        self.print_current_config(fh)
-        print >>fh, ''
-
-        print >>fh, 'Interactive settings wizard not yet implemented.'
-        print >>fh, 'For now, edit the settings file manually.'
-
-    def print_current_config(self, fh):
-        """Prints an English summary of the current config to a file handle."""
-
-        for section in OPTIONS.keys():
-            for option, d in OPTIONS[section].iteritems():
-                value = None
-                if self.config.has_option(section, option):
-                    value = self.config.get(section, option)
-                else:
-                    value = '(default)'
-
-                print >>fh, '{0:30} = {1}'.format(d['short'], value)
-

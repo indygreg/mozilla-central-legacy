@@ -10,7 +10,7 @@ import traceback
 
 from mozbuild.base import Base
 from mozbuild.compilation.warnings import WarningsCollector
-from mozbuild.compilation.warnings import Warnings
+from mozbuild.compilation.warnings import WarningsDatabase
 from mozbuild.configuration.configure import Configure
 
 RE_TIER_DECLARE = re.compile(r'tier_(?P<tier>[a-z]+):\s(?P<directories>.*)')
@@ -22,8 +22,13 @@ RE_ENTERING_DIRECTORY = re.compile(
 RE_LEAVING_DIRECTORY = re.compile(
     r'^make(?:\[\d+\])?: Leaving directory `(?P<directory>[^\']+)')
 
+
 class BuildInvocation(object):
-    """Holds state relevant to an individual build invocation."""
+    """Holds state relevant to an individual build invocation.
+
+    Currently, functionality is limited to tracking tier progression.
+    Functionality can be expanded to cover all kinds of reporting, as needed.
+    """
     def __init__(self):
         self.tier = None
         self.action = None
@@ -40,7 +45,7 @@ class BuildInvocation(object):
         build -- This BuildInvocation instance.
         action -- Single word str describing the action being performed.
         directory -- If a directory state change caused this update, this will
-            be he str of the directory that changed.
+            be the str of the directory that changed.
         """
         self._on_update.append(listener)
 
@@ -56,7 +61,7 @@ class BuildInvocation(object):
 
         self.action = action
 
-        for k, v in self.directories.iteritems():
+        for k in self.directories.iterkeys():
             self.directories[k] = {'start_time': None, 'finish_time': None}
 
         self._call_listeners(action='new_action')
@@ -84,8 +89,16 @@ class BuildInvocation(object):
         for listener in self._on_update:
             listener(build=self, action=action, directory=directory)
 
+
 class TreeBuilder(Base):
-    """Provides a high-level interface for building a tree."""
+    """Provides a high-level interface for building a tree.
+
+    This currently implements the logic for building with our existing
+    configure + recursive make backend. In the future, backends will likely be
+    implemented as an interface and multiple backends will be supported. This
+    will be a significant change and this class will likely be heavily
+    modified, possibly even deleted.
+    """
 
     def __init__(self, config):
         Base.__init__(self, config)
@@ -107,15 +120,18 @@ class TreeBuilder(Base):
         c = Configure(self.config)
         c.ensure_configure()
 
-        build_id = time.strftime('%Y%m%dT%H%M%S')
-
         build = BuildInvocation()
         if on_update:
             build.add_listener(on_update)
 
-        warnings = Warnings(self.config)
-        warnings_collector = WarningsCollector(database=warnings.database,
-                objdir=self.objdir)
+        warnings_path = self._get_state_filename('warnings.json')
+        warnings_database = WarningsDatabase()
+
+        if os.path.exists(warnings_path):
+            warnings_database.load_from_file(warnings_path)
+
+        warnings_collector = WarningsCollector(database=warnings_database,
+            objdir=self.objdir)
 
         def handle_line(line):
             """Callback that receives output from make invocation."""
@@ -186,12 +202,13 @@ class TreeBuilder(Base):
                 {'count': len(warnings_collector.database)},
                 '{count} compiler warnings')
 
-        warnings.save()
+        warnings_database.save_to_file(warnings_path)
 
     def build_tier(self, tier=None, action=None):
         """Perform an action on a specific tier."""
         assert tier is not None
 
+        # TODO Capture results like we do for full builds?
         target = 'tier_%s' % tier
 
         if action is not None and action != 'default':

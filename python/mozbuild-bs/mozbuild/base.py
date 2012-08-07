@@ -2,7 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import hashlib
 import logging
 import os
 import os.path
@@ -30,7 +29,15 @@ if os.environ.get('MSYSTEM', None) == 'MINGW32':
     if not _current_shell.lower().endswith('.exe'):
         _current_shell += '.exe'
 
+
 class Base(object):
+    """Base class providing basic functionality useful for many modules.
+
+    Many modules typically require common functionality, such as accessing the
+    current config, getting the location of the source directory, running
+    processes, etc. This class provides that functionality. Other modules can
+    inherit from this class to obtain this functionality easily.
+    """
     def __init__(self, config):
         self.config = config
         self.logger = logging.getLogger(__name__)
@@ -54,7 +61,7 @@ class Base(object):
 
     @property
     def statedir(self):
-        return os.path.join(self.objdir, '.mach')
+        return os.path.join(self.objdir, '.mozbuild')
 
     def log(self, level, action, params, format_str):
         self.logger.log(level, format_str,
@@ -113,7 +120,7 @@ class Base(object):
             args.extend(['-f', filename])
 
         if allow_parallel:
-            args.append('-j%d' % (self.config.thread_count * 3 / 2))
+            args.append('-j%d' % (self.config.thread_count + 2))
 
         if ignore_errors:
             args.append('-k')
@@ -204,6 +211,7 @@ class Base(object):
             args = [_current_shell, '-c', cline]
 
         self.log(logging.INFO, 'process', {'args': args}, ' '.join(args))
+
         def handleLine(line):
             if line_handler:
                 line_handler(line)
@@ -224,8 +232,7 @@ class Base(object):
 
         p = ProcessHandlerMixin(args, cwd=cwd, env=use_env,
                 processOutputLine=[handleLine], universal_newlines=True)
-
-        p.run()
+        p.processOutput()
         status = p.waitForFinish()
 
         if status != 0 and not ignore_errors:
@@ -238,7 +245,12 @@ class Base(object):
         """Implementation of which.
 
         Attempts to find the location of an executable in the environment's
-        configured paths. The argument can be a single str or a list of str.
+        configured paths. The argument can be a single str or a list of str. If
+        a list of str, we attempt to find each program name in the environment.
+        We first try all locations for the first element, then try all
+        locations for the second element, etc.
+
+        None is returned if the executable could not be found.
         """
 
         candidates = name

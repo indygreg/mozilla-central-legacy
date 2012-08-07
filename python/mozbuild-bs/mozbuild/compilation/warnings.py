@@ -2,19 +2,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# This modules provides routines for interacting with compiler warnings.
+# This modules provides functionality for dealing with compiler warnings.
 
 import json
 import os
-import os.path
 import re
-from UserDict import UserDict
 
-from mozbuild.base import Base
 from mozbuild.util import hash_file
 
+
 # Regular expression to strip ANSI color sequences from a string. This is
-# needed to properly analyze Clang compiler output, for example.
+# needed to properly analyze Clang compiler output, which may be colorized.
+# It assumes ANSI escape sequences.
 RE_STRIP_COLORS = re.compile(r'\x1b\[[\d;]+m')
 
 # This captures Clang diagnostics with the standard formatting.
@@ -30,6 +29,7 @@ RE_CLANG_WARNING = re.compile(r"""
     \[(?P<flag>[^\]]+)
     """, re.X)
 
+# This captures Visual Studio's warning format.
 RE_MSVC_WARNING = re.compile(r"""
     (?P<file>.*)
     \((?P<line>\d+)\)
@@ -41,8 +41,9 @@ RE_MSVC_WARNING = re.compile(r"""
 
 IN_FILE_INCLUDED_FROM = 'In file included from '
 
-class Warning(dict):
-    """Represents an individual compiler warnings."""
+
+class CompilerWarning(dict):
+    """Represents an individual compiler warning."""
 
     def __init__(self):
         dict.__init__(self)
@@ -54,15 +55,35 @@ class Warning(dict):
         self['flag'] = None
 
     def __eq__(self, other):
+        if not isinstance(other, CompilerWarning):
+            return False
+
         return self['filename'] == other['filename'] \
-                and self['line'] == other['line'] \
-                and self['column'] == other['column']
+            and self['line'] == other['line'] \
+            and self['column'] == other['column']
 
     def __neq__(self, other):
         return not self.__eq__(other)
 
     def __hash__(self):
+        """Define so this can exist inside a set, etc."""
         return hash(tuple(sorted(self.items())))
+
+    def __cmp__(self, other):
+        if not isinstance(other, CompilerWarning):
+            return -1
+
+        x = cmp(self['filename'], other['filename'])
+
+        if x != 0:
+            return x
+
+        y = cmp(self['line'], other['line'])
+
+        if y != 0:
+            return y
+
+        return cmp(self['column'], other['column'])
 
 class WarningsDatabase(object):
     """Holds a collection of warnings.
@@ -73,8 +94,9 @@ class WarningsDatabase(object):
     The warnings database is backed by a JSON file. But, that is transparent
     to consumers.
 
-    To external callers, the warnings database is insert only. When a warning
-    is encountered, it is inserted into the database.
+    Under most circumstances, the warnings database is insert only. When a
+    warning is encountered, the caller simply blindly inserts it into the
+    database. The database figures out whether it is a dupe, etc.
 
     During the course of development, it is common for warnings to change
     slightly as source code changes. For example, line numbers will disagree.
@@ -82,6 +104,9 @@ class WarningsDatabase(object):
     occurred in. At warning insert time, if the hash of the file does not match
     what is stored in the database, the existing warnings for that file are
     purged from the database.
+
+    Callers should periodically prune old, invalid warnings from the database
+    by calling prune(). A good time to do this is at the end of a build.
     """
     def __init__(self):
         """Create an empty database."""
@@ -94,8 +119,53 @@ class WarningsDatabase(object):
 
         return i
 
+    def __iter__(self):
+        for value in self._files.values():
+            for warning in value['warnings']:
+                yield warning
+
+    def __contains__(self, item):
+        for value in self._files.values():
+            for warning in value['warnings']:
+                if warning == item:
+                    return True
+
+        return False
+
+    @property
+    def warnings(self):
+        """All the CompilerWarning instances in this database."""
+        for value in self._files.values():
+            for w in value['warnings']:
+                yield w
+
+    @property
+    def type_counts(self):
+        """Returns a mapping of warning types to their counts."""
+
+        types = {}
+        for value in self._files.values():
+            for warning in value['warnings']:
+                count = types.get(warning['flag'], 0)
+                count += 1
+
+                types[warning['flag']] = count
+
+        return types
+
+    def has_file(self, filename):
+        """Whether we have any warnings for the specified file."""
+        return filename in self._files
+
+    def warnings_for_file(self, filename):
+        """Obtain the warnings for the specified file."""
+        f = self._files.get(filename, {'warnings': []})
+
+        for warning in f['warnings']:
+            yield warning
+
     def insert(self, warning, compute_hash=True):
-        assert isinstance(warning, Warning)
+        assert isinstance(warning, CompilerWarning)
 
         filename = warning['filename']
 
@@ -117,23 +187,31 @@ class WarningsDatabase(object):
 
         self._files[filename] = value
 
-    property
-    def warnings(self):
-        for value in self._files.values():
-            for w in value['warnings']: yield w
+    def prune(self):
+        """Prune the contents of the database.
 
-    def get_type_counts(self):
-        """Returns a mapping of warning types to their counts."""
+        This removes warnings that are no longer valid. A warning is no longer
+        valid if the file it was in no longer exists or if the content has
+        changed.
 
-        types = {}
-        for value in self._files.values():
-            for warning in value['warnings']:
-                count = types.get(warning['flag'], 0)
-                count += 1
+        The check for changed content catches the case where a file previously
+        contained warnings but no longer does.
+        """
 
-                types[warning['flag']] = count
+        # Need to calculate up front since we are mutating original object.
+        filenames = self._files.keys()
+        for filename in filenames:
+            if not os.path.exists(filename):
+                del self._files[filename]
+                continue
 
-        return types
+            if self._files[filename]['hash'] is None:
+                continue
+
+            current_hash = hash_file(filename)
+            if current_hash != self._files[filename]['hash']:
+                del self._files[filename]
+                continue
 
     def serialize(self, fh):
         """Serialize the database to an open file handle."""
@@ -167,7 +245,7 @@ class WarningsDatabase(object):
 
                 normalized = set()
                 for d in v:
-                    w = Warning()
+                    w = CompilerWarning()
                     w.update(d)
                     normalized.add(w)
 
@@ -183,6 +261,7 @@ class WarningsDatabase(object):
         with open(filename, 'wb') as fh:
             self.serialize(fh)
 
+
 class WarningsCollector(object):
     """Collects warnings from text data.
 
@@ -193,8 +272,6 @@ class WarningsCollector(object):
     The collector works by incrementally receiving data, usually line-by-line
     output from the compiler. Therefore, it can maintain state to parse
     multi-line warning messages.
-
-    Currently, it just supports parsing Clang's single line warnings.
     """
     def __init__(self, database=None, objdir=None, resolve_files=True):
         self.database = database
@@ -222,7 +299,7 @@ class WarningsCollector(object):
 
             return
 
-        warning = Warning()
+        warning = CompilerWarning()
         filename = None
 
         # TODO make more efficient so we run minimal regexp matches.
@@ -280,27 +357,3 @@ class WarningsCollector(object):
                 return candidate
 
         return filename
-
-class Warnings(Base):
-    """High-level interface to warnings system."""
-
-    def __init__(self, config):
-        Base.__init__(self, config)
-
-        self._database = None
-        self._path = self._get_state_filename('warnings.json')
-
-    @property
-    def database(self):
-        if self._database:
-            return self._database
-
-        self._database = WarningsDatabase()
-
-        if os.path.exists(self._path):
-            self._database.load_from_file(self._path)
-
-        return self._database
-
-    def save(self):
-        self.database.save_to_file(self._path)

@@ -6,11 +6,25 @@ from mozbuild.base import Base
 from mozbuild.testing.xpcshell import XPCShellRunner
 from mozbuild.testing.mochitest import MochitestRunner
 
+
 class Suite(Base):
+    """Run entire test suites."""
     def __init__(self, config):
         Base.__init__(self, config)
 
     def run_suite(self, suite):
+        """Run a named test suite.
+
+        Recognized names are:
+
+          all - All test suites
+          mochitest-plain - Plain mochitests
+          mochitest-chrome - mochitests with chrome
+          mochitest-browser - mochitests with browser chrome
+          xpcshell - xpcshell tests
+
+        TODO support for other test suite types.
+        """
 
         xpcshell = XPCShellRunner(self.config)
         mochitest = MochitestRunner(self.config)
@@ -18,6 +32,7 @@ class Suite(Base):
         if suite == 'all':
             xpcshell.run_suite()
             mochitest.run_plain_suite()
+            mochitest.run_chrome_suite()
             mochitest.run_browser_chrome_suite()
             return
 
@@ -29,7 +44,11 @@ class Suite(Base):
             mochitest.run_plain_suite()
             return
 
-        if suite == 'mochitest-browser-chrome':
+        if suite == 'mochitest-chrome':
+            mochitest.run_chrome_suite()
+            return
+
+        if suite == 'mochitest-browser':
             mochitest.run_browser_chrome_suite()
             return
 

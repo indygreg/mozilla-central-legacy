@@ -2,15 +2,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# This file contains logging functionality for mozbuild. This functionality
+# could likely be split out of mozbuild. For now, mozbuild is the only
+# consumer and thus it lives here.
+
 try:
     import blessings
-except:
+except ImportError:
     blessings = None
 
 import json
 import logging
 import sys
 import time
+
 
 class ConvertToStructuredFilter(logging.Filter):
     """Filter that converts unstructured records into structured ones."""
@@ -24,6 +29,7 @@ class ConvertToStructuredFilter(logging.Filter):
 
         return True
 
+
 class StructuredJSONFormatter(logging.Formatter):
     """Log formatter that writes a structured JSON entry."""
 
@@ -32,6 +38,7 @@ class StructuredJSONFormatter(logging.Formatter):
         params = getattr(record, 'params', {})
 
         return json.dumps([record.created, action, params])
+
 
 class StructuredHumanFormatter(logging.Formatter):
     """Log formatter that writes structured messages for humans.
@@ -64,6 +71,7 @@ class StructuredHumanFormatter(logging.Formatter):
 
         return t
 
+
 class StructuredTerminalFormatter(StructuredHumanFormatter):
     """Log formatter for structured messages writing to a terminal."""
 
@@ -89,8 +97,17 @@ class StructuredTerminalFormatter(StructuredHumanFormatter):
 
         return result.decode('UTF-8', 'ignore')
 
+
 class LoggingManager(object):
-    """Holds logging state for a running mozbuild application."""
+    """Holds and controls global logging state.
+
+    A mozbuild application should instantiate one of these and configure it
+    as needed.
+
+    This class provides a mechanism to configure the output of logging data
+    both from mozbuild and from the overall logging system (e.g. from other
+    modules).
+    """
 
     def __init__(self):
         self.start_time = time.time()
@@ -106,6 +123,8 @@ class LoggingManager(object):
         self.mozbuild_logger.setLevel(logging.DEBUG)
 
         self.structured_filter = ConvertToStructuredFilter()
+
+        self.structured_loggers = [self.mozbuild_logger]
 
         self._terminal = None
 
@@ -128,7 +147,8 @@ class LoggingManager(object):
         handler.setLevel(logging.DEBUG)
 
         # And hook it up.
-        self.mozbuild_logger.addHandler(handler)
+        for logger in self.structured_loggers:
+            logger.addHandler(handler)
 
         self.json_handlers.append(handler)
 
@@ -137,18 +157,19 @@ class LoggingManager(object):
         """Enable logging to the terminal."""
 
         formatter = StructuredHumanFormatter(self.start_time,
-                write_interval=write_interval)
+            write_interval=write_interval)
 
         if self.terminal:
             formatter = StructuredTerminalFormatter(self.start_time,
-                    write_interval=write_interval)
+                write_interval=write_interval)
             formatter.set_terminal(self.terminal)
 
         handler = logging.StreamHandler(stream=fh)
         handler.setFormatter(formatter)
         handler.setLevel(level)
 
-        self.mozbuild_logger.addHandler(handler)
+        for logger in self.structured_loggers:
+            logger.addHandler(handler)
 
         self.terminal_handler = handler
         self.terminal_formatter = formatter
@@ -163,10 +184,12 @@ class LoggingManager(object):
         old = self.terminal_handler
 
         if old:
-            self.mozbuild_logger.removeHandler(old)
+            for logger in self.structured_loggers:
+                logger.removeHandler(old)
 
         if handler:
-            self.mozbuild_logger.addHandler(handler)
+            for logger in self.structured_loggers:
+                logger.addHandler(handler)
 
         self.terminal_handler = handler
 
@@ -183,3 +206,11 @@ class LoggingManager(object):
         if self.terminal_handler:
             self.terminal_handler.removeFilter(self.structured_filter)
             self.root_logger.removeHandler(self.terminal_handler)
+
+    def register_structured_logger(self, logger):
+        """Register a structured logger.
+
+        This needs to be called for all structured loggers that don't chain up
+        to the mozbuild logger in order for their output to be captured.
+        """
+        self.structured_loggers.append(logger)

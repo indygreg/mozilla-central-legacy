@@ -11,6 +11,7 @@ import sys
 
 from mozbuild.base import Base
 
+
 class Configure(Base):
     """Provides an interface to configuring a source and object tree.
 
@@ -18,23 +19,26 @@ class Configure(Base):
     arguably necessary evil. It was originally implemented like this because
     mozbuild was completely outside the build system and making it work with
     client.mk would require hacking client.mk to support some "odd" scenarios.
-    This would have made an already difficult to read makefile even more
+    This would have made an already difficult-to-read makefile even more
     complicated.
 
     If there is a will, the duplication of functionality could be consolidated.
-    The static bits could be moved into a JSON file for example and that could
-    be converted to a Makefile and included at client.mk run time. Or, the
-    static bits could exist in a makefile and mozbuild could use pymake to
-    parse them. Even crazier would be to give PyMake an API to build a Makefile
-    and we can have code here to build up a dependency graph and then have
-    make execute it. Anyway, a unified future is possible if there is desire.
-    Until then, less than perfection.
+    The configure logic could be moved into a standalone .mk file and that
+    could be consumed by both client.mk and in this module. Or, we could nuke
+    client.mk altogether and this would be the definitive source of truth.
+    Whatever happens, that's in the future.
+
+    We are also missing some functionality from client.mk, such as the
+    check-sync-dirs target. We can add this if there is desire. Although, that
+    may live in a higher-level build frontend driver/module.
     """
     AUTOCONFS = ['autoconf-2.13', 'autoconf2.13', 'autoconf213']
 
     def __init__(self, config):
         Base.__init__(self, config)
 
+        # False is used as a semaphore to prevent multiple lookups since None
+        # means no executable was found.
         self._autoconf = False
 
     @property
@@ -62,15 +66,7 @@ class Configure(Base):
         There are actually multiple configure scripts. We stat them both and
         choose the oldest time.
         """
-        oldest = None
-
-        for configure in self.configure_scripts:
-            mtime = os.path.getmtime(configure)
-
-            if oldest is None or mtime < oldest:
-                oldest = mtime
-
-        return oldest
+        return min(os.path.getmtime(p) for p in self.configure_scripts)
 
     def run_configure(self):
         """Runs configure."""
@@ -87,8 +83,10 @@ class Configure(Base):
         # path to specify.
         if self._is_windows():
             pymake = os.path.join(self.config.source_directory, 'build',
-            'pymake', 'make.py')
+                'pymake', 'make.py')
 
+            # We need the Python path in the environment variable and to use
+            # UNIX-style paths, even on Windows, otherwise things break.
             env['MAKE'] = ' '.join([sys.executable, pymake]).replace('\\', '/')
         else:
             env['MAKE'] = self._find_executable_in_path(['gmake', 'make'])
@@ -154,6 +152,8 @@ class Configure(Base):
             'config/milestone.txt',
             'js/src/config/milestone.txt',
             'browser/config/version.txt',
+            'build/virtualenv/packages.txt',
+            'build/virtualenv/populate_virtualenv.py',
         ]
         for p in simple_paths:
             paths.append(self._get_srcdir_path(p))
@@ -170,9 +170,12 @@ class Configure(Base):
     def ensure_configure(self):
         """Ensures configure is in a good state and run if out of date.
 
+        This should be called in the course of normal build activities to
+        ensure the build environment is up to date.
+
         This emulates logic from client.mk.
 
-        Returns whether configure was actually executed.
+        Returns boolean indicating whether configure was actually executed.
         """
         self.ensure_autoconf()
 
@@ -184,7 +187,6 @@ class Configure(Base):
 
         output_mtime = os.path.getmtime(makefile_path)
 
-        configure_mtime = self.configure_mtime
         for dependency in self.configure_dependencies:
             dependency_mtime = os.path.getmtime(dependency)
 
@@ -195,12 +197,18 @@ class Configure(Base):
         return False
 
     def ensure_autoconf(self):
+        """Ensures autoconf's output is up-to-date.
+
+        This is called by ensure_configure() and probably has little relevance
+        outside of this module.
+        """
         did_autoconf = False
         for configure in self.configure_scripts:
             if not os.path.exists(configure):
                 self.log(logging.DEBUG, 'trigger_autoconf_no_configure',
                     {'configure_path': configure},
-                    'Running autoconf because configure missing: {configure_path}')
+                    'Running autoconf because configure missing: '
+                        '{configure_path}')
                 self.run_autoconf(os.path.dirname(configure))
                 did_autoconf = True
 
@@ -215,7 +223,7 @@ class Configure(Base):
             if dependency_mtime > configure_mtime:
                 self.log(logging.DEBUG, 'trigger_autoconfs_mtime',
                     {'dependency': dependency},
-                    'Running autoconf because dependency is newer than configure: {dependency}')
+                    'Running autoconf because dependency is newer than '
+                        'configure: {dependency}')
                 self.run_autoconfs()
                 return
-

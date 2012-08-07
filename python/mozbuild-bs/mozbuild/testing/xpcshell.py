@@ -10,7 +10,9 @@ from StringIO import StringIO
 
 from mozbuild.base import Base
 
+
 class XPCShellRunner(Base):
+    """Run xpcshell tests."""
     def __init__(self, config):
         Base.__init__(self, config)
 
@@ -34,7 +36,7 @@ class XPCShellRunner(Base):
 
         relative_dir = test_file
 
-        if test_file.find(self.srcdir) == 0:
+        if test_file.startswith(self.srcdir):
             relative_dir = test_file[len(self.srcdir):]
 
         test_dir = os.path.join(self.objdir, '_tests', 'xpcshell',
@@ -47,7 +49,6 @@ class XPCShellRunner(Base):
 
         if os.path.isfile(test_file):
             args['test_path'] = os.path.basename(test_file)
-
 
         self._run_xpcshell_harness(**args)
 

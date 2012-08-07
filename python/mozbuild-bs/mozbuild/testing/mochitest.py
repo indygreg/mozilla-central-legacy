@@ -6,48 +6,70 @@ import os.path
 
 from mozbuild.base import Base
 
+
 class MochitestRunner(Base):
+    """Easily run mochitests.
+
+    This currently contains just the basics for running mochitests. We may want
+    to hook up result parsing, etc.
+    """
     def __init__(self, config):
         Base.__init__(self, config)
 
     def run_plain_suite(self):
         """Runs all plain mochitests."""
-        # TODO hook up harness runner.
+        # TODO hook up Python harness runner.
         self._run_make(directory='.', target='mochitest-plain')
+
+    def run_chrome_suite(self):
+        """Runs all chrome mochitests."""
+        # TODO hook up Python harness runner.
+        self._run_make(directory='.', target='mochitest-chrome')
 
     def run_browser_chrome_suite(self):
         """Runs browser chrome mochitests."""
-        # TODO hook up harness.
+        # TODO hook up Python harness runner.
         self._run_make(directory='.', target='mochitest-browser-chrome')
 
-    def run_mochitest_test(self, test_file=None, plain=False, chrome=False,
-            browser=False):
+    def run_all(self):
+        self.run_plain_suite()
+        self.run_chrome_suite()
+        self.run_browser_chrome_suite()
+
+    def run_mochitest_test(self, test_file=None, suite=None):
+        """Runs a mochitest.
+
+        test_file is a path to a test file. It can be a relative path from the
+        top source directory, an absolute filename, or a directory containing
+        test files.
+
+        suite is the type of mochitest to run. It can be one of ('plain',
+        'chrome', 'browser').
+        """
         if test_file is None:
             raise Exception('test_file must be defined.')
-
-        if test_file == 'all':
-            self.run_plain_suite()
-            return
 
         parsed = self._parse_test_path(test_file)
 
         # TODO hook up harness via native Python
         target = None
-        if plain:
+        if suite == 'plain':
             target = 'mochitest-plain'
-        elif chrome:
+        elif suite == 'chrome':
             target = 'mochitest-chrome'
-        elif browser:
+        elif suite == 'browser':
             target = 'mochitest-browser-chrome'
         else:
-            raise Exception('No mochitest flavor defined.')
+            raise Exception('None or unrecognized mochitest suite type.')
 
         env = {'TEST_PATH': parsed['normalized']}
 
         self._run_make(directory='.', target=target, env=env)
 
     def _parse_test_path(self, test_path):
-        if os.path.isdir(test_path) and not test_path.endswith(os.path.sep):
+        is_dir = os.path.isdir(test_path)
+
+        if is_dir and not test_path.endswith(os.path.sep):
             test_path += os.path.sep
 
         normalized = test_path
@@ -57,5 +79,5 @@ class MochitestRunner(Base):
 
         return {
             'normalized': normalized,
-            'is_dir': os.path.isdir(test_path)
+            'is_dir': is_dir,
         }
