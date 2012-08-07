@@ -27,38 +27,18 @@ class BuildConfig(Base, ArgumentProvider):
         print tree
 
     def generate(self, backend):
-        from mozbuild.frontend.frontend import BuildFrontend
+        from mozbuild.backend.manager import BackendManager
 
-        frontend = BuildFrontend(self.config)
-        frontend.load_autoconf_input_files()
-        be = self.backend_from_name(backend, frontend)
-        be.generate()
+        manager = BackendManager(self.config)
+        manager.set_backend(backend)
+        manager.generate()
 
     def build(self, backend):
-        from mozbuild.frontend.frontend import BuildFrontend
+        from mozbuild.backend.manager import BackendManager
 
-        frontend = BuildFrontend(self.config)
-        frontend.load_autoconf_input_files()
-
-        be = self.backend_from_name(backend, frontend)
-        be.build()
-
-    def backend_from_name(self, name, frontend):
-        from mozbuild.backend.legacy import LegacyBackend
-        from mozbuild.backend.hybridmake import HybridMakeBackend
-
-        if name == 'legacy':
-            return LegacyBackend(frontend)
-        elif name == 'reformat':
-            backend = LegacyBackend(frontend)
-            backend.reformat = True
-            backend.verify_reformat = True
-
-            return backend
-        elif name == 'hybridmake':
-            return HybridMakeBackend(frontend)
-        else:
-            raise Exception('Unknown backend format: %s' % backend)
+        manager = BackendManager(self.config)
+        manager.set_backend(backend)
+        manager.build()
 
     @staticmethod
     def populate_argparse(parser):
