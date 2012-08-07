@@ -29,4 +29,14 @@ def substitute_makefile(makefile, frontend):
     relative = makefile.directory[len(frontend.srcdir)+1:]
     variables['relativesrcdir'] = relative
 
+    levels = relative.count('/') + 1
+    paths = ['..' for i in range(0, levels)]
+
+    if levels == 1:
+        if not len(relative):
+            paths = ['.']
+
+    depth = os.path.join(*paths)
+    variables['DEPTH'] = depth
+
     makefile.perform_substitutions(variables, raise_on_missing=True)
