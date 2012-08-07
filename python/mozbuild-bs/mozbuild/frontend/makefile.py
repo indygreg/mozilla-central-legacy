@@ -1807,7 +1807,7 @@ class Makefile(object):
         '_resolved_variable_strings', # Cache of values of resolved variables.
     )
 
-    RE_SUB = re.compile(r"@([a-z0-9_]+?)@")
+    RE_SUB = re.compile(r"@([a-zA-Z0-9_]+?)@")
 
     def __init__(self, filename, directory=None):
         """Construct a Makefile from a file"""
