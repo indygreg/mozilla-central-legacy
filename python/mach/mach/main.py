@@ -16,6 +16,7 @@ from mozbuild.logger import LoggingManager
 # Import sub-command modules
 # TODO do this via auto-discovery. Update README once this is done.
 from mach.build import Build
+from mach.buildconfig import BuildConfig
 from mach.configure import Configure
 from mach.testing import Testing
 from mach.warnings import Warnings
@@ -199,6 +200,7 @@ e.g. %(prog)s build --help
         # Register argument action providers with us.
         handlers = [
             Build,
+            BuildConfig,
             Configure,
             Testing,
             Warnings,
