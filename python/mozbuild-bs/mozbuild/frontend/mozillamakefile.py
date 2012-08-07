@@ -6,9 +6,9 @@
 
 import os.path
 
-import mozbuild.buildconfig.data as data
+import mozbuild.frontend.data as data
 
-from mozbuild.buildconfig.makefile import Makefile
+from mozbuild.frontend.makefile import Makefile
 
 class MozillaMakefile(Makefile):
     """A Makefile with knowledge of Mozilla's build system.

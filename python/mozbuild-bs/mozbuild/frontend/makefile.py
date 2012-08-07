@@ -15,7 +15,6 @@ from . import data
 
 import collections
 import os
-import os.path
 import pymake.data
 import pymake.parser
 import pymake.parserdata

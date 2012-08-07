@@ -23,7 +23,7 @@ SEARCH_PATHS = [
     'python/mach',
     'python/mozbuild-bs',
     'build',
-    'build/pymake',
+    'python/pymake-bs',
     'python/blessings',
     'other-licenses/ply',
     'xpcom/idl-parser',

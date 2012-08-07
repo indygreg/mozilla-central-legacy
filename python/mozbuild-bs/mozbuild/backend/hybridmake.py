@@ -8,11 +8,11 @@ import traceback
 from pymake.builder import Makefile
 from StringIO import StringIO
 
-import mozbuild.buildconfig.data as data
+import mozbuild.frontend.data as data
 
-from mozbuild.buildconfig.backend.base import BackendBase
-from mozbuild.buildconfig.backend.utils import makefile_output_path
-from mozbuild.buildconfig.backend.utils import substitute_makefile
+from mozbuild.backend.base import BackendBase
+from mozbuild.backend.utils import makefile_output_path
+from mozbuild.backend.utils import substitute_makefile
 
 IGNORE_PATHS = [
     'security/manager',
@@ -48,6 +48,7 @@ class HybridMakeBackend(BackendBase):
     @property
     def makefiles(self):
         for makefile in self.frontend.makefiles.makefiles():
+            print makefile.filename
             substitute_makefile(makefile, self.frontend)
             yield makefile
 

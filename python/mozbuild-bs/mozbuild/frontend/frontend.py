@@ -9,13 +9,13 @@ import os
 import traceback
 import xpidl
 
-import mozbuild.buildconfig.data as data
+import mozbuild.frontend.data as data
 
 from mozbuild.base import Base
-from mozbuild.buildconfig.makefile import MakefileCollection
-from mozbuild.buildconfig.makefile import StatementCollection
-from mozbuild.buildconfig.mozillamakefile import MozillaMakefile
-from mozbuild.buildconfig.backend.utils import substitute_makefile
+from mozbuild.frontend.makefile import MakefileCollection
+from mozbuild.frontend.makefile import StatementCollection
+from mozbuild.frontend.mozillamakefile import MozillaMakefile
+from mozbuild.backend.utils import substitute_makefile
 
 # Constants for identifying build file types
 BUILD_FILE_MAKE_TEMPLATE = 1

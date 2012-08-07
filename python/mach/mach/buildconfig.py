@@ -17,7 +17,7 @@ class BuildConfig(Base, ArgumentProvider):
                 load_from_make=load_from_make)
 
     def buildinfo(self):
-        from mozbuild.buildconfig.frontend import BuildFrontend
+        from mozbuild.frontend.frontend import BuildFrontend
 
         frontend = BuildFrontend(self.config)
         frontend.load_autoconf_input_files()
@@ -27,7 +27,7 @@ class BuildConfig(Base, ArgumentProvider):
         print tree
 
     def generate(self, backend):
-        from mozbuild.buildconfig.frontend import BuildFrontend
+        from mozbuild.frontend.frontend import BuildFrontend
 
         frontend = BuildFrontend(self.config)
         frontend.load_autoconf_input_files()
@@ -35,7 +35,7 @@ class BuildConfig(Base, ArgumentProvider):
         be.generate()
 
     def build(self, backend):
-        from mozbuild.buildconfig.frontend import BuildFrontend
+        from mozbuild.frontend.frontend import BuildFrontend
 
         frontend = BuildFrontend(self.config)
         frontend.load_autoconf_input_files()
@@ -44,8 +44,8 @@ class BuildConfig(Base, ArgumentProvider):
         be.build()
 
     def backend_from_name(self, name, frontend):
-        from mozbuild.buildconfig.backend.legacy import LegacyBackend
-        from mozbuild.buildconfig.backend.hybridmake import HybridMakeBackend
+        from mozbuild.backend.legacy import LegacyBackend
+        from mozbuild.backend.hybridmake import HybridMakeBackend
 
         if name == 'legacy':
             return LegacyBackend(frontend)

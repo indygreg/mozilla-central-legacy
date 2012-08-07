@@ -4,9 +4,9 @@
 
 import os
 
-from mozbuild.buildconfig.backend.base import BackendBase
-from mozbuild.buildconfig.backend.utils import makefile_output_path
-from mozbuild.buildconfig.backend.utils import substitute_makefile
+from mozbuild.backend.base import BackendBase
+from mozbuild.backend.utils import makefile_output_path
+from mozbuild.backend.utils import substitute_makefile
 
 class LegacyBackend(BackendBase):
     """The "legacy" build backend.
