@@ -48,7 +48,6 @@ class HybridMakeBackend(BackendBase):
     @property
     def makefiles(self):
         for makefile in self.frontend.makefiles.makefiles():
-            print makefile.filename
             substitute_makefile(makefile, self.frontend)
             yield makefile
 
