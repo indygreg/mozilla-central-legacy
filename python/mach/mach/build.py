@@ -2,11 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from mozbuild.cli.base import ArgumentProvider
+from mach.base import ArgumentProvider
 from mozbuild.base import Base
 from mozbuild.building.tiers import Tiers
 
+
 class Build(Base, ArgumentProvider):
+    """Provides commands for interacting with the build system."""
     def __init__(self, config):
         Base.__init__(self, config)
 
@@ -14,7 +16,7 @@ class Build(Base, ArgumentProvider):
         """Builds the tree."""
 
         from mozbuild.building.treebuilder import TreeBuilder
-        from mozbuild.cli.terminal import BuildTerminal
+        from mach.terminal import BuildTerminal
 
         builder = TreeBuilder(self.config)
         terminal = BuildTerminal(self.log_manager)
@@ -32,21 +34,21 @@ class Build(Base, ArgumentProvider):
     @staticmethod
     def populate_argparse(parser):
         group = parser.add_parser('build',
-                                  help='Build the tree.')
+            help='Build the tree.')
 
         group.set_defaults(cls=Build, method='build')
 
         tiers = Tiers()
 
         tier = parser.add_parser(
-                   'tier',
-                    help='Interacting with individual build tiers (ADVANCED).')
+            'tier',
+            help='Interacting with individual build tiers (ADVANCED).')
 
         tier.add_argument('tier', choices=tiers.get_tiers(),
-                          help='The tier to interact with.')
+            help='The tier to interact with.')
 
         tier.add_argument('subtier', choices=tiers.get_actions(),
-                default='default', nargs='?',
-                help='Action to perform on tier.')
+            default='default', nargs='?',
+            help='Action to perform on tier.')
 
         tier.set_defaults(cls=Build, method='tier')

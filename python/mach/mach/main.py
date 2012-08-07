@@ -15,12 +15,11 @@ from mozbuild.logger import LoggingManager
 
 # Import sub-command modules
 # TODO do this via auto-discovery. Update README once this is done.
-from mozbuild.cli.build import Build
-from mozbuild.cli.buildconfig import BuildConfig
-from mozbuild.cli.configure import Configure
-from mozbuild.cli.selftest import SelfTest
-from mozbuild.cli.testing import Testing
-from mozbuild.cli.warnings import Warnings
+from mach.build import Build
+from mach.configure import Configure
+from mach.testing import Testing
+from mach.warnings import Warnings
+
 
 class Mach(object):
     """Contains code for the command-line `mach` interface."""
@@ -54,6 +53,8 @@ e.g. %(prog)s build --help
         self.log_manager = LoggingManager()
         self.logger = logging.getLogger(__name__)
 
+        self.log_manager.register_structured_logger(self.logger)
+
     def run(self, argv):
         """Runs the build tool with arguments specified."""
         parser = self.get_argument_parser()
@@ -81,28 +82,26 @@ e.g. %(prog)s build --help
         self.log_manager.add_terminal_logging(level=log_level,
                 write_interval=args.log_interval)
 
-        self.log(logging.INFO, 'build_tool_start', {'action': args.action},
-                 'Build tool started')
-
         conf = config.BuildConfig(log_manager=self.log_manager)
 
         if os.path.exists(settings_file):
             if not os.path.isfile(settings_file):
-                print 'Specified settings file exists but is not a file: %s' % settings_file
-                print 'Please delete the specified path or try again with a new path'
+                print 'Settings path exists but is not a file: %s' % \
+                    settings_file
+                print 'Please delete the specified path or try again with ' \
+                    'a new path'
                 sys.exit(1)
 
             conf.load_file(settings_file)
             self.log(logging.WARNING, 'config_load', {'file': settings_file},
-                     'Loaded existing config file: {file}')
+                 'Loaded existing config file: {file}')
         else:
-            print 'Settings file does not exist at %s.\nI will help you generate one!' % settings_file
-            conf.run_commandline_wizard(self.cwd, sys.stdout)
+            conf.populate_default_paths(self.cwd)
 
             if not args.no_save_settings:
                 conf.save(settings_file)
-                self.log(logging.WARNING, 'config_save', {'file': settings_file},
-                         'Saved config file to {file}')
+                self.log(logging.WARNING, 'config_save',
+                    {'file': settings_file}, 'Saved config file to {file}')
 
         if args.objdir:
             raise Exception('TODO implement custom object directories.')
@@ -128,7 +127,6 @@ e.g. %(prog)s build --help
             if k not in exclude:
                 stripped[k] = getattr(args, k)
 
-
         # If the action is associated with a class, instantiate and run it.
         # All classes must be Base-derived and take a BuildConfig instance.
         if hasattr(args, "cls"):
@@ -146,9 +144,9 @@ e.g. %(prog)s build --help
 
         self.log(logging.WARNING, 'finished', {}, 'Build action finished')
 
-
     def log(self, level, action, params, format_str):
-        self.logger.log(level, format_str, extra={'action': action, 'params': params})
+        self.logger.log(level, format_str,
+            extra={'action': action, 'params': params})
 
     def get_settings_file(self, args):
         """Get the settings file for the current environment.
@@ -174,49 +172,34 @@ e.g. %(prog)s build --help
         parser = argparse.ArgumentParser()
 
         settings_group = parser.add_argument_group('Settings')
-        settings_group.add_argument('--settings',
-                                    dest='settings_file',
-                                    metavar='FILENAME',
-                                    help='Path to settings file.')
+        settings_group.add_argument('--settings', dest='settings_file',
+            metavar='FILENAME', help='Path to settings file.')
         settings_group.add_argument('--no-save-settings',
-                                    dest='no_save_settings',
-                                    action='store_true',
-                                    default=False,
-                                    help='When automatically generating settings, do not save the file.')
-        settings_group.add_argument('--objdir',
-                                    dest='objdir',
-                                    metavar='FILENAME',
-                                    help='Object directory to use. (ADVANCED).')
+            dest='no_save_settings', action='store_true', default=False,
+            help='When automatically generating settings, do not save the '
+                'file.')
+        settings_group.add_argument('--objdir', dest='objdir',
+            metavar='FILENAME', help='Object directory to use. (ADVANCED).')
 
         logging_group = parser.add_argument_group('Logging')
-        logging_group.add_argument('-v', '--verbose',
-                                   dest='verbose',
-                                   action='store_true',
-                                   default=False,
-                                   help='Print verbose output.')
-        logging_group.add_argument('-l', '--log-file',
-                                   dest='logfile',
-                                   metavar='FILENAME',
-                                   type=argparse.FileType('ab'),
-                                   help='Filename to write log data to.')
-        logging_group.add_argument('--log-interval',
-                                   dest='log_interval',
-                                   action='store_true',
-                                   default=False,
-                                   help='Prefix log line with interval from '
-                                        'last message rather than relative '
-                                        'time. Note that this is NOT execution '
-                                        'time if there are parallel '
-                                        'operations.')
+        logging_group.add_argument('-v', '--verbose', dest='verbose',
+            action='store_true', default=False,
+            help='Print verbose output.')
+        logging_group.add_argument('-l', '--log-file', dest='logfile',
+            metavar='FILENAME', type=argparse.FileType('ab'),
+            help='Filename to write log data to.')
+        logging_group.add_argument('--log-interval', dest='log_interval',
+            action='store_true', default=False,
+            help='Prefix log line with interval from last message rather '
+                'than relative time. Note that this is NOT execution time '
+                'if there are parallel operations.')
 
         subparser = parser.add_subparsers(dest='action')
 
         # Register argument action providers with us.
         handlers = [
             Build,
-            BuildConfig,
             Configure,
-            SelfTest,
             Testing,
             Warnings,
         ]

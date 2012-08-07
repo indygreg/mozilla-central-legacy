@@ -11,6 +11,7 @@ one place, away from code that is commonly looked at.
 import logging
 import sys
 
+
 class LoggingHandler(logging.Handler):
     """Custom logging handler that works with terminal window dressing.
 
@@ -48,6 +49,7 @@ class LoggingHandler(logging.Handler):
         # If we don't flush, the footer may not get drawn.
         self.flush()
 
+
 class TerminalFooter(object):
     """Represents something drawn on the bottom of a terminal."""
     def __init__(self, terminal):
@@ -66,6 +68,7 @@ class TerminalFooter(object):
 
     def draw(self):
         raise Exception('draw() must be implemented.')
+
 
 class BuildTierFooter(TerminalFooter):
     # TODO grab these from build system properly.
@@ -125,6 +128,7 @@ class BuildTierFooter(TerminalFooter):
 
             if in_progress > 0:
                 print >>self.fh, '(' + self.t.magenta(' '.join(names)) + ')',
+
 
 class BuildTerminal(object):
     """The terminal displayed during builds."""

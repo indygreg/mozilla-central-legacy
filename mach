@@ -3,6 +3,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import os.path
 import platform
 import sys
 
@@ -16,25 +17,32 @@ if major != '2' or minor != '7':
         platform.python_version() )
     sys.exit(1)
 
-# Set up the environment before invoking any code.
-# TODO integrate with virtualenv somehow.
-sys.path.append('python/mozbuild-bs')
-sys.path.append('python/blessings')
-sys.path.append('python/pymake-bs')
-sys.path.append('build')
-sys.path.append('other-licenses/ply')
-sys.path.append('xpcom/idl-parser')
-sys.path.append('testing/xpcshell')
-sys.path.append('testing/mozbase/mozprocess')
-sys.path.append('testing/mozbase/mozinfo')
+# Ideally we could load build/virtualenv/packages.txt. But, we need a
+# supet set of what's in there, so we go with a one-off for now.
+SEARCH_PATHS = [
+    'python/mach',
+    'python/mozbuild-bs',
+    'build',
+    'build/pymake',
+    'python/blessings',
+    'other-licenses/ply',
+    'xpcom/idl-parser',
+    'testing/xpcshell',
+    'testing/mozbase/mozprocess',
+    'testing/mozbase/mozinfo',
+]
 
-from os.path import abspath
-from os.path import dirname
+our_dir = os.path.dirname(os.path.abspath(__file__))
 
-from mozbuild.cli.mach import Mach
+try:
+    import mach.main
+except ImportError:
+    SEARCH_PATHS.reverse()
+    for path in SEARCH_PATHS:
+        sys.path.insert(0, os.path.join(our_dir, path))
 
-import os.path
+    import mach.main
 
 # All of the code is in a module because EVERYTHING IS A LIBRARY.
-mach = Mach(dirname(abspath(__file__)))
+mach = mach.main.Mach(our_dir)
 mach.run(sys.argv[1:])
