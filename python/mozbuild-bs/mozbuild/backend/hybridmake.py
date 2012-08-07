@@ -45,11 +45,22 @@ class HybridMakeBackend(BackendBase):
 
         self.splendid_files = set()
 
+        self._makefiles = None
+
     @property
     def makefiles(self):
-        for makefile in self.frontend.makefiles.makefiles():
-            substitute_makefile(makefile, self.frontend)
-            yield makefile
+        if self._makefiles is None:
+            self._makefiles = []
+
+            for makefile in self.frontend.makefiles.makefiles():
+                substitute_makefile(makefile, self.frontend)
+                self._makefiles.append(makefile)
+                yield makefile
+
+            return
+
+        for m in self._makefiles:
+            yield m
 
     ############################
     # Generation Functionality #
