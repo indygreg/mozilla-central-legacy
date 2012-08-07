@@ -50,10 +50,6 @@ class BackendBase(Base):
 
     def build(self):
         """Build the tree."""
-        # TODO make this conditional on input files changing.
-        self.clean()
-        self.generate()
-
         self._build()
 
     def clean(self):
