@@ -61,6 +61,9 @@ IGNORE_BUILD_FILES = (
     # Bug 703843 tracks fixing.
     'build/unix/elfhack/Makefile.in',
 
+    # EXPORTS_$(binding_include_path) foo isn't handled properly.
+    'dom/bindings/Makefile.in',
+
     # Trips over $(error) in CPPSRCS assignment.
     'xpcom/reflect/xptcall/src/md/unix/Makefile.in',
 
@@ -96,6 +99,9 @@ class BuildFrontend(Base):
         self.makefiles = MakefileCollection(self.srcdir, self.objdir)
         self.autoconf = None
 
+        # Files contributing to the frontend config.
+        self.input_files = set()
+
     @property
     def autoconf_output_files(self):
         """The output files managed by autoconf.
@@ -105,6 +111,8 @@ class BuildFrontend(Base):
 
         It is a generator of str which correlate to the relative paths of
         output files in the object directory.
+
+        TODO extract data from config.status
         """
         unallmakefiles = os.path.join(self.objdir, 'unallmakefiles')
 
@@ -166,6 +174,7 @@ class BuildFrontend(Base):
         self.load_autoconf_file()
 
         root_path = os.path.join(self.srcdir, 'Makefile.in')
+        self.input_files.add(root_path)
 
         m = MozillaMakefile(root_path, directory=self.objdir)
         substitute_makefile(m, self)
@@ -200,6 +209,7 @@ class BuildFrontend(Base):
         if relative_path in IGNORE_BUILD_FILES:
             return None
 
+        self.input_files.add(source_path)
         m = MozillaMakefile(source_path, os.path.join(self.objdir, relative))
         m.env['DONT_LOAD_RULES'] = '1'
         substitute_makefile(m, self)
@@ -218,6 +228,7 @@ class BuildFrontend(Base):
 
     def load_input_file(self, relative):
         """Load an input from the source directory at the specified path."""
+        assert not os.path.isabs(relative)
 
         if not relative.endswith('Makefile.in'):
             return None
@@ -225,13 +236,16 @@ class BuildFrontend(Base):
         if relative in IGNORE_BUILD_FILES:
             return None
 
-        m = MozillaMakefile(os.path.join(self.srcdir, relative))
+        path = os.path.join(self.srcdir, relative)
+        self.input_files.add(path)
+        m = MozillaMakefile(path)
         self.makefiles.add(m)
 
         return m
 
     def load_autoconf_file(self):
         path = os.path.join(self.objdir, 'config', 'autoconf.mk')
+        self.input_files.add(path)
 
         self.autoconf = BuildFrontend.convert_autoconf_to_dict(path)
 
