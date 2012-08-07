@@ -24,4 +24,9 @@ def substitute_makefile(makefile, frontend):
     variables['top_srcdir'] = frontend.srcdir
     variables['srcdir'] = makefile.directory
 
+    assert makefile.directory.startswith(frontend.srcdir)
+
+    relative = makefile.directory[len(frontend.srcdir)+1:]
+    variables['relativesrcdir'] = relative
+
     makefile.perform_substitutions(variables, raise_on_missing=True)
