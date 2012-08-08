@@ -6,6 +6,7 @@
 # build system.
 
 import os
+import sys
 import traceback
 import xpidl
 
@@ -101,6 +102,14 @@ class BuildFrontend(Base):
 
         # Files contributing to the frontend config.
         self.input_files = set()
+
+        # We add loaded Python modules because the code here contributes
+        # to the frontend config as well.
+        for name, module in sys.modules.iteritems():
+            if not name.startswith('mozbuild') or not module:
+                continue
+
+            self.input_files.add(module.__file__)
 
     @property
     def autoconf_output_files(self):
