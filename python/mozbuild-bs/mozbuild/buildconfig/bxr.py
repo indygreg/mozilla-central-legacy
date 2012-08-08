@@ -10,7 +10,7 @@ import mako
 import mako.template
 import uuid
 
-from mozbuild.buildconfig.frontend import BuildFrontend
+from mozbuild.frontend.frontend import BuildFrontend
 
 # This is our mako HTML template. Scroll down to see which variables are
 # available.
