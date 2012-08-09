@@ -376,7 +376,10 @@ class MozillaMakefile(Makefile):
                 varname = 'EXPORTS_%s' % namespace
                 exports.used_variables.add(varname)
                 exports.exclusive_variables.add(varname)
-                for s in self.get_variable_split(varname):
+
+                # We feed into a set because there are some duplicates.
+                # TODO fix these in the tree and treat as fatal errors.
+                for s in set(self.get_variable_split(varname)):
                     handle_export(namespace, s)
 
             yield exports
