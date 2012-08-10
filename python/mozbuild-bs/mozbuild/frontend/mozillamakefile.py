@@ -367,7 +367,7 @@ class MozillaMakefile(Makefile):
 
             exports.used_variables.add('EXPORTS')
             exports.exclusive_variables.add('EXPORTS')
-            for export in self.get_variable_split('EXPORTS'):
+            for export in sorted(set(self.get_variable_split('EXPORTS'))):
                 handle_export('', export)
 
             exports.used_variables.add('EXPORTS_NAMESPACES')
@@ -379,7 +379,7 @@ class MozillaMakefile(Makefile):
 
                 # We feed into a set because there are some duplicates.
                 # TODO fix these in the tree and treat as fatal errors.
-                for s in set(self.get_variable_split(varname)):
+                for s in sorted(set(self.get_variable_split(varname))):
                     handle_export(namespace, s)
 
             yield exports
