@@ -22,6 +22,10 @@ IGNORE_PATHS = [
     'toolkit/identity',
 ]
 
+def normpath(p):
+    """Normalize a path to the format expected by pymake."""
+    return p.replace(os.sep, '/')
+
 class HybridMakeBackend(BackendBase):
     """The "hybrid make" backend.
 
@@ -161,7 +165,8 @@ class HybridMakeBackend(BackendBase):
         directories = sorted(obj.output_directories)
         out_directories = [os.path.join(inc_dir, d) for d in directories]
         self.output_directories |= set(out_directories)
-        print >>fh, 'CREATE_DIRS += %s' % ' '.join(out_directories)
+        print >>fh, 'CREATE_DIRS += %s' % ' '.join(
+			[normpath(d) for d in out_directories])
 
         output_filenames = []
 
@@ -171,12 +176,13 @@ class HybridMakeBackend(BackendBase):
 
             output_directory = os.path.join(inc_dir,
                 os.path.dirname(output_leaf))
-            output_filename = os.path.join(inc_dir, output_leaf)
-            output_filenames.append(output_filename)
+            output_filename = normpath(os.path.join(inc_dir, output_leaf))
+            output_filenames.append(normpath(output_filename))
 
-            print >>fh, '%s: %s' % (output_filename, input_filename)
-            print >>fh, '\t$(INSTALL) -R -m 644 "%s" "%s"\n' % (input_filename,
-                output_directory)
+            print >>fh, '%s: %s' % (normpath(output_filename),
+				normpath(input_filename))
+            print >>fh, '\t$(INSTALL) -R -m 644 "%s" "%s"\n' % (
+				normpath(input_filename), normpath(output_directory))
 
         print >>fh, 'EXPORT_TARGETS += %s\n' % ' \\\n  '.join(output_filenames)
         print >>fh, 'PHONIES += EXPORT_TARGETS'
@@ -219,7 +225,7 @@ class HybridMakeBackend(BackendBase):
                 header_basename)
 
             xpt_output_path = os.path.join(gen_directory, xpt_basename)
-            output_xpt_files.add(xpt_output_path)
+            output_xpt_files.add(normpath(xpt_output_path))
 
             header_deps_path = os.path.join(deps_directory,
                 '%s.pp' % header_basename)
@@ -229,67 +235,71 @@ class HybridMakeBackend(BackendBase):
 
             # Record the final destination of this IDL in a variable so that
             # variable can be used as a prerequisite.
-            print >>fh, 'IDL_DIST_IDL_FILES += %s' % output_idl_path
-            print >>fh, 'IDL_DIST_H_FILES += %s' % install_header_path
-            print >>fh, 'IDL_H_FILES += %s' % output_header_path
+            print >>fh, 'IDL_DIST_IDL_FILES += %s' % normpath(output_idl_path)
+            print >>fh, 'IDL_DIST_H_FILES += %s' % normpath(install_header_path)
+            print >>fh, 'IDL_H_FILES += %s' % normpath(output_header_path)
             print >>fh, ''
 
             # Install the original IDL file into the IDL directory.
-            print >>fh, '%s: %s' % (output_idl_path, source)
-            print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (source,
-                idl_output_directory)
+            print >>fh, '%s: %s' % (normpath(output_idl_path), normpath(source))
+            print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
+				normpath(source), normpath(idl_output_directory))
             print >>fh, ''
 
             # Generate the .h header from the IDL file.
-            print >>fh, '%s: %s $(IDL_DIST_IDL_FILES)' % (output_header_path,
-                source)
+            print >>fh, '%s: %s $(IDL_DIST_IDL_FILES)' % (
+				normpath(output_header_path), normpath(source))
             print >>fh, '\techo %s; \\' % basename
             print >>fh, '\t$(IDL_GENERATE_HEADER) -d %s -o $@ %s' % (
-                header_deps_path, source)
+                normpath(header_deps_path), normpath(source))
             print >>fh, ''
 
             # Include the dependency file for this header.
-            print >>fh, '-include %s' % header_deps_path
+            print >>fh, '-include %s' % normpath(header_deps_path)
             print >>fh, ''
 
             # Install the generated .h header into the dist directory.
-            print >>fh, '%s: %s' % (install_header_path, output_header_path)
+            print >>fh, '%s: %s' % (normpath(install_header_path),
+				normpath(output_header_path))
             print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
-                output_header_path, header_output_directory)
+                normpath(output_header_path),
+				normpath(header_output_directory))
             print >>fh, ''
 
             # Generate intermediate .xpt file.
-            print >>fh, 'IDL_XPT_FILES += %s' % xpt_output_path
-            print >>fh, '%s: %s' % (xpt_output_path, output_idl_path)
+            print >>fh, 'IDL_XPT_FILES += %s' % normpath(xpt_output_path)
+            print >>fh, '%s: %s' % (normpath(xpt_output_path),
+				normpath(output_idl_path))
             print >>fh, '\techo %s; \\' % os.path.basename(xpt_output_path)
             print >>fh, '\t$(IDL_GENERATE_XPT) %s -d %s -o $@' % (
-                output_idl_path, xpt_deps_path)
+                normpath(output_idl_path), normpath(xpt_deps_path))
             print >>fh, ''
 
             # Include xpt dependency file.
-            print >>fh, '-include %s' % xpt_deps_path
+            print >>fh, '-include %s' % normpath(xpt_deps_path)
             print >>fh, ''
 
         # Link .xpt files into final .xpt file.
         if obj.link_together:
-            print >>fh, 'IDL_XPT_FILES += %s' % xpt_module_path
-            print >>fh, '%s: %s' % (xpt_module_path,
+            print >>fh, 'IDL_XPT_FILES += %s' % normpath(xpt_module_path)
+            print >>fh, '%s: %s' % (normpath(xpt_module_path),
                 ' '.join(output_xpt_files))
             print >>fh, '\techo %s; \\' % os.path.basename(xpt_module_path)
-            print >>fh, '\t$(XPIDL_LINK) %s %s' % (xpt_module_path,
+            print >>fh, '\t$(XPIDL_LINK) %s %s' % (normpath(xpt_module_path),
                 ' '.join(output_xpt_files))
             print >>fh, ''
 
         # Install final .xpt file into dist.
-        print >>fh, 'IDL_XPT_INSTALL_FILES += %s' % xpt_final_path
-        print >>fh, '%s: %s' % (xpt_final_path, xpt_module_path)
-        print >>fh, '\t$(INSTALL) -R -m 664 %s %s' % (xpt_module_path,
-            '$(DIST_COMPONENTS_DIR)')
+        print >>fh, 'IDL_XPT_INSTALL_FILES += %s' % normpath(xpt_final_path)
+        print >>fh, '%s: %s' % (normpath(xpt_final_path),
+			normpath(xpt_module_path))
+        print >>fh, '\t$(INSTALL) -R -m 664 %s %s' % (
+			normpath(xpt_module_path), '$(DIST_COMPONENTS_DIR)')
         print >>fh, ''
 
         if obj.write_manifest:
             print >>fh, '\t$(IDL_UPDATE_INTERFACES_MANIFEST) "interfaces %s"' % (
-            xpt_module_basename)
+				xpt_module_basename)
             print >>fh, '\t$(IDL_UPDATE_CHROME_MANIFEST)'
             print >>fh, ''
 
@@ -334,15 +344,15 @@ class HybridMakeBackend(BackendBase):
             # TODO don't hardcode GCC/Clang flags.
             flags = '%s -MD -MF %s' % (obj.compile_cxxflags, deps_path)
 
-            print >>fh, 'CPP_OBJECT_FILES += %s' % object_path
+            print >>fh, 'CPP_OBJECT_FILES += %s' % normpath(object_path)
 
-            print >>fh, '%s: %s' % (object_path, source)
+            print >>fh, '%s: %s' % (normpath(object_path), normpath(source))
             print >>fh, '\techo %s; \\' % os.path.basename(source)
-            print >>fh, '\t$(CCC) -o $@ -c %s %s' % (flags, source)
+            print >>fh, '\t$(CCC) -o $@ -c %s %s' % (flags, normpath(source))
             print >>fh, ''
 
             # Include dependency file.
-            print >>fh, '-include %s' % deps_path
+            print >>fh, '-include %s' % normpath(deps_path)
             print >>fh, ''
 
         # C files are very similar to C++ files.
@@ -355,16 +365,16 @@ class HybridMakeBackend(BackendBase):
             deps_path = os.path.join(deps_dir, deps_basename)
 
             # TODO don't hardcode GCC/Clang flags.
-            flags = '%s -MD -MF %s' % (obj.compile_cflags, deps_path)
+            flags = '%s -MD -MF %s' % (obj.compile_cflags, normpath(deps_path))
 
-            print >>fh, 'C_OBJECT_FILES += %s' % object_path
+            print >>fh, 'C_OBJECT_FILES += %s' % normpath(object_path)
 
-            print >>fh, '%s: %s' % (object_path, source)
+            print >>fh, '%s: %s' % (normpath(object_path), normpath(source))
             print >>fh, '\techo %s; \\' % os.path.basename(source)
-            print >>fh, '\t$(CC) -o $@ -c %s %s' % (flags, source)
+            print >>fh, '\t$(CC) -o $@ -c %s %s' % (flags, normpath(source))
             print >>fh, ''
 
-            print >>fh, '-include %s' % deps_path
+            print >>fh, '-include %s' % normpath(deps_path)
             print >>fh, ''
 
         # We don't return exclusive_variables because we don't yet have feature
@@ -377,12 +387,12 @@ class HybridMakeBackend(BackendBase):
     def print_hybridmake(self, fh):
         print >>fh, '# This file is automatically generated. Do NOT edit.'
 
-        print >>fh, 'TOP_SOURCE_DIR := %s' % self.srcdir
-        print >>fh, 'OBJECT_DIR := %s' % self.objdir
+        print >>fh, 'TOP_SOURCE_DIR := %s' % normpath(self.srcdir)
+        print >>fh, 'OBJECT_DIR := %s' % normpath(self.objdir)
 
         print >>fh, 'DEPTH := .'
-        print >>fh, 'topsrcdir := %s' % self.srcdir
-        print >>fh, 'srcdir := %s' % self.srcdir
+        print >>fh, 'topsrcdir := %s' % normpath(self.srcdir)
+        print >>fh, 'srcdir := %s' % normpath(self.srcdir)
         print >>fh, 'include $(topsrcdir)/config/config.mk'
 
         print >>fh, 'default:'
@@ -391,7 +401,7 @@ class HybridMakeBackend(BackendBase):
         print >>fh, '\n'
 
         for path in sorted(self.splendid_files):
-            print >>fh, 'include %s' % path
+            print >>fh, 'include %s' % normpath(path)
 
         print >>fh, 'include $(TOP_SOURCE_DIR)/config/makefiles/nonrecursive.mk'
 

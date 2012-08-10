@@ -21,12 +21,12 @@ def makefile_output_path(srcdir, objdir, makefile):
 
 def substitute_makefile(makefile, frontend):
     variables = dict(frontend.autoconf)
-    variables['top_srcdir'] = frontend.srcdir
-    variables['srcdir'] = makefile.directory
+    variables['top_srcdir'] = frontend.srcdir.replace(os.sep, '/')
+    variables['srcdir'] = makefile.directory.replace(os.sep, '/')
 
     assert makefile.directory.startswith(frontend.srcdir)
 
-    relative = makefile.directory[len(frontend.srcdir)+1:]
+    relative = makefile.directory[len(frontend.srcdir)+1:].replace(os.sep, '/')
     variables['relativesrcdir'] = relative
 
     depth = os.path.relpath(frontend.srcdir,
