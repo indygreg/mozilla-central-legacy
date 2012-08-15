@@ -96,9 +96,6 @@ class Configure(Base):
                 require_unix_environment=True,
                 log_name='configure_output')
 
-        # Not sure why this is here. But, it's in client.mk.
-        os.utime(self._get_objdir_path('Makefile'), None)
-
     def run_autoconfs(self):
         """Runs all necessary autoconf invocations to generate configures."""
         for configure in self.configure_scripts:
