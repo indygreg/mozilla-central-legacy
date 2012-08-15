@@ -249,7 +249,11 @@ class BuildFrontend(Base):
 
         path = os.path.join(self.srcdir, relative)
         self.input_files.add(path)
-        m = MozillaMakefile(path)
+
+        reldir = os.path.dirname(relative)
+
+        output_directory = os.path.join(self.objdir, reldir).rstrip(os.sep)
+        m = MozillaMakefile(path, reldir, output_directory)
         self.makefiles.add(m)
 
         return m

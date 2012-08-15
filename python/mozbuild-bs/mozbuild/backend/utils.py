@@ -12,24 +12,26 @@ def makefile_output_path(srcdir, objdir, makefile):
 
     assert makefile.filename.endswith('.in')
     assert makefile.filename.startswith(srcdir)
+    assert not makefile.filename.startswith(objdir)
 
     basename = os.path.basename(makefile.filename).rstrip('.in')
-    input_directory = makefile.directory
+    input_directory = os.path.dirname(makefile.filename)
     leaf = input_directory[len(srcdir) + 1:]
 
     return os.path.join(objdir, leaf, basename)
 
 def substitute_makefile(makefile, frontend):
+    assert makefile.directory.startswith(frontend.objdir)
+    assert makefile.relative_directory is not None
+
     variables = dict(frontend.autoconf)
     variables['top_srcdir'] = frontend.srcdir.replace(os.sep, '/')
-    variables['srcdir'] = makefile.directory.replace(os.sep, '/')
+    variables['srcdir'] = os.path.join(frontend.srcdir,
+            makefile.relative_directory).replace(os.sep, '/').rstrip('/')
+    variables['relativesrcdir'] = makefile.relative_directory.replace(os.sep,
+        '/').rstrip('/')
 
-    assert makefile.directory.startswith(frontend.srcdir)
-
-    relative = makefile.directory[len(frontend.srcdir)+1:].replace(os.sep, '/')
-    variables['relativesrcdir'] = relative
-
-    depth = os.path.relpath(frontend.srcdir,
+    depth = os.path.relpath(frontend.objdir,
         makefile.directory).replace(os.sep, '/')
     variables['DEPTH'] = depth
 
