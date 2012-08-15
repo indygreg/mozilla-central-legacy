@@ -17,25 +17,25 @@ class Testing(Base, ArgumentProvider):
     def run_mochitest_plain(self, test_file):
         from mozbuild.testing.mochitest import MochitestRunner
 
-        mochitest = MochitestRunner(self.config)
+        mochitest = self._spawn(MochitestRunner)
         mochitest.run_mochitest_test(test_file, 'plain')
 
     def run_mochitest_chrome(self, test_file):
         from mozbuild.testing.mochitest import MochitestRunner
 
-        mochitest = MochitestRunner(self.config)
+        mochitest = self._spawn(MochitestRunner)
         mochitest.run_mochitest_test(test_file, 'chrome')
 
     def run_mochitest_browser(self, test_file):
         from mozbuild.testing.mochitest import MochitestRunner
 
-        mochitest = MochitestRunner(self.config)
+        mochitest = self._spawn(MochitestRunner)
         mochitest.run_mochitest_test(test_file, 'browser')
 
     def run_xpcshell_test(self, **params):
         from mozbuild.testing.xpcshell import XPCShellRunner
 
-        xpcshell = XPCShellRunner(self.config)
+        xpcshell = self._spawn(XPCShellRunner)
         xpcshell.run_test(**params)
 
     @staticmethod

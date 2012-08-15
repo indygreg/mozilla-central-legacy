@@ -9,16 +9,13 @@ from mozbuild.building.tiers import Tiers
 
 class Build(Base, ArgumentProvider):
     """Provides commands for interacting with the build system."""
-    def __init__(self, config):
-        Base.__init__(self, config)
-
     def build(self):
         """Builds the tree."""
 
         from mozbuild.building.treebuilder import TreeBuilder
         from mach.terminal import BuildTerminal
 
-        builder = TreeBuilder(self.config)
+        builder = self._spawn(TreeBuilder)
         terminal = BuildTerminal(self.log_manager)
 
         builder.build(on_update=terminal.update_progress)
@@ -28,7 +25,7 @@ class Build(Base, ArgumentProvider):
 
         from mozbuild.building.treebuilder import TreeBuilder
 
-        builder = TreeBuilder(self.config)
+        builder = self._spawn(TreeBuilder)
         builder.build_tier(tier, subtier)
 
     @staticmethod

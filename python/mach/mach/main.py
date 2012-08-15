@@ -10,16 +10,32 @@ import logging
 import os.path
 import sys
 
-from mozbuild import config
+from mozbuild.base import BuildConfig
+from mozbuild.config import ConfigSettings
 from mozbuild.logger import LoggingManager
 
 # Import sub-command modules
 # TODO do this via auto-discovery. Update README once this is done.
 from mach.build import Build
-from mach.buildconfig import BuildConfig
 from mach.configure import Configure
+from mach.settings import Settings
 from mach.testing import Testing
 from mach.warnings import Warnings
+
+# Classes inheriting from ArgumentProvider that provide commands.
+HANDLERS = [
+    Build,
+    Configure,
+    Settings,
+    Testing,
+    Warnings,
+]
+
+# Classes inheriting from ConfigProvider that provide settings.
+# TODO this should come from auto-discovery somehow.
+SETTINGS_PROVIDERS = [
+    BuildConfig
+]
 
 
 class Mach(object):
@@ -53,6 +69,7 @@ e.g. %(prog)s build --help
         self.cwd = cwd
         self.log_manager = LoggingManager()
         self.logger = logging.getLogger(__name__)
+        self.settings = ConfigSettings()
 
         self.log_manager.register_structured_logger(self.logger)
 
@@ -70,8 +87,6 @@ e.g. %(prog)s build --help
 
         args = parser.parse_args(argv)
 
-        settings_file = self.get_settings_file(args)
-
         # Enable JSON logging to a file if configured.
         if args.logfile:
             self.log_manager.add_json_handler(args.logfile)
@@ -83,29 +98,20 @@ e.g. %(prog)s build --help
         self.log_manager.add_terminal_logging(level=log_level,
                 write_interval=args.log_interval)
 
-        conf = config.BuildConfig(log_manager=self.log_manager)
+        settings_loaded = self.load_settings(args)
+        conf = BuildConfig(self.settings)
 
-        if os.path.exists(settings_file):
-            if not os.path.isfile(settings_file):
-                print 'Settings path exists but is not a file: %s' % \
-                    settings_file
-                print 'Please delete the specified path or try again with ' \
-                    'a new path'
-                sys.exit(1)
-
-            conf.load_file(settings_file)
-            self.log(logging.WARNING, 'config_load', {'file': settings_file},
-                 'Loaded existing config file: {file}')
-        else:
+        if not settings_loaded:
             conf.populate_default_paths(self.cwd)
 
             if not args.no_save_settings:
-                conf.save(settings_file)
-                self.log(logging.WARNING, 'config_save',
-                    {'file': settings_file}, 'Saved config file to {file}')
+                path = os.path.join(self.cwd, 'mach.ini')
 
-        if args.objdir:
-            raise Exception('TODO implement custom object directories.')
+                with open(path, 'wb') as fh:
+                    self.settings.write(fh)
+
+                self.log(logging.WARNING, 'config_save',
+                    {'file': path}, 'Saved config file to {file}')
 
         # Now that we have the config squared away, we process the specified
         # sub-command/action. We start by filtering out all arguments handled
@@ -130,33 +136,46 @@ e.g. %(prog)s build --help
 
         # If the action is associated with a class, instantiate and run it.
         # All classes must be Base-derived and take a BuildConfig instance.
-        if hasattr(args, "cls"):
-            cls = getattr(args, "cls")(conf)
-            method = getattr(cls, getattr(args, "method"))
+        if hasattr(args, 'cls'):
+            cls = getattr(args, 'cls')
+
+            instance = cls(self.settings, self.log_manager)
+            method = getattr(instance, getattr(args, 'method'))
 
             method(**stripped)
 
         # If the action is associated with a function, call it.
-        elif hasattr(args, "func"):
-            func = getattr(args, "func")
+        elif hasattr(args, 'func'):
+            func = getattr(args, 'func')
             func(**stripped)
         else:
             raise Exception("argparse parser not properly configured.")
-
-        self.log(logging.WARNING, 'finished', {}, 'Build action finished')
 
     def log(self, level, action, params, format_str):
         self.logger.log(level, format_str,
             extra={'action': action, 'params': params})
 
-    def get_settings_file(self, args):
-        """Get the settings file for the current environment.
+    def load_settings(self, args):
+        """Determine what settings files apply and load them.
 
-        We determine the settings file in order of:
+        Currently, we only support loading settings from a single file.
+        Ideally, we support loading from multiple files. This is supported by
+        the ConfigSettings API. However, that API currently doesn't track where
+        individual values come from, so if we load from multiple sources then
+        save, we effectively do a full copy. We don't want this. Until
+        ConfigSettings does the right thing, we shouldn't expose multi-file
+        loading.
+
+        We look for a settings file in the following locations. The first one
+        found wins:
+
           1) Command line argument
-          2) Environment variable MOZ_BUILD_CONFIG
+          2) Environment variable
           3) Default path
         """
+        for provider in SETTINGS_PROVIDERS:
+            provider.register_settings()
+            self.settings.register_provider(provider)
 
         p = os.path.join(self.cwd, 'mach.ini')
 
@@ -165,7 +184,9 @@ e.g. %(prog)s build --help
         elif 'MACH_SETTINGS_FILE' in os.environ:
             p = os.environ['MACH_SETTINGS_FILE']
 
-        return p
+        self.settings.load_file(p)
+
+        return os.path.exists(p)
 
     def get_argument_parser(self):
         """Returns an argument parser for the command-line interface."""
@@ -179,8 +200,6 @@ e.g. %(prog)s build --help
             dest='no_save_settings', action='store_true', default=False,
             help='When automatically generating settings, do not save the '
                 'file.')
-        settings_group.add_argument('--objdir', dest='objdir',
-            metavar='FILENAME', help='Object directory to use. (ADVANCED).')
 
         logging_group = parser.add_argument_group('Logging')
         logging_group.add_argument('-v', '--verbose', dest='verbose',
@@ -198,14 +217,7 @@ e.g. %(prog)s build --help
         subparser = parser.add_subparsers(dest='action')
 
         # Register argument action providers with us.
-        handlers = [
-            Build,
-            BuildConfig,
-            Configure,
-            Testing,
-            Warnings,
-        ]
-        for cls in handlers:
+        for cls in HANDLERS:
             cls.populate_argparse(subparser)
 
         return parser

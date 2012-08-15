@@ -11,8 +11,8 @@ from mozbuild.base import Base
 
 class Warnings(Base, ArgumentProvider):
     """Provide commands for inspecting warnings."""
-    def __init__(self, config):
-        Base.__init__(self, config)
+    def __init__(self, settings, log_manager):
+        Base.__init__(self, settings, log_manager)
 
     @property
     def database_path(self):

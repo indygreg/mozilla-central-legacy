@@ -10,13 +10,13 @@ from mach.base import ArgumentProvider
 
 class Configure(Base, ArgumentProvider):
     """Provides commands for interacting with configure."""
-    def __init__(self, config):
-        Base.__init__(self, config)
+    def __init__(self, settings, log_manager):
+        Base.__init__(self, settings, log_manager)
 
     def configure(self):
         from mozbuild.configuration.configure import Configure
 
-        c = Configure(self.config)
+        c = self._spawn(Configure)
 
         if not c.ensure_configure():
             c.run_configure()
