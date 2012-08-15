@@ -8,36 +8,6 @@ from cStringIO import StringIO
 
 _log = logging.getLogger('pymake.data')
 
-class ExpansionContext(object):
-    '''Instances of this type can be used as an alternative to full Makefile
-    instances when performing variable expansion.
-
-    When the Makefile is accessed or modified, the callback is invoked.
-    The first passed argument is the type of action being performed. The
-    second is the attribute being operated on. The third, if defined, is
-    the new value for the attribute.
-    '''
-
-    GET_ATTRIBUTE    = 1
-    SET_ATTRRIBUTE   = 2
-    DELETE_ATTRIBUTE = 3
-
-    __slots__ = ( '_callback' )
-
-    def __init__(self, callback=None):
-        '''Construct an instance that will invoke the specified method when
-        data is accessed.'''
-        object.__setattr__(self, '_callback', callback)
-
-    def __getattr__(self, name):
-        return self._callback(ExpansionContext.GET_ATTRIBUTE, name)
-
-    def __setattr__(self, name, value):
-        return self._callback(ExpansionContext.SET_ATTRIBUTE, name, value=value)
-
-    def __delattr__(self, name):
-        return self._callback(ExpansionContext.DELETE_ATTRIBUTE, name)
-
 class DataError(util.MakeError):
     pass
 
@@ -339,18 +309,11 @@ class Expansion(BaseExpansion, list):
         Resolve this variable into a value, by interpolating the value
         of other variables.
 
-        @param makefile (data.Makefile or data.ExpansionContext) Context for
-               evaluation. Functions look at properties of this object and
-               these influence execution. Originally, a full Makefile instance
-               was required. But only specific properties are accessed, so it
-               is possible to fake it out by sending an ExpansionContext
-               instance.
-
         @param setting (Variable instance) the variable currently
                being set, if any. Setting variables must avoid self-referential
                loops.
         """
-        assert isinstance(makefile, (Makefile, ExpansionContext))
+        assert isinstance(makefile, Makefile)
         assert isinstance(variables, Variables)
         assert isinstance(setting, list)
 
@@ -360,7 +323,7 @@ class Expansion(BaseExpansion, list):
             else:
                 assert isinstance(e, str)
                 fd.write(e)
-
+                    
     def resolvestr(self, makefile, variables, setting=[]):
         fd = StringIO()
         self.resolve(makefile, variables, fd, setting)
@@ -456,7 +419,7 @@ class Expansion(BaseExpansion, list):
 
 class Variables(object):
     """
-    A mapping from variable names to variables. Variables have flavor, source, and value. The value is an
+    A mapping from variable names to variables. Variables have flavor, source, and value. The value is an 
     expansion object.
     """
 
@@ -519,7 +482,7 @@ class Variables(object):
                     pvalue.concat(valueexp)
 
                     return pflavor, psource, pvalue
-
+                    
             if not expand:
                 return flavor, source, valuestr
 
@@ -861,7 +824,7 @@ class RemakeRuleContext(object):
             if not self.makefile.keepgoing:
                 self.resolvecb(error=True, didanything=self.didanything)
                 return
-
+        
         if len(self.resolvelist):
             dep, weak = self.resolvelist.pop(0)
             self.makefile.context.defer(dep.make,
@@ -1064,7 +1027,7 @@ class Target(object):
 
             for ri in r.matchesfor(dir, file, hasmatch):
                 candidates.append(ri)
-
+            
         newcandidates = []
 
         for r in candidates:
@@ -1138,7 +1101,7 @@ class Target(object):
                     " -> ".join(targetstack), self.target))
 
         targetstack = targetstack + [self.target]
-
+        
         indent = getindent(targetstack)
 
         _log.info("%sConsidering target '%s'", indent, self.target)
@@ -1232,7 +1195,7 @@ class Target(object):
 
         self.vpathtarget = self.target
         self.mtime = None
-
+        
     def beingremade(self):
         """
         When we remake ourself, we need to reset our mtime and vpathtarget.
@@ -1250,7 +1213,7 @@ class Target(object):
         self._state = MAKESTATE_FINISHED
         for cb in self._callbacks:
             makefile.context.defer(cb, error=self.error, didanything=self.didanything)
-        del self._callbacks
+        del self._callbacks 
 
     def make(self, makefile, targetstack, cb, avoidremakeloop=False, printerror=True):
         """
@@ -1273,11 +1236,11 @@ class Target(object):
         """
 
         serial = makefile.context.jcount == 1
-
+        
         if self._state == MAKESTATE_FINISHED:
             cb(error=self.error, didanything=self.didanything)
             return
-
+            
         if self._state == MAKESTATE_WORKING:
             assert not serial
             self._callbacks.append(cb)
@@ -1353,7 +1316,7 @@ def setautomaticvariables(v, makefile, target, prerequisites):
     prall = [pt.vpathtarget for pt in prtargets]
     proutofdate = [pt.vpathtarget for pt in withoutdups(prtargets)
                    if target.realmtime is None or mtimeislater(pt.mtime, target.realmtime)]
-
+    
     setautomatic(v, '@', [target.vpathtarget])
     if len(prall):
         setautomatic(v, '<', [prall[0]])
