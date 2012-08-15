@@ -72,13 +72,7 @@ class HybridMakeBackend(BackendBase):
 
     def _generate(self):
         for makefile in self.makefiles:
-            try:
-                self._generate_makefile(makefile)
-            except KeyboardInterrupt as ki:
-                raise ki
-            except:
-                print 'Error processing %s' % makefile.filename
-                traceback.print_exc()
+            self._generate_makefile(makefile)
 
         hybrid_path = os.path.join(self.objdir, 'hybridmake.mk')
         with open(hybrid_path, 'wb') as fh:
@@ -97,6 +91,9 @@ class HybridMakeBackend(BackendBase):
         output_directory = os.path.dirname(output_path)
         original.directory = output_directory
 
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+
         reldir = original.directory[len(self.objdir) + 1:]
 
         ignored = False
@@ -109,18 +106,26 @@ class HybridMakeBackend(BackendBase):
 
         if not ignored:
             splendid_path = os.path.join(output_directory, 'splendid.mk')
-            buf = StringIO()
-            strip_variables = self.write_splendid_makefile(original, buf)
 
-            # We don't always have content for the non-recursive file. Only write
-            # if necessary.
-            if len(buf.getvalue()):
-                with open(splendid_path, 'wb') as fh:
-                    print >>fh, buf.getvalue()
+            try:
+                buf = StringIO()
+                strip_variables = self.write_splendid_makefile(original, buf)
 
-                self.add_generate_output_file(splendid_path,
-                    [original.filename])
-                self.splendid_files.add(splendid_path)
+                # We don't always have content for the non-recursive file. Only write
+                # if necessary.
+                if len(buf.getvalue()):
+                    with open(splendid_path, 'wb') as fh:
+                        print >>fh, buf.getvalue()
+
+                    self.add_generate_output_file(splendid_path,
+                        [original.filename])
+                    self.splendid_files.add(splendid_path)
+            except:
+                # TODO Don't print here.
+                print 'Could not perform magic on %s' % original.filename
+
+                if True:
+                    traceback.print_exc()
 
         makefile = Makefile(output_path)
 
