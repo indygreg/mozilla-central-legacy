@@ -8,6 +8,7 @@ import re
 import time
 import traceback
 
+from mozbuild.backend.manager import BackendManager
 from mozbuild.base import Base
 from mozbuild.compilation.warnings import WarningsCollector
 from mozbuild.compilation.warnings import WarningsDatabase
@@ -91,14 +92,7 @@ class BuildInvocation(object):
 
 
 class TreeBuilder(Base):
-    """Provides a high-level interface for building a tree.
-
-    This currently implements the logic for building with our existing
-    configure + recursive make backend. In the future, backends will likely be
-    implemented as an interface and multiple backends will be supported. This
-    will be a significant change and this class will likely be heavily
-    modified, possibly even deleted.
-    """
+    """Provides a high-level interface for building a tree."""
 
     def build(self, on_update=None):
         """Builds the tree.
@@ -112,10 +106,20 @@ class TreeBuilder(Base):
                     0 for queued, 1 for in progress, and 2 for finished.
         """
 
+        # Builds involve roughly 3 steps:
+        #  1) configure
+        #  2) build config
+        #  3) building
+
         self._ensure_objdir_exists()
 
         c = self._spawn(Configure)
         c.ensure_configure()
+
+        # Ensure the build config/backend is proper.
+        manager = self._spawn(BackendManager)
+        manager.set_backend(self.settings.build.backend)
+        manager.ensure_generate()
 
         build = BuildInvocation()
         if on_update:
@@ -193,7 +197,8 @@ class TreeBuilder(Base):
                         {'exc': traceback.format_exc()},
                         '{exc}')
 
-        self._run_make(line_handler=handle_line, log=False)
+        # TODO hook up log consumer.
+        manager.build()
 
         self.log(logging.WARNING, 'warning_summary',
                 {'count': len(warnings_collector.database)},
