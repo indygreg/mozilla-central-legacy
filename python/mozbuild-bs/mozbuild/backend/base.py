@@ -30,6 +30,10 @@ class BackendBase(Base):
         self.output_files = {}
         self.output_directories = set()
 
+        self.build_phases = []
+
+        self._listeners = []
+
     @property
     def state(self):
         """The state for this backend.
@@ -65,6 +69,9 @@ class BackendBase(Base):
 
             print 'Removing output file: %s' % path
             os.unlink(path)
+
+    def add_listener(self, listener):
+        self._listeners.append(listener)
 
     def add_generate_output_file(self, output_path, dependency_paths=None):
         """Register a file as being created by the generate stage.
@@ -122,3 +129,7 @@ class BackendBase(Base):
         itself.
         """
         raise Exception('%s must implement _clean()' % __name__)
+
+    def _call_listeners(self, action, **kwargs):
+        for listener in self._listeners:
+            listener(action, **kwargs)
