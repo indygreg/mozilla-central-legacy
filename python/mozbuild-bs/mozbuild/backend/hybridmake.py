@@ -73,6 +73,9 @@ class HybridMakeBackend(BackendBase):
     ############################
 
     def _generate(self):
+        self.log(logging.INFO, 'hybridmake_generate_start', {},
+            'Reticulating Splines...')
+
         for makefile in self.makefiles:
             self._generate_makefile(makefile)
 
@@ -120,7 +123,7 @@ class HybridMakeBackend(BackendBase):
             except:
                 self.log(logging.WARNING, 'splendid_generation_error',
                     {'path': original.filename},
-                    'Error generating non-recursive makefile for {path}')
+                    'Could not generate non-recursive makefile for {path}')
 
                 if False:
                     traceback.print_exc()
