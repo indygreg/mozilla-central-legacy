@@ -171,7 +171,7 @@ class HybridMakeBackend(BackendBase):
         out_directories = [os.path.join(inc_dir, d) for d in directories]
         self.output_directories |= set(out_directories)
         print >>fh, 'CREATE_DIRS += %s' % ' '.join(
-			[normpath(d) for d in out_directories])
+            [normpath(d) for d in out_directories])
 
         output_filenames = []
 
@@ -185,9 +185,9 @@ class HybridMakeBackend(BackendBase):
             output_filenames.append(normpath(output_filename))
 
             print >>fh, '%s: %s' % (normpath(output_filename),
-				normpath(input_filename))
+                normpath(input_filename))
             print >>fh, '\t$(INSTALL) -R -m 644 "%s" "%s"\n' % (
-				normpath(input_filename), normpath(output_directory))
+                normpath(input_filename), normpath(output_directory))
 
         print >>fh, 'EXPORT_TARGETS += %s\n' % ' \\\n  '.join(output_filenames)
         print >>fh, 'PHONIES += EXPORT_TARGETS'
@@ -248,12 +248,12 @@ class HybridMakeBackend(BackendBase):
             # Install the original IDL file into the IDL directory.
             print >>fh, '%s: %s' % (normpath(output_idl_path), normpath(source))
             print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
-				normpath(source), normpath(idl_output_directory))
+                normpath(source), normpath(idl_output_directory))
             print >>fh, ''
 
             # Generate the .h header from the IDL file.
             print >>fh, '%s: %s $(IDL_DIST_IDL_FILES)' % (
-				normpath(output_header_path), normpath(source))
+                normpath(output_header_path), normpath(source))
             print >>fh, '\techo %s; \\' % basename
             print >>fh, '\t$(IDL_GENERATE_HEADER) -d %s -o $@ %s' % (
                 normpath(header_deps_path), normpath(source))
@@ -265,16 +265,16 @@ class HybridMakeBackend(BackendBase):
 
             # Install the generated .h header into the dist directory.
             print >>fh, '%s: %s' % (normpath(install_header_path),
-				normpath(output_header_path))
+                normpath(output_header_path))
             print >>fh, '\t$(INSTALL) -R -m 664 "%s" "%s"\n' % (
                 normpath(output_header_path),
-				normpath(header_output_directory))
+                normpath(header_output_directory))
             print >>fh, ''
 
             # Generate intermediate .xpt file.
             print >>fh, 'IDL_XPT_FILES += %s' % normpath(xpt_output_path)
             print >>fh, '%s: %s' % (normpath(xpt_output_path),
-				normpath(output_idl_path))
+                normpath(output_idl_path))
             print >>fh, '\techo %s; \\' % os.path.basename(xpt_output_path)
             print >>fh, '\t$(IDL_GENERATE_XPT) %s -d %s -o $@' % (
                 normpath(output_idl_path), normpath(xpt_deps_path))
@@ -297,14 +297,14 @@ class HybridMakeBackend(BackendBase):
         # Install final .xpt file into dist.
         print >>fh, 'IDL_XPT_INSTALL_FILES += %s' % normpath(xpt_final_path)
         print >>fh, '%s: %s' % (normpath(xpt_final_path),
-			normpath(xpt_module_path))
+            normpath(xpt_module_path))
         print >>fh, '\t$(INSTALL) -R -m 664 %s %s' % (
-			normpath(xpt_module_path), '$(DIST_COMPONENTS_DIR)')
+            normpath(xpt_module_path), '$(DIST_COMPONENTS_DIR)')
         print >>fh, ''
 
         if obj.write_manifest:
             print >>fh, '\t$(IDL_UPDATE_INTERFACES_MANIFEST) "interfaces %s"' % (
-				xpt_module_basename)
+                xpt_module_basename)
             print >>fh, '\t$(IDL_UPDATE_CHROME_MANIFEST)'
             print >>fh, ''
 
