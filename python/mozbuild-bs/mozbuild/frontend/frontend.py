@@ -219,7 +219,9 @@ class BuildFrontend(Base):
             return None
 
         self.input_files.add(source_path)
-        m = MozillaMakefile(source_path, os.path.join(self.objdir, relative))
+        output_directory = os.path.join(self.objdir, relative)
+        m = MozillaMakefile(source_path, relative, output_directory)
+        self.makefiles.add(m)
         m.env['DONT_LOAD_RULES'] = '1'
         substitute_makefile(m, self)
 
