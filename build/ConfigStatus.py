@@ -314,6 +314,10 @@ def config_status(topobjdir = '.', topsrcdir = '.',
         headers = options.headers
         if not options.files:
             files = []
+
+    # Build splendid does Makefile magic. Filter Makefiles.
+    files = [f for f in files if not f.endswith('Makefile')]
+
     # Default to display messages when giving --file or --headers on the
     # command line.
     if options.files or options.headers or options.verbose:
