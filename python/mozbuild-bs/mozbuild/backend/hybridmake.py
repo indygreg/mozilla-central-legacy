@@ -53,6 +53,19 @@ class HybridMakeBackend(BackendBase):
 
         self._makefiles = None
 
+        self.build_phases = [
+            'prelim',
+            'splendid-export',
+            'base',
+            'nspr',
+            'js',
+            'export',
+            'workaround',
+            'splendid-libs',
+            'platform',
+            'app',
+        ]
+
     @property
     def makefiles(self):
         if self._makefiles is None:
@@ -419,36 +432,63 @@ class HybridMakeBackend(BackendBase):
         for path in self.output_directories:
             self.mkdir(path)
 
+        def line_handler(line):
+            self._call_listeners('make_output', line=line)
+
+        def run_make(**kwargs):
+            self._run_make(line_handler=line_handler, log=False, **kwargs)
+
+        def enter_phase(phase):
+            self._call_listeners('enter_phase', phase=phase)
+
         # We have to run all the tiers separately because the main Makefile's
         # default target removes output directories, which is silly.
-        self._run_make(target='export_tier_base')
-        self._run_make(filename='hybridmake.mk', target='export')
-        self._run_make(target='tier_base')
-        self._run_make(target='tier_nspr')
-        self._run_make(target='tier_js')
-        self._run_make(target='export_tier_platform')
+        enter_phase('prelim')
+        run_make(target='export_tier_base')
+
+        enter_phase('splendid-export')
+        run_make(filename='hybridmake.mk', target='export')
+
+        enter_phase('base')
+        run_make(target='tier_base')
+
+        enter_phase('nspr')
+        run_make(target='tier_nspr')
+
+        enter_phase('js')
+        run_make(target='tier_js')
+
+        enter_phase('export')
+        run_make(target='export_tier_platform')
 
         # We should be able to use the hybridmake libs target immediately.
         # Unfortunately, there are some dependencies on Makefile-specific
         # rules we need to manually do first.
 
+        enter_phase('workaround')
+
         # DictionaryHelpers.h is installed by a one-off rule.
-        self._run_make(directory='js/xpconnect/src', target='libs',
+        run_make(directory='js/xpconnect/src', target='libs',
             ignore_errors=True)
 
         # etld_data.inc is a one-off rule.
-        self._run_make(directory='netwerk/dns', target='etld_data.inc')
+        run_make(directory='netwerk/dns', target='etld_data.inc')
 
         # charsetalias.properties.h is installed by a one-off rule.
-        self._run_make(directory='intl/locale/src',
+        run_make(directory='intl/locale/src',
             target='charsetalias.properties.h')
 
-        self._run_make(filename='hybridmake.mk', target='libs')
-        self._run_make(target='libs_tier_platform')
-        self._run_make(target='tools_tier_platform')
-        self._run_make(target='export_tier_app')
-        self._run_make(target='libs_tier_app')
-        self._run_make(target='tools_tier_app')
+        enter_phase('splendid-libs')
+        run_make(filename='hybridmake.mk', target='libs')
+
+        enter_phase('platform')
+        run_make(target='libs_tier_platform')
+        run_make(target='tools_tier_platform')
+
+        enter_phase('app')
+        run_make(target='export_tier_app')
+        run_make(target='libs_tier_app')
+        run_make(target='tools_tier_app')
 
     def _clean(self):
         pass
