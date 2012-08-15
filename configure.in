@@ -8943,6 +8943,14 @@ export MOZ_APP_NAME
 export STLPORT_CPPFLAGS
 export STLPORT_LDFLAGS
 export STLPORT_LIBS
+
+# When Makefile generation in config.status is disabled, js doesn't exist and
+# the js/src bit below doesn't like when its parent isn't there (it does
+# mkdir not mkdir -p.
+if test ! -d ./js; then
+    mkdir ./js
+fi
+
 AC_OUTPUT_SUBDIRS(js/src)
 ac_configure_args="$_SUBDIR_CONFIG_ARGS"
 
