@@ -105,6 +105,14 @@ class LibraryInfo(MakefileDerivedObject):
         'compile_cxxflags', # Full C++ compiler flags.
         'cxx_flags',           # C++ compiler flags
 
+        # Objective-C compilation.
+        'objc_sources', # Objective-C source files.
+        'objc_compile_flags',
+
+        # Objective-C++ compilation.
+        'objcpp_sources',
+        'objcpp_compile_flags',
+
         # Legacy.
         'defines',             # set of #define strings to use when compiling this library
         'export_library',      # Whether to export the library
@@ -132,6 +140,10 @@ class LibraryInfo(MakefileDerivedObject):
         self.c_flags = set()
         self.cpp_sources = set()
         self.cxx_flags = set()
+
+        self.objc_sources = set()
+        self.objcpp_sources = set()
+
         self.defines = set()
         self.export_library = None
         self.includes = set()

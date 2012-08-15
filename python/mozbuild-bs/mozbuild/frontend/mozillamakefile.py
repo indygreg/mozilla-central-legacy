@@ -234,6 +234,16 @@ class MozillaMakefile(Makefile):
         for f in self.get_variable_split('CSRCS'):
             l.c_sources.add(self.resolve_absolute_path(f, l))
 
+        l.used_variables.add('CMSRCS')
+        l.exclusive_variables.add('CMSRCS')
+        for f in self.get_variable_split('CMSRCS'):
+            l.objc_sources.add(self.resolve_absolute_path(f, l))
+
+        l.used_variables.add('CMMSRCS')
+        l.exclusive_variables.add('CMMSRCS')
+        for f in self.get_variable_split('CMMSRCS'):
+            l.objcpp_sources.add(self.resolve_absolute_path(f, l))
+
         # LIBXUL_LIBRARY implies static library generation and presence in
         # libxul.
         l.used_variables.add('LIBXUL_LIBRARY')
@@ -299,6 +309,10 @@ class MozillaMakefile(Makefile):
 
         l.compile_cxxflags = ' '.join(cxx_arguments)
 
+        # Objective-C++ uses almost the same mechanism.
+        cmm_arguments = self.normalize_compiler_flags(l, ['COMPILE_CMMFLAGS'])
+        l.objcpp_compile_flags = l.compile_cxxflags + ' ' + ' '.join(cmm_arguments)
+
         flags_vars = ['VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES', 'DSO_CFLAGS',
             'DSO_PIC_CFLAGS', 'CFLAGS', 'RTL_FLAGS', 'OS_CFLAGS']
 
@@ -307,6 +321,9 @@ class MozillaMakefile(Makefile):
         c_arguments.append('-DMOZILLA_CLIENT')
 
         l.compile_cflags = ' '.join(c_arguments)
+
+        cm_arguments = self.normalize_compiler_flags(l, ['COMPILE_CMFLAGS'])
+        l.objc_compile_flags = l.compile_cflags + ' ' + ' '.join(cm_arguments)
 
         return l
 
