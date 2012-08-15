@@ -79,11 +79,13 @@ class BuildFrontend(Base):
 
         # We add loaded Python modules because the code here contributes
         # to the frontend config as well.
-        for name, module in sys.modules.iteritems():
-            if not name.startswith('mozbuild') or not module:
-                continue
+        # TODO make conditional on a setting.
+        if True:
+            for name, module in sys.modules.iteritems():
+                if not name.startswith('mozbuild') or not module:
+                    continue
 
-            self.input_files.add(module.__file__)
+                self.input_files.add(module.__file__)
 
     @property
     def autoconf_output_files(self):
