@@ -24,87 +24,11 @@ RE_LEAVING_DIRECTORY = re.compile(
     r'^make(?:\[\d+\])?: Leaving directory `(?P<directory>[^\']+)')
 
 
-class BuildInvocation(object):
-    """Holds state relevant to an individual build invocation.
-
-    Currently, functionality is limited to tracking tier progression.
-    Functionality can be expanded to cover all kinds of reporting, as needed.
-    """
-    def __init__(self):
-        self.tier = None
-        self.action = None
-        self.directories = {}
-
-        self._on_update = []
-
-    def add_listener(self, listener):
-        """Registers a listener for this build instance.
-
-        When the build state has changed, the registered function gets called.
-        The function receives as named arguments:
-
-        build -- This BuildInvocation instance.
-        action -- Single word str describing the action being performed.
-        directory -- If a directory state change caused this update, this will
-            be the str of the directory that changed.
-        """
-        self._on_update.append(listener)
-
-    def update_tier(self, tier):
-        self.tier = tier
-        self.action = 'default'
-        self.directories = {}
-
-        self._call_listeners(action='new_tier')
-
-    def update_action(self, tier, action):
-        assert tier == self.tier
-
-        self.action = action
-
-        for k in self.directories.iterkeys():
-            self.directories[k] = {'start_time': None, 'finish_time': None}
-
-        self._call_listeners(action='new_action')
-
-    def register_directory(self, directory):
-        self.directories[directory] = {'start_time': None, 'finish_time': None}
-
-    def set_directory_in_progress(self, directory):
-        if not directory in self.directories:
-            return
-
-        self.directories[directory]['start_time'] = time.time()
-
-        self._call_listeners(action='directory_start', directory=directory)
-
-    def set_directory_finished(self, directory):
-        if not directory in self.directories:
-            return
-
-        self.directories[directory]['finish_time'] = time.time()
-
-        self._call_listeners(action='directory_finish', directory=directory)
-
-    def _call_listeners(self, action=None, directory=None):
-        for listener in self._on_update:
-            listener(build=self, action=action, directory=directory)
-
-
 class TreeBuilder(Base):
     """Provides a high-level interface for building a tree."""
 
-    def build(self, on_update=None):
-        """Builds the tree.
-
-        on_update - Function called when the progress of the build has changed.
-            This function receives the following named arguments:
-                tier - The tier the build is currently in.
-                action - The tier action the build is in.
-                directories - State of directories in the tier. Dict of str to
-                    int. Keys are relative paths in build system. Values are
-                    0 for queued, 1 for in progress, and 2 for finished.
-        """
+    def build(self, on_phase=None, on_backend=None):
+        """Builds the tree."""
 
         # Builds involve roughly 3 steps:
         #  1) configure
@@ -119,11 +43,11 @@ class TreeBuilder(Base):
         # Ensure the build config/backend is proper.
         manager = self._spawn(BackendManager)
         manager.set_backend(self.settings.build.backend)
-        manager.ensure_generate()
 
-        build = BuildInvocation()
-        if on_update:
-            build.add_listener(on_update)
+        if on_backend:
+            on_backend(manager.backend)
+
+        manager.ensure_generate()
 
         warnings_path = self._get_state_filename('warnings.json')
         warnings_database = WarningsDatabase()
@@ -146,7 +70,6 @@ class TreeBuilder(Base):
                     return
 
                 relative = directory[len(self.objdir) + 1:]
-                build.set_directory_in_progress(relative)
                 return
 
             match = RE_LEAVING_DIRECTORY.match(line)
@@ -157,29 +80,12 @@ class TreeBuilder(Base):
                     return
 
                 relative = directory[len(self.objdir) + 1:]
-                build.set_directory_finished(relative)
                 return
 
             # We don't log the entering/leaving directory messages because
             # they are spammy. The callback can choose to display something if
             # it really wants.
             self.log(logging.INFO, 'make', {'line': line}, '{line}')
-
-            match = RE_TIER_DECLARE.match(line)
-            if match:
-                tier = match.group('tier')
-                directories = match.group('directories').strip().split()
-
-                build.update_tier(tier)
-                for d in directories:
-                    build.register_directory(d)
-
-                return
-
-            match = RE_TIER_ACTION.match(line)
-            if match:
-                build.update_action(match.group('tier'), match.group('action'))
-                return
 
             # Ideally we shouldn't have this. But, if we crash, we shouldn't
             # crash the build. Currently, the only known source of crashing is
@@ -197,7 +103,17 @@ class TreeBuilder(Base):
                         {'exc': traceback.format_exc()},
                         '{exc}')
 
-        # TODO hook up log consumer.
+        def on_action(action, **kwargs):
+            if action == 'make_output':
+                handle_line(kwargs['line'])
+                return
+
+            if action == 'enter_phase':
+                if on_phase:
+                    on_phase(kwargs['phase'])
+
+        manager.backend.add_listener(on_action)
+
         manager.build()
 
         self.log(logging.WARNING, 'warning_summary',

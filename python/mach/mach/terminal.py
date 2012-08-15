@@ -70,17 +70,12 @@ class TerminalFooter(object):
         raise Exception('draw() must be implemented.')
 
 
-class BuildTierFooter(TerminalFooter):
-    # TODO grab these from build system properly.
-    TIERS = ['base', 'nspr', 'js', 'platform', 'app']
-    ACTIONS = ['default', 'export', 'libs', 'tools']
-
+class BuildPhaseFooter(TerminalFooter):
     def __init__(self, terminal):
         TerminalFooter.__init__(self, terminal)
 
-        self.tier = None
-        self.action = None
-        self.directories = {}
+        self.phases = []
+        self.phase = None
 
     def clear(self):
         self._clear_lines(1)
@@ -90,44 +85,12 @@ class BuildTierFooter(TerminalFooter):
         # 1. Not sure what the underlying cause of that is.
         print >>self.fh, self.t.move_x(0),
 
-        print >>self.fh, self.t.bold('TIER') + ':',
-        for tier in self.TIERS:
-            if tier == self.tier:
-                print >>self.fh, self.t.yellow(tier),
+        print >>self.fh, self.t.bold('PHASE') + ':',
+        for phase in self.phases:
+            if phase == self.phase:
+                print >>self.fh, self.t.yellow(phase),
             else:
-                print >>self.fh, tier,
-
-        print >>self.fh, self.t.bold('ACTION') + ':',
-        for action in self.ACTIONS:
-            if action == self.action:
-                print >>self.fh, self.t.yellow(action),
-            else:
-                print >>self.fh, action,
-
-        in_progress = 0
-        finished = 0
-        total = 0
-        names = set()
-
-        for name, state in self.directories.iteritems():
-            total += 1
-
-            if state['start_time'] is None:
-                pass
-            elif state['start_time'] and state['finish_time'] is None:
-                in_progress += 1
-                names.add(name)
-            elif state['finish_time']:
-                finished += 1
-            else:
-                raise Exception('Unknown directory state: %s' % state)
-
-        if total > 0:
-            print >>self.fh, self.t.bold('DIRECTORIES') + ':',
-            print >>self.fh, '%02d/%02d/%02d' % (in_progress, finished, total),
-
-            if in_progress > 0:
-                print >>self.fh, '(' + self.t.magenta(' '.join(names)) + ')',
+                print >>self.fh, phase,
 
 
 class BuildTerminal(object):
@@ -141,7 +104,7 @@ class BuildTerminal(object):
             return
 
         self.t = terminal
-        self.footer = BuildTierFooter(terminal)
+        self.footer = BuildPhaseFooter(terminal)
 
         handler = LoggingHandler()
         handler.setFormatter(log_manager.terminal_formatter)
@@ -169,48 +132,20 @@ class BuildTerminal(object):
         self.footer.clear()
         self.footer.draw()
 
-    def draw_directory_update(self, action, directory, state):
-        if action != 'directory_finish':
-            self.refresh()
+    def update_phase(self, phase=None):
+        if not self.footer or phase is None:
             return
 
-        elapsed = state['finish_time'] - state['start_time']
-
-        parts = [
-            '-' * 6,
-            '%.2fs' % elapsed,
-            '%s %s %s finished' % (self.footer.tier, self.footer.action,
-                directory),
-            '',
-        ]
-
-        width = self.t.width
-        if width > 80:
-            width = 80
-
-        msg = ' '.join(parts)
-        msg += '-' * (width - len(msg))
-
-        self.write_line(self.t.magenta(msg))
-
-    def update_progress(self, build=None, action=None, directory=None):
-        if not self.footer or build.tier is None:
+        if phase == self.footer.phase:
             return
 
-        self.footer.tier = build.tier
-
-        subtier = build.action
-
-        if not subtier:
-            subtier = 'default'
-
-        self.footer.action = subtier
-        self.footer.directories = build.directories
-
-        if action in ('directory_start', 'directory_finish'):
-            self.draw_directory_update(action, directory,
-                    build.directories[directory])
-            return
+        self.footer.phase = phase
 
         # Force a redraw.
         self.refresh()
+
+    def register_phases(self, phases):
+        if not self.footer:
+            return
+
+        self.footer.phases = phases

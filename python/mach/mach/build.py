@@ -18,7 +18,10 @@ class Build(Base, ArgumentProvider):
         builder = self._spawn(TreeBuilder)
         terminal = BuildTerminal(self.log_manager)
 
-        builder.build(on_update=terminal.update_progress)
+        def on_backend(backend):
+            terminal.register_phases(backend.build_phases)
+
+        builder.build(on_phase=terminal.update_phase, on_backend=on_backend)
 
     def backendconfig(self, backend):
         from mozbuild.backend.manager import BackendManager
