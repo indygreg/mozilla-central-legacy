@@ -159,7 +159,7 @@ class BuildFrontend(Base):
         root_path = os.path.join(self.srcdir, 'Makefile.in')
         self.input_files.add(root_path)
 
-        m = MozillaMakefile(root_path, directory=self.objdir)
+        m = MozillaMakefile(root_path, '.', self.objdir)
         substitute_makefile(m, self)
 
         for tier in m.get_variable_split('TIERS'):
@@ -185,7 +185,6 @@ class BuildFrontend(Base):
         This looks at the DIRS variables in a Makefile.in to determine paths to
         other Makefile.in's.
         """
-
         relative_path = os.path.join(relative, 'Makefile.in')
         source_path = os.path.join(self.srcdir, relative_path)
 
