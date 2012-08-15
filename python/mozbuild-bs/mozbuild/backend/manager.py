@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import logging
 import json
 import os.path
 
@@ -16,6 +17,7 @@ class BackendManager(Base):
         Base.__init__(self, settings, log_manager)
 
         self.frontend = self._spawn(BuildFrontend)
+        #self.frontend.load_input_files_from_root_makefile()
         self.frontend.load_autoconf_input_files()
 
         self.backend = None
@@ -46,6 +48,9 @@ class BackendManager(Base):
 
         # No state means we haven't done any generation.
         if state is None:
+            self.log(logging.INFO, 'backend_generate_reason',
+                {'reason': 'no_state'},
+                'Generating backend config because no state.')
             self.generate()
             return
 
@@ -54,10 +59,17 @@ class BackendManager(Base):
 
         for path, old_hash in state['frontend'].iteritems():
             if not os.path.exists(path):
+                self.log(logging.INFO, 'backend_generate_reason',
+                    {'reason': 'path_no_exist', 'path': path},
+                    'Generating backend config because path does not exist: '
+                    '{path}')
                 frontend_changed = True
                 break
 
             if hash_file(path) != old_hash:
+                self.log(logging.INFO, 'backend_generate_reason',
+                    {'reason': 'path_changed', 'path': path},
+                    'Generating backend config because file changed: {path}')
                 frontend_changed = True
                 break
 
