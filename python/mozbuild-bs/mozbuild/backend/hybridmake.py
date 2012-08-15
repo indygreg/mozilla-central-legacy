@@ -352,7 +352,7 @@ class HybridMakeBackend(BackendBase):
         deps_dir = os.path.join(makefile.directory, '.deps')
         self.output_directories.add(deps_dir)
 
-        for source in obj.cpp_sources:
+        def process_file(source, source_variable, compiler, flags):
             basename = os.path.splitext(os.path.basename(source))[0]
             object_basename = '%s.o' % basename
             deps_basename = '%s.pp' % object_basename
@@ -361,40 +361,38 @@ class HybridMakeBackend(BackendBase):
             deps_path = os.path.join(deps_dir, deps_basename)
 
             # TODO don't hardcode GCC/Clang flags.
-            flags = '%s -MD -MF %s' % (obj.compile_cxxflags, deps_path)
+            dependency_flags = '-MD -MF %s' % deps_path
 
-            print >>fh, 'CPP_OBJECT_FILES += %s' % normpath(object_path)
+            flags = '%s %s' % (flags, dependency_flags)
 
+            print >>fh, '%s += %s' % (source_variable, normpath(object_path))
             print >>fh, '%s: %s' % (normpath(object_path), normpath(source))
             print >>fh, '\techo %s; \\' % os.path.basename(source)
-            print >>fh, '\t$(CCC) -o $@ -c %s %s' % (flags, normpath(source))
+            print >>fh, '\t$(%s) -o $@ -c %s %s' % (compiler, flags,
+                normpath(source))
             print >>fh, ''
 
             # Include dependency file.
             print >>fh, '-include %s' % normpath(deps_path)
             print >>fh, ''
 
+
+        for source in obj.cpp_sources:
+            process_file(source, 'CPP_OBJECT_FILES', 'CCC',
+                obj.compile_cxxflags)
+
         # C files are very similar to C++ files.
         for source in obj.c_sources:
-            basename = os.path.splitext(os.path.basename(source))[0]
-            object_basename = '%s.o' % basename
-            deps_basename = '%s.pp' % object_basename
+            process_file(source, 'C_OBJECT_FILES', 'CC', obj.compile_cflags)
 
-            object_path = os.path.join(makefile.directory, object_basename)
-            deps_path = os.path.join(deps_dir, deps_basename)
+        # Object-C and Object-C++ sources are also similar.
+        for source in obj.objc_sources:
+            process_file(source, 'OBJC_OBJECT_FILES', 'CC',
+                obj.objc_compile_flags)
 
-            # TODO don't hardcode GCC/Clang flags.
-            flags = '%s -MD -MF %s' % (obj.compile_cflags, normpath(deps_path))
-
-            print >>fh, 'C_OBJECT_FILES += %s' % normpath(object_path)
-
-            print >>fh, '%s: %s' % (normpath(object_path), normpath(source))
-            print >>fh, '\techo %s; \\' % os.path.basename(source)
-            print >>fh, '\t$(CC) -o $@ -c %s %s' % (flags, normpath(source))
-            print >>fh, ''
-
-            print >>fh, '-include %s' % normpath(deps_path)
-            print >>fh, ''
+        for source in obj.objcpp_sources:
+            process_file(source, 'OBJCPP_OBJECT_FILES', 'CCC',
+                obj.objcpp_compile_flags)
 
         # We don't return exclusive_variables because we don't yet have feature
         # parity with rules.mk and stripping these variables causes rules.mk to
