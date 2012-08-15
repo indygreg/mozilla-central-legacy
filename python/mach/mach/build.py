@@ -20,6 +20,13 @@ class Build(Base, ArgumentProvider):
 
         builder.build(on_update=terminal.update_progress)
 
+    def backendconfig(self, backend):
+        from mozbuild.backend.manager import BackendManager
+
+        manager = self._spawn(BackendManager)
+        manager.set_backend(backend)
+        manager.generate()
+
     def tier(self, tier=None, subtier=None):
         """Perform an action on a specific tier."""
 
@@ -28,12 +35,41 @@ class Build(Base, ArgumentProvider):
         builder = self._spawn(TreeBuilder)
         builder.build_tier(tier, subtier)
 
+    def bxr(self, filename, load_all=False, load_from_make=False):
+        from mozbuild.buildconfig.bxr import generate_bxr
+
+        with open(filename, 'wb') as fh:
+            generate_bxr(self.config, fh, load_all=load_all,
+                load_from_make=load_from_make)
+
     @staticmethod
     def populate_argparse(parser):
-        group = parser.add_parser('build',
+        build = parser.add_parser('build',
             help='Build the tree.')
 
-        group.set_defaults(cls=Build, method='build')
+        build.set_defaults(cls=Build, method='build')
+
+        backendconfig = parser.add_parser('backendconfig',
+            help='Perform build backend configuration')
+
+        backends = set(['legacy', 'reformat', 'hybridmake'])
+        backendconfig.add_argument('backend',
+            default=self.settings.build.backend,
+            choices=backends, nargs='?',
+            help='Build backend to use.')
+
+        backendconfig.set_defaults(cls=Build, method='backendconfig')
+
+        bxr = parser.add_parser('bxr',
+            help='The Build Cross Reporter Tool.')
+        bxr.add_argument('--all', default=False, action='store_true',
+            dest='load_all',
+            help='Load all files, not just autoconf configured ones.')
+        bxr.add_argument('--make', default=False, action='store_true',
+            dest='load_from_make',
+            help='Load files by discovering through the root Makefile.in')
+
+        bxr.set_defaults(cls=Build, method='bxr', filename='bxr.html')
 
         tiers = Tiers()
 
