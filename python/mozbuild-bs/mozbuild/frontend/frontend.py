@@ -31,32 +31,6 @@ EXTERNALLY_MANAGED_PATHS = (
     'nsprpub',
 )
 
-# Paths in object directory that are produced by configure.
-CONFIGURE_MANAGED_FILES = (
-    'config/expandlibs_config.py',
-    'config/autoconf.mk',
-    'config/doxygen.cfg',
-    'gfx/cairo/cairo/src/cairo-features.h',
-    'js/src/config/autoconf.mk',
-    'js/src/config/expandlibs_config.py',
-    'js/src/config.status',
-    'js/src/editline/Makefile',   # TODO why is this getting produced?
-    'js/src/js-confdefs.h',
-    'js/src/js-config',
-    'js/src/js-config.h',
-    'js/src/Makefile',            # TODO why is this getting produced
-    'network/necko-config.h',
-    'nsprpub/config/autoconf.mk',
-    'nsprpub/config/nspr-config',
-    'nsprpub/config/nsprincl.mk',
-    'nsprpub/config/nsprincl.sh',
-    'nsprpub/config.status',
-    'xpcom/xpcom-config.h',
-    'xpcom/xpcom-private.h',
-    'config.status',
-    'mozilla-config.h',
-)
-
 IGNORE_BUILD_FILES = (
     # Uses order-only prerequisites, which PyMake can't handle.
     # Bug 703843 tracks fixing.
