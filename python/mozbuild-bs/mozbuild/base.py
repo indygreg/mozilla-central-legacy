@@ -368,6 +368,10 @@ class BuildConfig(ConfigProvider):
         register('build', 'osx_sdk_path', ConfigProvider.TYPE_ABSOLUTE_PATH,
             default=None)
 
+        register('build', 'backend', ConfigProvider.TYPE_STRING,
+            default='hybridmake',
+            choices=set(['legacy', 'hybridmake']))
+
         register('compiler', 'cc', ConfigProvider.TYPE_ABSOLUTE_PATH,
             default=None)
 

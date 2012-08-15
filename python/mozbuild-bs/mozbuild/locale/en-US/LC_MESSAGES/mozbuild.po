@@ -33,6 +33,18 @@ msgstr "Extra arguments to pass to configure. This is effectively a back "
        "settings. However, not every argument has a setting and this can be "
        "used to add these arguments."
 
+msgid "build.backend.short"
+msgstr "Build Backend"
+
+msgid "build.backend.full"
+msgstr "What backend to use to build the source tree. The source tree "
+       "can be built with one of the following backends:\n"
+       "    legacy -- The recursive makefile build system everyone "
+       "loves to hate.\n"
+       "    hybridmake -- A combination recursive and non-recursive "
+       "make-based build system. It is faster than the legacy build "
+       "system \o/"
+
 msgid "build.debug.short"
 msgstr "Debug Builds"
 
