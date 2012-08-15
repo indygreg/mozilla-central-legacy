@@ -94,8 +94,8 @@ class BuildFrontend(Base):
     for a build backend.
     """
 
-    def __init__(self, config):
-        Base.__init__(self, config)
+    def __init__(self, settings, log_manager):
+        Base.__init__(self, settings, log_manager)
 
         self.makefiles = MakefileCollection(self.srcdir, self.objdir)
         self.autoconf = None
