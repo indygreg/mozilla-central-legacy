@@ -53,8 +53,7 @@ class Build(Base, ArgumentProvider):
             help='Perform build backend configuration')
 
         backends = set(['legacy', 'reformat', 'hybridmake'])
-        backendconfig.add_argument('backend',
-            default=self.settings.build.backend,
+        backendconfig.add_argument('backend', default='hybridmake',
             choices=backends, nargs='?',
             help='Build backend to use.')
 
