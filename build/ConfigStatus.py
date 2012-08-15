@@ -315,8 +315,11 @@ def config_status(topobjdir = '.', topsrcdir = '.',
         if not options.files:
             files = []
 
-    # Build splendid does Makefile magic. Filter Makefiles.
-    files = [f for f in files if not f.endswith('Makefile')]
+    # Build splendid does Makefile magic. Filter Makefiles. But only if we are
+    # in "master generation mode." This is detected by the presence of multiple
+    # files. This is extremely hacky and should be done more robustly.
+    if len(files) > 1:
+        files = [f for f in files if not f.endswith('Makefile')]
 
     # Default to display messages when giving --file or --headers on the
     # command line.
