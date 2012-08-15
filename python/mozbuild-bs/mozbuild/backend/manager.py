@@ -54,26 +54,40 @@ class BackendManager(Base):
             self.generate()
             return
 
-        # If any of the frontend files changed, we need to regenerate.
-        frontend_changed = False
+        required_paths = set()
+        required_hashes = {}
 
         for path, old_hash in state['frontend'].iteritems():
-            if not os.path.exists(path):
-                self.log(logging.INFO, 'backend_generate_reason',
-                    {'reason': 'path_no_exist', 'path': path},
-                    'Generating backend config because path does not exist: '
-                    '{path}')
-                frontend_changed = True
-                break
+            required_paths.add(path)
+            required_hashes[path] = old_hash
 
-            if hash_file(path) != old_hash:
-                self.log(logging.INFO, 'backend_generate_reason',
-                    {'reason': 'path_changed', 'path': path},
-                    'Generating backend config because file changed: {path}')
-                frontend_changed = True
-                break
+        for path in state['backend']['output_directories']:
+            required_paths.add(path)
 
-        if frontend_changed:
+        for path, old_hash in state['backend']['output_files'].iteritems():
+            required_paths.add(path)
+            required_hashes[path] = old_hash
+
+        for path in required_paths:
+            if os.path.exists(path):
+                continue
+
+            self.log(logging.INFO, 'backend_generate_reason',
+                {'reason': 'path_no_exist', 'path': path},
+                'Generating backend config because path does not exist: {path}')
+            self.generate()
+            return
+
+        for path, old_hash in required_hashes.iteritems():
+            new_hash = hash_file(path)
+
+            if new_hash == old_hash:
+                continue
+
+            self.log(logging.INFO, 'backend_generate_reason',
+                {'reason': 'path_changed', 'path': path},
+                'Generating backend config because path changed: {path}')
+
             self.generate()
             return
 
@@ -93,13 +107,20 @@ class BackendManager(Base):
         state = {
             'frontend': {
 
-            }
+            },
+            'backend': {
+                'output_directories': list(self.backend.output_directories),
+                'output_files': {},
+            },
         }
 
         for path in self.frontend.input_files:
             assert os.path.isabs(path)
 
             state['frontend'][path] = hash_file(path)
+
+        for path in self.backend.output_files.iterkeys():
+            state['backend']['output_files'][path] = hash_file(path)
 
         path = self._get_state_filename('backend.json')
 
