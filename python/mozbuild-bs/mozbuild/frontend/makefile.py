@@ -1908,7 +1908,7 @@ class Makefile(object):
 
         lines = []
 
-        with open(self.filename, 'rb') as fh:
+        with open(self.filename, 'rbU') as fh:
             for line in fh:
                 # Handle simple case of no substitution first
                 if line.count('@') < 2:
