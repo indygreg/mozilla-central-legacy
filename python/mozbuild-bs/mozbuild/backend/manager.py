@@ -12,10 +12,10 @@ from mozbuild.frontend.frontend import BuildFrontend
 from mozbuild.util import hash_file
 
 class BackendManager(Base):
-    def __init__(self, config):
-        Base.__init__(self, config)
+    def __init__(self, settings, log_manager):
+        Base.__init__(self, settings, log_manager)
 
-        self.frontend = BuildFrontend(config)
+        self.frontend = self._spawn(BuildFrontend)
         self.frontend.load_autoconf_input_files()
 
         self.backend = None

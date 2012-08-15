@@ -24,7 +24,7 @@ class BackendBase(Base):
     The build phase is what is used to build the tree.
     """
     def __init__(self, frontend):
-        Base.__init__(self, frontend.config)
+        Base.__init__(self, frontend.settings, frontend.log_manager)
 
         self.frontend = frontend
         self.output_files = {}
