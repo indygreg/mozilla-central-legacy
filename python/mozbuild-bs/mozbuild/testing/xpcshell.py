@@ -13,9 +13,6 @@ from mozbuild.base import Base
 
 class XPCShellRunner(Base):
     """Run xpcshell tests."""
-    def __init__(self, config):
-        Base.__init__(self, config)
-
     def run_suite(self):
         # TODO hook up to harness runner and support things like shuffle,
         # proper progress updates, etc.
@@ -53,7 +50,8 @@ class XPCShellRunner(Base):
         self._run_xpcshell_harness(**args)
 
     def _run_xpcshell_harness(self, test_dirs=None, manifest=None,
-                              test_path=None, debug=False):
+        test_path=None, debug=False):
+
         # Obtain a reference to the xpcshell test runner.
         import runxpcshelltests
 

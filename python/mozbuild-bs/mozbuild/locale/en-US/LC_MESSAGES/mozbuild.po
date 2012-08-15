@@ -1,0 +1,78 @@
+msgid "paths.source_directory.short"
+msgstr "Source Directory"
+
+msgid "paths.source_directory.full"
+msgstr "Path to directory containing source tree."
+
+msgid "paths.object_directory.short"
+msgstr "Object Directory"
+
+msgid "paths.object_directory.full"
+msgstr "Path to directory where build files go."
+
+msgid "build.application.short"
+msgstr "Application"
+
+msgid "build.application.full"
+msgstr "The application to build. Set to 'browser' to build Firefox."
+
+msgid "build.threads.short"
+msgstr "Thread Count"
+
+msgid "build.threads.full"
+msgstr "The number of threads to use when performing CPU intensive tasks. "
+       "This constrols the level of parallelization. The default value is "
+       "the number of cores in your machine."
+
+msgid "build.configure_extra.short"
+msgstr "Extra Configure Arguments"
+
+msgid "build.configure_extra.full"
+msgstr "Extra arguments to pass to configure. This is effectively a back "
+       "door. Ideally, all arguments are provided through explicit config"
+       "settings. However, not every argument has a setting and this can be "
+       "used to add these arguments."
+
+msgid "build.debug.short"
+msgstr "Debug Builds"
+
+msgid "build.debug.full"
+msgstr "Compile with debug information. This makes builds easier to debug "
+       "but makes them slower."
+
+msgid "build.optimized.short"
+msgstr "Optimized Builds"
+
+msgid "build.optimized.full"
+msgstr "Build with compiler optimizations. If true, binaries will be "
+       "optimized, which makes them faster."
+
+msgid "build.osx_sdk_path.short"
+msgstr "OS X SDK Path"
+
+msgid "build.osx_sdk_path.full"
+msgstr "Path to OS X SDK to compile against."
+
+msgid "compiler.cc.short"
+msgstr "C Compiler"
+
+msgid "compiler.cc.full"
+msgstr "Path to C compiler."
+
+msgid "compiler.cflags.short"
+msgstr "C Compiler Arguments"
+
+msgid "compiler.cflags.full"
+msgstr "Extra arguments to add to C compiler invocations."
+
+msgid "compiler.cxx.short"
+msgstr "C++ Compiler"
+
+msgid "compiler.cxx.full"
+msgstr "Path to C++ compiler."
+
+msgid "compiler.cxxflags.short"
+msgstr "C++ Compiler Arguments"
+
+msgid "compiler.cxxflags.full"
+msgstr "Extra arguments to add to C++ compiler invocations."

@@ -2,260 +2,407 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# This file defines configuration settings for mozbuild. You can think of it as
-# an alternative to mozconfig files. There are a number of settings missing.
-# These can get added as needed.
+r"""
+This file defines classes for representing config data/settings.
 
-import ConfigParser
-import logging
+Config data is modeled as key-value pairs. Keys are grouped together into named
+sections. Individual config settings (options) have metadata associated with
+them. This metadata includes type, default value, valid values, etc.
+
+The main interface to config data is the ConfigSettings class. 1 or more
+ConfigProvider classes are associated with ConfigSettings and define what
+settings are available.
+
+Descriptions of individual config options can be translated to multiple
+languages using gettext. Each option has associated with it a domain and locale
+directory. By default, the domain is the section the option is in and the
+locale directory is the "locale" directory beneath the directory containing the
+module that defines it.
+
+People implementing ConfigProvider instances are expected to define a complete
+gettext .po and .mo file for the en-US locale. You can use the gettext-provided
+msgfmt binary to perform this conversion. Generation of the original .po file
+can be done via the write_pot() of ConfigSettings.
+"""
+
+import collections
+import gettext
 import os
-import multiprocessing
-import shlex
-import sys
 
-APPLICATION_OPTIONS = {
-    'browser':   'Desktop Browser (Firefox)',
-    'mail':      'Thunderbird',
-    'suite':     'Mozilal Suite (SeaMonkey)',
-    'calendar':  'Standalone Calendar (Sunbird)',
-    'xulrunner': 'XULRunner'
-}
-
-TYPE_POSITIVE_INTEGER = 1
-TYPE_STRING = 2
-TYPE_ABSOLUTE_PATH = 3
-TYPE_BOOLEAN = 4
-
-# Defines the set of recognized options in the config.
-OPTIONS = {
-    'paths': {
-        'source_directory': {
-            'short': 'Source Directory',
-            'help': 'Path to top-level source code directory.',
-            'type': TYPE_ABSOLUTE_PATH,
-            'required': True,
-        },
-        'object_directory': {
-            'short': 'Object Directory',
-            'help': 'Path to directory where generated files will go.',
-            'type': TYPE_ABSOLUTE_PATH,
-            'required': True,
-        },
-    },
-    'build': {
-        'application': {
-            'short':   'Application',
-            'help':    'The application to build.',
-            'options': APPLICATION_OPTIONS,
-        },
-        'threads': {
-            'short':  'Threads',
-            'help':   'How many parallel threads to launch when building.',
-            'type':   TYPE_POSITIVE_INTEGER,
-        },
-        'configure_args': {
-            'short': 'Configure Arguments',
-            'help': 'Extra arguments to pass to configure. This is '
-                    'effectively a back door. Ideally it should not exist.',
-            'type': TYPE_STRING,
-        },
-        'debug': {
-            'short': 'Debug Builds',
-            'help': 'Include debug information in builds',
-            'type': TYPE_BOOLEAN,
-        },
-        'optimize': {
-            'short': 'Optimized Builds',
-            'help': 'Whether to produce builds with optimized code',
-            'type': TYPE_BOOLEAN,
-        },
-        'macos_sdk': {
-            'short': 'OS X SDK',
-            'help': 'Full path to Mac OS X SDK',
-            'type': TYPE_ABSOLUTE_PATH,
-        },
-    },
-    'compiler': {
-        'cc': {
-            'short': 'C Compiler',
-            'help': 'Path to C compiler',
-            'type': TYPE_ABSOLUTE_PATH,
-        },
-        'cxx': {
-            'short': 'C++ Compiler',
-            'help': 'Path to C++ compiler',
-            'type': TYPE_ABSOLUTE_PATH,
-        },
-        'cflags': {
-            'short': 'C Compiler Flags',
-            'help': 'Extra flags to add to C compiler',
-            'type': TYPE_STRING,
-        },
-        'cxxflags': {
-            'short': 'C++ Compiler Flags',
-            'help': 'Extra flags to add to C++ compiler',
-            'type': TYPE_STRING,
-        },
-    },
-}
+from ConfigParser import RawConfigParser
 
 
-class BuildConfig(object):
-    """Represents a configuration for the build environment."""
+class ConfigProvider(object):
+    """Abstract base class for an object providing config settings.
 
-    __slots__ = (
-        'config',
-        'loaded_filename',
-        'logger',
-        'log_manager',
-    )
+    Classes implementing this interface expose configurable settings. Settings
+    are typically only relevant to that component itself. But, nothing says
+    settings can't be shared by multiple components.
+    """
 
-    DEFAULTS = {
-        'build': {
-            'application': 'browser',
-            'debug': False,
-            'optimize': False,
-            'threads': multiprocessing.cpu_count(),
-            'macos_sdk': None,
-        },
-    }
+    TYPE_STRING = 1
+    TYPE_BOOLEAN = 2
+    TYPE_POSITIVE_INTEGER = 3
+    TYPE_INTEGER = 4
+    TYPE_ABSOLUTE_PATH = 5
+    TYPE_RELATIVE_PATH = 6
+    TYPE_PATH = 7
 
-    def __init__(self, filename=None, log_manager=None):
-        self.loaded_filename = None
-        self.log_manager = log_manager
-        self.logger = logging.getLogger(__name__)
+    @classmethod
+    def register_settings(cls):
+        """Registers config settings.
 
-        self.config = ConfigParser.RawConfigParser()
+        This is called automatically be the constructor. Child classes are
+        expected to implement it. It likely makes 1 or more calls to
+        _register_setting() for the registration of individual settings.
+        """
+        if hasattr(cls, '_settings_registered'):
+            return
 
-        if filename:
-            self.load_file(filename)
-        else:
-            for k in sorted(OPTIONS.keys()):
-                self.config.add_section(k)
+        cls._settings_registered = True
 
-    @property
-    def source_directory(self):
-        return self.config.get('paths', 'source_directory')
+        cls.config_settings = {}
 
-    @property
-    def object_directory(self):
-        return self.config.get('paths', 'object_directory')
+        ourdir = os.path.dirname(__file__)
+        cls.config_settings_locale_directory = os.path.join(ourdir, 'locale')
 
-    @property
-    def debug_build(self):
-        return self.get_value_boolean('build', 'debug')
+        cls._register_settings()
 
-    @property
-    def optimized_build(self):
-        return self.get_value_boolean('build', 'optimize')
+    @classmethod
+    def _register_settings(cls):
+        raise NotImplemented('%s must implement _register_settings.' %
+            __name__)
 
-    @property
-    def thread_count(self):
-        return self.get_value('build', 'threads')
+    @classmethod
+    def register_setting(cls, section, option, type, **kwargs):
+        """Register a config setting with this type.
 
-    @property
-    def macos_sdk(self):
-        return self.get_value('build', 'macos_sdk')
+        This is a convenience method to populate available settings. It is
+        typically called in the class's _register_settings() implementation.
 
-    @property
-    def configure_args(self):
-        """Returns list of configure arguments for this configuration."""
-        args = []
+        Each setting must have:
 
-        args.append('--enable-application=%s' % (
-            self.get_value('build', 'application')))
+            section -- str section to which the setting belongs. This is how
+                settings are grouped.
 
-        # TODO should be conditional on DirectX SDK presence
-        if os.name == 'nt':
-            args.append('--disable-angle')
+            option -- str id for the setting. This must be unique within the
+                section it appears.
 
-        if self.debug_build:
-            args.append('--enable-debug')
+            type -- a ConfigProvider.TYPE_* "constant" defining the type of
+                the setting.
 
-        if self.optimized_build:
-            args.append('--enable-optimize')
+        Each setting has the following optional parameters:
 
-        if self.macos_sdk:
-            args.append('--with-macos-sdk=%s' % self.macos_sdk)
+            default -- The default value for the setting. If None (the default)
+                there is no default.
 
-        if self.config.has_option('build', 'configure_args'):
-            args.extend(shlex.split(
-                self.config.get('build', 'configure_args')))
+            choices -- A set of values this setting can hold. Values not in
+                this set are invalid.
 
-        return args
+            domain -- Translation domain for this setting. By default, the
+                 domain is the same as the section name.
+        """
+        if not section in cls.config_settings:
+            cls.config_settings[section] = {}
 
-    def populate_default_paths(self, source_dir):
-        assert os.path.isabs(source_dir)
+        if option in cls.config_settings[section]:
+            raise Exception('Setting has already been registered: %s.%s' % (
+                section, option))
 
-        self.config.set('paths', 'source_directory', source_dir)
-        self.config.set('paths', 'object_directory', os.path.join(source_dir,
-            'objdir'))
+        domain = kwargs.get('domain', section)
 
-    def get_value(self, section, option):
-        if self.config.has_option(section, option):
-            return self.config.get(section, option)
-
-        default_section = self.DEFAULTS.get(section, {})
-
-        return default_section[option]
-
-    def get_value_boolean(self, section, option):
-        if self.config.has_option(section, option):
-            return self.config.getboolean(section, option)
-
-        default_section = self.DEFAULTS.get(section, {})
-
-        return default_section[option]
-
-    def has_value(self, section, option):
-        return self.config.has_option(section, option)
-
-    def load_file(self, filename):
-        self.config.read(filename)
-
-        for section in self.config.sections():
-            if section not in OPTIONS:
-                extra = {
-                    'params': {'section': section},
-                    'action': 'config_unknown_section',
-                }
-                self.logger.log(logging.WARN,
-                    'Unknown section in config file: {section}',
-                    extra=extra)
-                continue
-
-            for k, v in self.config.items(section):
-                if k not in OPTIONS[section]:
-                    extra = {
-                        'params': {
-                            'section': section,
-                            'name': k,
-                        },
-                        'action': 'config_unknown_option',
-                    }
-                    self.logger.log(logging.WARN,
-                            'Unknown option: {section}.{name}',
-                            extra=extra)
-
-        self.loaded_filename = filename
-
-    def save(self, filename):
-        """Saves the build configuration to a file."""
-        with open(filename, 'wb') as f:
-            self.config.write(f)
-
-    def get_environment_variables(self):
-        env = {}
-
-        mapping = {
-            ('compiler', 'cc'): 'CC',
-            ('compiler', 'cxx'): 'CXX',
-            ('compiler', 'cflags'): 'CFLAGS',
-            ('compiler', 'cxxflags'): 'CXXFLAGS',
+        meta = {
+            'short': '%s.short' % option,
+            'full': '%s.full' % option,
+            'type': type,
+            'domain': domain,
+            'localedir': cls.config_settings_locale_directory,
         }
 
-        for (section, option), k in mapping.iteritems():
-            if self.has_value(section, option):
-                env[k] = self.get_value(section, option)
+        if 'default' in kwargs:
+            meta['default'] = kwargs['default']
 
-        return env
+        if 'choices' in kwargs:
+            meta['choices'] = kwargs['choices']
+
+        cls.config_settings[section][option] = meta
+
+
+class ConfigSettings(collections.Mapping):
+    """Interface for configuration settings.
+
+    This is the main interface to the configuration.
+
+    A configuration is a collection of sections. Each section contains
+    key-value pairs.
+
+    When an instance is created, the caller first registers ConfigProvider
+    instances with it. This tells the ConfigSettings what individual settings
+    are available and defines extra metadata associated with those settings.
+    This is used for validation, etc.
+
+    Once ConfigProvider instances are registered, a config is populated. It can
+    be loaded from files or populated by hand.
+
+    ConfigSettings instances are accessed like dictionaries or by using
+    attributes. e.g. the section "foo" is accessed through either
+    settings.foo or settings['foo'].
+
+    Sections are modeled by the ConfigSection class which is defined inside
+    this one. They look just like dicts or classes with attributes. To access
+    the "bar" option in the "foo" section:
+
+        value = settings.foo.bar
+        value = settings['foo']['bar']
+        value = settings.foo['bar']
+
+    Assignment is similar:
+
+        settings.foo.bar = value
+        settings['foo']['bar'] = value
+        settings['foo'].bar = value
+
+    You can even delete user-assigned values:
+
+        del settings.foo.bar
+        del settings['foo']['bar']
+
+    If there is a default, it will be returned.
+
+    When settings are mutated, they are validated against the registered
+    providers. Setting unknown settings or setting values to illegal values
+    will result in exceptions being raised.
+    """
+
+    TYPE_MAPPING = {
+        ConfigProvider.TYPE_STRING: (basestring),
+        ConfigProvider.TYPE_BOOLEAN: (bool),
+        ConfigProvider.TYPE_POSITIVE_INTEGER: (int),
+        ConfigProvider.TYPE_INTEGER: (int),
+        ConfigProvider.TYPE_ABSOLUTE_PATH: (basestring),
+        ConfigProvider.TYPE_RELATIVE_PATH: (basestring),
+        ConfigProvider.TYPE_PATH: (basestring),
+    }
+
+    class ConfigSection(collections.MutableMapping, object):
+        """Represents an individual config section."""
+        def __init__(self, config, name, settings):
+            object.__setattr__(self, '_config', config)
+            object.__setattr__(self, '_name', name)
+            object.__setattr__(self, '_settings', settings)
+
+        # MutableMapping interface
+        def __len__(self):
+            return len(self._settings)
+
+        def __iter__(self):
+            return self._settings.iterkeys()
+
+        def __contains__(self, k):
+            return k in self._settings
+
+        def __getitem__(self, k):
+            if k not in self._settings:
+                raise KeyError('Option not registered with provider: %s' % k)
+
+            meta = self._settings[k]
+
+            if self._config.has_option(self._name, k):
+                if meta['type'] == ConfigProvider.TYPE_BOOLEAN:
+                    return self._config.getboolean(self._name, k)
+
+                if meta['type'] in (ConfigProvider.TYPE_POSITIVE_INTEGER,
+                    ConfigProvider.TYPE_INTEGER):
+                    return self._config.getint(self._name, k)
+
+                return self._config.get(self._name, k)
+
+            if not 'default' in meta:
+                raise KeyError('No default value registered: %s' % k)
+
+            return meta['default']
+
+        def __setitem__(self, k, v):
+            if k not in self._settings:
+                raise KeyError('Option not registered with provider: %s' % k)
+
+            meta = self._settings[k]
+
+            assert meta['type'] in ConfigSettings.TYPE_MAPPING
+
+            if not isinstance(v, ConfigSettings.TYPE_MAPPING[meta['type']]):
+                raise ValueError('Value not of proper type.')
+
+            if meta['type'] == ConfigProvider.TYPE_POSITIVE_INTEGER:
+                if v < 0:
+                    raise ValueError('Integer value must be positive: %d' % v)
+
+            elif meta['type'] == ConfigProvider.TYPE_ABSOLUTE_PATH:
+                if not os.path.isabs(v):
+                    raise ValueError('Value must be an absolute path: %s' % v)
+
+            elif meta['type'] == ConfigProvider.TYPE_RELATIVE_PATH:
+                if os.path.isabs(v):
+                    raise ValueError('Value must be a relative path: %s' % v)
+
+            if not self._config.has_section(self._name):
+                self._config.add_section(self._name)
+
+            # We use ConfigParser.getboolean above which expects certain
+            # values. We coerce appropriately.
+            if meta['type'] == ConfigProvider.TYPE_BOOLEAN:
+                if v:
+                    v = 'true'
+                else:
+                    v = 'false'
+
+            self._config.set(self._name, k, v)
+
+        def __delitem__(self, k):
+            self._config.remove_option(self._name, k)
+
+            # Prune empty sections.
+            if not len(self._config.options(self._name)):
+                self._config.remove_section(self._name)
+
+        def __getattr__(self, k):
+            return self.__getitem__(k)
+
+        def __setattr__(self, k, v):
+            self.__setitem__(k, v)
+
+        def __delattr__(self, k):
+            self.__delitem__(k)
+
+
+    def __init__(self):
+        self._config = RawConfigParser()
+
+        self._settings = {}
+        self._sections = {}
+        self._finalized = False
+        self._loaded_filenames = set()
+
+    def load_file(self, filename):
+        self.load_files([filename])
+
+    def load_files(self, filenames):
+        """Load a config from files specified by their paths.
+
+        Files are loaded in the order given. Subsequent files will overwrite
+        values from previous files. If a file does not exist, it will be
+        ignored.
+        """
+        filtered = [f for f in filenames if os.path.exists(f)]
+
+        self.load_fps([open(f, 'r') for f in filtered])
+        self._loaded_filenames.update(set(filtered))
+
+    def load_fps(self, fps):
+        """Load config data by reading file objects."""
+
+        for fp in fps:
+            self._config.readfp(fp)
+
+    def loaded_files(self):
+        return self._loaded_filenames
+
+    def write(self, fh):
+        """Write the config to a file object."""
+        self._config.write(fh)
+
+    def validate(self):
+        """Ensure that the current config passes validation.
+
+        This is a generator of tuples describing any validation errors. The
+        elements of the tuple are:
+
+            (bool) True if error is fatal. False if just a warning.
+            (str) Type of validation issue. Can be one of ('unknown-section',
+                'missing-required', 'type-error')
+        """
+        pass
+
+    def register_provider(self, provider):
+        """Register a ConfigProvider with this settings interface."""
+
+        if self._finalized:
+            raise Exception('Providers cannot be registered after finalized.')
+
+        provider.register_settings()
+
+        for section_name, settings in provider.config_settings.iteritems():
+            section = self._settings.get(section_name, {})
+
+            for k, v in settings.iteritems():
+                if k in section:
+                    raise Exception('Setting already registered: %s.%s' %
+                        section_name, k)
+
+                section[k] = v
+
+            self._settings[section_name] = section
+
+    def write_pot(self, fh):
+        """Write a pot gettext translation file."""
+
+        for section in sorted(self):
+            fh.write('# Section %s\n\n' % section)
+            for option in sorted(self[section]):
+                fh.write('msgid "%s.%s.short"\n' % (section, option))
+                fh.write('msgstr ""\n\n')
+
+                fh.write('msgid "%s.%s.full"\n' % (section, option))
+                fh.write('msgstr ""\n\n')
+
+            fh.write('# End of section %s\n\n' % section)
+
+    def option_help(self, section, option):
+        """Obtain the translated help messages for an option."""
+
+        meta = self[section]._settings[option]
+
+        # Providers should always have an en-US translation. If they don't,
+        # they are coded wrong and this will raise.
+        default = gettext.translation(meta['domain'], meta['localedir'],
+            ['en-US'])
+
+        t = gettext.translation(meta['domain'], meta['localedir'],
+            fallback=True)
+        t.add_fallback(default)
+
+        short = t.ugettext('%s.%s.short' % (section, option))
+        full = t.ugettext('%s.%s.full' % (section, option))
+
+        return (short, full)
+
+    def _finalize(self):
+        if self._finalized:
+            return
+
+        for section, settings in self._settings.iteritems():
+            s = ConfigSettings.ConfigSection(self._config, section, settings)
+            self._sections[section] = s
+
+        self._finalized = True
+
+    # Mapping interface.
+    def __len__(self):
+        return len(self._settings)
+
+    def __iter__(self):
+        self._finalize()
+
+        return self._sections.iterkeys()
+
+    def __contains__(self, k):
+        return k in self._settings
+
+    def __getitem__(self, k):
+        self._finalize()
+
+        return self._sections[k]
+
+    # Allow attribute access because it looks nice.
+    def __getattr__(self, k):
+        return self.__getitem__(k)

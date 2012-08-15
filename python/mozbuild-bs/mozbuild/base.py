@@ -3,11 +3,14 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import logging
+import multiprocessing
 import os
-import os.path
+import shlex
 import subprocess
 
 from mozprocess.processhandler import ProcessHandlerMixin
+
+from mozbuild.config import ConfigProvider
 
 # Perform detection of operating system environment. This is used by command
 # execution. We only do this once to save redundancy. Yes, this can fail module
@@ -38,18 +41,19 @@ class Base(object):
     processes, etc. This class provides that functionality. Other modules can
     inherit from this class to obtain this functionality easily.
     """
-    def __init__(self, config):
-        self.config = config
+    def __init__(self, settings, log_manager):
+        self.settings = settings
+        self.config = BuildConfig(settings)
         self.logger = logging.getLogger(__name__)
-        self.log_manager = config.log_manager
+        self.log_manager = log_manager
 
     @property
     def srcdir(self):
-        return self.config.source_directory
+        return self.settings.paths.source_directory
 
     @property
     def objdir(self):
-        return self.config.object_directory
+        return self.settings.paths.object_directory
 
     @property
     def distdir(self):
@@ -120,7 +124,7 @@ class Base(object):
             args.extend(['-f', filename])
 
         if allow_parallel:
-            args.append('-j%d' % (self.config.thread_count + 2))
+            args.append('-j%d' % (self.settings.build.threads + 2))
 
         if ignore_errors:
             args.append('-k')
@@ -145,7 +149,7 @@ class Base(object):
             # We invoke pymake as a sub-process. Ideally, we would import the
             # module and make a method call. Unfortunately, the PyMake API
             # doesn't easily support this.
-            path = os.path.join(self.config.source_directory, 'build',
+            path = os.path.join(self.settings.paths.source_directory, 'build',
                     'pymake', 'make.py')
 
             args.insert(0, path)
@@ -265,3 +269,114 @@ class Base(object):
                     return path
 
         return None
+
+    def _spawn(self, cls):
+        """Create a new Base-derived class instance from ourselves.
+
+        This is used as a convenience method to create other Base-derived class
+        instances. It can only be used on classes that have the same
+        constructor arguments as Base.
+        """
+
+        return cls(self.settings, self.log_manager)
+
+
+class BuildConfig(ConfigProvider):
+    """Represents a configuration for the build environment."""
+
+    def __init__(self, settings):
+        self.settings = settings
+
+    @property
+    def configure_args(self):
+        """Returns list of configure arguments for this configuration."""
+        args = []
+
+        args.append('--enable-application=%s' % (
+            self.settings.build.application))
+
+        # TODO should be conditional on DirectX SDK presence
+        if os.name == 'nt':
+            args.append('--disable-angle')
+
+        if self.settings.build.debug:
+            args.append('--enable-debug')
+
+        if self.settings.build.optimized:
+            args.append('--enable-optimize')
+
+        if self.settings.build.osx_sdk_path:
+            args.append('--with-macos-sdk=%s' % self.settings.build.osx_sdk_path)
+
+        if self.settings.build.configure_extra:
+            args.extend(shlex.split(self.settings.build.configure_extra))
+
+        return args
+
+    def populate_default_paths(self, source_dir):
+        assert os.path.isabs(source_dir)
+
+        self.settings.paths.source_directory = source_dir
+        self.settings.paths.object_directory = os.path.join(source_dir,
+            'objdir')
+
+    def get_environment_variables(self):
+        env = {}
+
+        mapping = {
+            ('compiler', 'cc'): 'CC',
+            ('compiler', 'cxx'): 'CXX',
+            ('compiler', 'cflags'): 'CFLAGS',
+            ('compiler', 'cxxflags'): 'CXXFLAGS',
+        }
+
+        for (section, option), k in mapping.iteritems():
+            value = self.settings[section][option]
+
+            if value:
+                env[k] = value
+
+        return env
+
+    @classmethod
+    def _register_settings(cls):
+        def register(section, option, type, **kwargs):
+            cls.register_setting(section, option, type, domain='mozbuild',
+                **kwargs)
+
+        register('paths', 'source_directory', ConfigProvider.TYPE_ABSOLUTE_PATH)
+
+        register('paths', 'object_directory', ConfigProvider.TYPE_ABSOLUTE_PATH)
+
+        register('build', 'application', ConfigProvider.TYPE_STRING,
+            choices=set(['browser', 'mail', 'suite', 'calendar', 'xulrunner']),
+            default='browser')
+
+        register('build', 'threads',
+            ConfigProvider.TYPE_POSITIVE_INTEGER,
+            default=multiprocessing.cpu_count())
+
+        register('build', 'configure_extra', ConfigProvider.TYPE_STRING,
+            default='')
+
+        register('build', 'debug', ConfigProvider.TYPE_BOOLEAN,
+            default=False)
+
+        register('build', 'optimized', ConfigProvider.TYPE_BOOLEAN,
+            default=True)
+
+        register('build', 'osx_sdk_path', ConfigProvider.TYPE_ABSOLUTE_PATH,
+            default=None)
+
+        register('compiler', 'cc', ConfigProvider.TYPE_ABSOLUTE_PATH,
+            default=None)
+
+        register('compiler', 'cflags', ConfigProvider.TYPE_STRING,
+            default=None)
+
+        register('compiler', 'cxx', ConfigProvider.TYPE_ABSOLUTE_PATH,
+            default=None)
+
+        register('compiler', 'cxxflags', ConfigProvider.TYPE_STRING,
+            default=None)
+

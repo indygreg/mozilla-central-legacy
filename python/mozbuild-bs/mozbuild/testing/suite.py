@@ -8,10 +8,6 @@ from mozbuild.testing.mochitest import MochitestRunner
 
 
 class Suite(Base):
-    """Run entire test suites."""
-    def __init__(self, config):
-        Base.__init__(self, config)
-
     def run_suite(self, suite):
         """Run a named test suite.
 
@@ -26,8 +22,8 @@ class Suite(Base):
         TODO support for other test suite types.
         """
 
-        xpcshell = XPCShellRunner(self.config)
-        mochitest = MochitestRunner(self.config)
+        xpcshell = self._spawn(XPCShellRunner)
+        mochitest = self._spawn(MochitestRunner)
 
         if suite == 'all':
             xpcshell.run_suite()

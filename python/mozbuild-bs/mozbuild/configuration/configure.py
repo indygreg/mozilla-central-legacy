@@ -34,8 +34,8 @@ class Configure(Base):
     """
     AUTOCONFS = ['autoconf-2.13', 'autoconf2.13', 'autoconf213']
 
-    def __init__(self, config):
-        Base.__init__(self, config)
+    def __init__(self, settings, log_manager):
+        Base.__init__(self, settings, log_manager)
 
         # False is used as a semaphore to prevent multiple lookups since None
         # means no executable was found.
@@ -161,9 +161,7 @@ class Configure(Base):
         for p in glob.glob('%s/*/confvars.sh' % self.srcdir):
             paths.append(p)
 
-        # The active config can also influence configure.
-        if self.config.loaded_filename:
-            paths.append(self.config.loaded_filename)
+        paths.extend(self.settings.loaded_files())
 
         return paths
 

@@ -100,9 +100,6 @@ class TreeBuilder(Base):
     modified, possibly even deleted.
     """
 
-    def __init__(self, config):
-        Base.__init__(self, config)
-
     def build(self, on_update=None):
         """Builds the tree.
 
@@ -117,7 +114,7 @@ class TreeBuilder(Base):
 
         self._ensure_objdir_exists()
 
-        c = Configure(self.config)
+        c = self._spawn(Configure)
         c.ensure_configure()
 
         build = BuildInvocation()

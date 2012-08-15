@@ -13,9 +13,6 @@ class MochitestRunner(Base):
     This currently contains just the basics for running mochitests. We may want
     to hook up result parsing, etc.
     """
-    def __init__(self, config):
-        Base.__init__(self, config)
-
     def run_plain_suite(self):
         """Runs all plain mochitests."""
         # TODO hook up Python harness runner.
