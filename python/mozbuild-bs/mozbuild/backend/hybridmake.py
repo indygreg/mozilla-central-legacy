@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import logging
 import os.path
 import traceback
 
@@ -13,6 +14,7 @@ import mozbuild.frontend.data as data
 from mozbuild.backend.base import BackendBase
 from mozbuild.backend.utils import makefile_output_path
 from mozbuild.backend.utils import substitute_makefile
+from mozbuild.util import FileAvoidWrite
 
 IGNORE_PATHS = [
     'security/manager',
@@ -108,23 +110,19 @@ class HybridMakeBackend(BackendBase):
             splendid_path = os.path.join(output_directory, 'splendid.mk')
 
             try:
-                buf = StringIO()
-                strip_variables = self.write_splendid_makefile(original, buf)
+                with FileAvoidWrite(splendid_path) as buf:
+                    strip_variables = self.write_splendid_makefile(original, buf)
 
-                # We don't always have content for the non-recursive file. Only write
-                # if necessary.
-                if len(buf.getvalue()):
-                    with open(splendid_path, 'wb') as fh:
-                        print >>fh, buf.getvalue()
-
-                    self.add_generate_output_file(splendid_path,
-                        [original.filename])
-                    self.splendid_files.add(splendid_path)
+                    if len(buf.getvalue()):
+                        self.add_generate_output_file(splendid_path,
+                            [original.filename])
+                        self.splendid_files.add(splendid_path)
             except:
-                # TODO Don't print here.
-                print 'Could not perform magic on %s' % original.filename
+                self.log(logging.WARNING, 'splendid_generation_error',
+                    {'path': original.filename},
+                    'Error generating non-recursive makefile for {path}')
 
-                if True:
+                if False:
                     traceback.print_exc()
 
         makefile = Makefile(output_path)
@@ -137,7 +135,7 @@ class HybridMakeBackend(BackendBase):
         for name in strip_variables:
             makefile.remove_variable_assignment(name)
 
-        with open(output_path, 'wb') as fh:
+        with FileAvoidWrite(output_path) as fh:
             fh.write(makefile.to_source())
 
         self.add_generate_output_file(output_path, [original.filename])
