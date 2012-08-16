@@ -1535,7 +1535,7 @@ class StatementCollection(object):
 
         This yields the same values as variable_assignments().
         """
-        for t in self._variable_assignments():
+        for t in self.variable_assignments():
             if t[0].statement.targetexp is None:
                 continue
 
