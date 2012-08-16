@@ -192,12 +192,14 @@ class MozillaMakefile(Makefile):
         return rewritten
 
     def get_compiler_flags(self, l, source_var, varnames):
-        var_values = [self.get_variable_string(f) for f in varnames]
-        var_values = [f for f in var_values if f is not None]
+        var_values = {}
+        for name in varnames:
+            value = self.get_variable_split(name)
 
-        # TODO need more robust parsing.
-        arguments = ' '.join(var_values).split()
-        arguments = self.normalize_compiler_arguments(arguments, l.directory)
+            if not len(value):
+                continue
+
+            var_values[name] = value
 
         # Here there be dragons.
         #
@@ -251,17 +253,30 @@ class MozillaMakefile(Makefile):
 
             for target_var in target_vars:
                 value = make_target.variables.get(target_var, True)[2]
-                values[target_var] = value.resolvestr(self.makefile,
+                values[target_var] = value.resolvesplit(self.makefile,
                     make_target.variables)
 
             target_flags[targets[target]] = values
 
-        # We kept per-variable values above. Here, we collapse into a single
-        # string.
+        # We need to merge the target flags with the global ones if the target
+        # does not provide that variable.
+        for path, variables in target_flags.iteritems():
+            for k, v in var_values.iteritems():
+                if k not in variables:
+                    variables[k] = v
+
+        # Finally collapse down into a single list.
         for path in target_flags.keys():
-            normalized = ' '.join(target_flags[path].values()).split()
+            arguments = []
+            for flags in target_flags[path].values():
+                arguments.extend(flags)
             target_flags[path] = self.normalize_compiler_arguments(
-                normalized, l.directory)
+                arguments, l.directory)
+
+        arguments = []
+        for flags in var_values.values():
+            arguments.extend(self.normalize_compiler_arguments(flags,
+                l.directory))
 
         return arguments, target_flags
 
