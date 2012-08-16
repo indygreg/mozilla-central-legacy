@@ -103,8 +103,13 @@ class Base(object):
 
     def _run_make(self, directory=None, filename=None, target=None, log=True,
             srcdir=False, allow_parallel=True, line_handler=None, env=None,
-            ignore_errors=False):
+            ignore_errors=False, builtin_rules=False):
         """Invoke make.
+
+        Built-in rules are disabled by default for performance reasons. These
+        built-in rules cause make to perform a lot of unecessary computation.
+        Our build system doesn't use built-in rules, so disabling is a safe
+        default.
 
         directory -- Relative directory to look for Makefile in.
         filename -- Explicit makefile to run.
@@ -137,6 +142,9 @@ class Base(object):
         # and use hooks in its API. Unfortunately, it doesn't provide that
         # feature... yet.
         args.append('-w')
+
+        if not builtin_rules:
+            args.append('--no-builtin-rules')
 
         if isinstance(target, list):
             args.extend(target)
