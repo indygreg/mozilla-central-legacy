@@ -113,6 +113,11 @@ class LibraryInfo(MakefileDerivedObject):
         'objcpp_sources',
         'objcpp_compile_flags',
 
+        # General compilation.
+        # TODO consider recording per-source flags always rather than separate
+        # global and per-file values.
+        'source_specific_flags',
+
         # Legacy.
         'defines',             # set of #define strings to use when compiling this library
         'export_library',      # Whether to export the library
@@ -143,6 +148,8 @@ class LibraryInfo(MakefileDerivedObject):
 
         self.objc_sources = set()
         self.objcpp_sources = set()
+
+        self.source_specific_flags = {}
 
         self.defines = set()
         self.export_library = None

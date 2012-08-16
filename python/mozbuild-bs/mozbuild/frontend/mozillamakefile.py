@@ -159,7 +159,7 @@ class MozillaMakefile(Makefile):
 
         raise Exception('Could not find source file: %s' % path)
 
-    def normalize_compiler_flags(self, l, varnames):
+    def get_compiler_flags(self, l, source_var, varnames):
         var_values = [self.get_variable_string(f) for f in varnames]
         var_values = [f for f in var_values if f is not None]
 
@@ -188,7 +188,55 @@ class MozillaMakefile(Makefile):
 
                 arguments[i] = value[0:2] + normalized
 
-        return arguments
+        # Here there be dragons.
+        #
+        # Makefiles have target-specific variables. These are variables that
+        # only apply when evaluated in the context of a specific target. And,
+        # our build system uses them to control compiler flags. In the ideal
+        # world, our build system wouldn't do this and would accomplish
+        # file-specific flags through some other, easier-to-parse means. But,
+        # it does, and we have to deal with it.
+        #
+        # Because evaluating the variables for each target separately is
+        # expensive (you evaluate once per target rather than just a few times
+        # per make file), we go with an alternate approach. We look at all the
+        # target-specific variable assignments (they aren't too many of them).
+        # Only if the target and variable is relevant do we pull it in. And, as
+        # a bonus, we don't need to evaluate variables in the context of
+        # targets!
+        target_flags = {}
+
+        sources = getattr(l, source_var)
+
+        targets = {}
+        obj_suffix = self.get_variable_string('OBJ_SUFFIX')
+
+        target_flags = {}
+
+        for p in sources:
+            basename = os.path.basename(p)
+            targets['%s.%s' % (os.path.splitext(basename)[0], obj_suffix)] = p
+
+        for tup in self.statements.target_specific_variable_assignments():
+            target = tup[0].statement.targetexp.resolvestr(self.makefile,
+                self.makefile.variables)
+
+            if not target in targets:
+                continue
+
+            if not tup[2] in varnames:
+                continue
+
+            t_flags = target_flags.get(targets[target], {})
+            t_flags[tup[2]] = tup[3]
+            target_flags[targets[target]] = t_flags
+
+        # We kept per-variable values above. Here, we collapse into a single
+        # string.
+        for path in target_flags.keys():
+            target_flags[path] = ' '.join(target_flags[path].values())
+
+        return arguments, target_flags
 
     def get_library_info(self):
         """Obtain information for the library defined by this Makefile.
@@ -297,33 +345,43 @@ class MozillaMakefile(Makefile):
             l.shared_library_libs.add(lib)
 
         # This is the new way of obtaining the flags. It emulates
-        # COMPILE_CXXFLAGS. We could probably use that pymake.data.Expansion
+        # COMPILE_CXXFLAGS. We could probably use pymake.data.Expansion
         # directly...
         flags_vars = ['STL_FLAGS', 'VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES',
             'DSO_CFLAGS', 'DSO_PIC_CFLAGS', 'CXXFLAGS', 'RTL_FLAGS',
             'OS_CPPFLAGS']
 
-        cxx_arguments = self.normalize_compiler_flags(l, flags_vars)
+        cxx_arguments, target_flags = self.get_compiler_flags(l, 'cpp_sources',
+            flags_vars)
+        l.source_specific_flags.update(target_flags)
         cxx_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
         cxx_arguments.append('-DMOZILLA_CLIENT')
 
         l.compile_cxxflags = ' '.join(cxx_arguments)
 
         # Objective-C++ uses almost the same mechanism.
-        cmm_arguments = self.normalize_compiler_flags(l, ['COMPILE_CMMFLAGS'])
+        cmm_arguments, target_flags = self.get_compiler_flags(l,
+            'objcpp_sources', ['COMPILE_CMMFLAGS'])
+        l.source_specific_flags.update(target_flags)
         l.objcpp_compile_flags = l.compile_cxxflags + ' ' + ' '.join(cmm_arguments)
 
         flags_vars = ['VISIBILITY_FLAGS', 'DEFINES', 'INCLUDES', 'DSO_CFLAGS',
             'DSO_PIC_CFLAGS', 'CFLAGS', 'RTL_FLAGS', 'OS_CFLAGS']
 
-        c_arguments = self.normalize_compiler_flags(l, flags_vars)
+        c_arguments, target_flags = self.get_compiler_flags(l, 'c_sources',
+            flags_vars)
+        l.source_specific_flags.update(target_flags)
         c_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
         c_arguments.append('-DMOZILLA_CLIENT')
 
         l.compile_cflags = ' '.join(c_arguments)
 
-        cm_arguments = self.normalize_compiler_flags(l, ['COMPILE_CMFLAGS'])
+        cm_arguments, target_flags = self.get_compiler_flags(l, 'objc_sources',
+            ['COMPILE_CMFLAGS'])
+        l.source_specific_flags.update(target_flags)
         l.objc_compile_flags = l.compile_cflags + ' ' + ' '.join(cm_arguments)
+
+        # TODO the above seems like a DRY violation.
 
         return l
 
