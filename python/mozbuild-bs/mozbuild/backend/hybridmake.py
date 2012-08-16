@@ -138,6 +138,7 @@ class HybridMakeBackend(BackendBase):
                     {'path': original.filename},
                     'Could not generate non-recursive makefile for {path}')
 
+                # TODO add setting for this.
                 if False:
                     traceback.print_exc()
 
@@ -362,6 +363,9 @@ class HybridMakeBackend(BackendBase):
 
             # TODO don't hardcode GCC/Clang flags.
             dependency_flags = '-MD -MF %s' % deps_path
+
+            if source in obj.source_specific_flags:
+                flags = obj.source_specific_flags[source]
 
             flags = '%s %s' % (flags, dependency_flags)
 

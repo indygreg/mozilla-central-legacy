@@ -159,14 +159,12 @@ class MozillaMakefile(Makefile):
 
         raise Exception('Could not find source file: %s' % path)
 
-    def get_compiler_flags(self, l, source_var, varnames):
-        var_values = [self.get_variable_string(f) for f in varnames]
-        var_values = [f for f in var_values if f is not None]
+    def normalize_compiler_arguments(self, arguments, directory):
+        """Normalizes compiler arguments to sane values."""
 
-        # TODO need more robust parsing.
-        arguments = ' '.join(var_values).split()
+        rewritten = []
 
-        for i, value in enumerate(arguments):
+        for value in arguments:
             value = value.strip()
 
             # Normalize includes to absolute paths. The Makefile's often deal
@@ -182,11 +180,24 @@ class MozillaMakefile(Makefile):
                 path = value[2:]
 
                 if not os.path.isabs(path):
-                    path = os.path.join(l.directory, path)
+                    path = os.path.join(directory, path)
 
                 normalized = os.path.normpath(path)
 
-                arguments[i] = value[0:2] + normalized
+                rewritten.append(value[0:2] + normalized)
+                continue
+
+            rewritten.append(value)
+
+        return rewritten
+
+    def get_compiler_flags(self, l, source_var, varnames):
+        var_values = [self.get_variable_string(f) for f in varnames]
+        var_values = [f for f in var_values if f is not None]
+
+        # TODO need more robust parsing.
+        arguments = ' '.join(var_values).split()
+        arguments = self.normalize_compiler_arguments(arguments, l.directory)
 
         # Here there be dragons.
         #
@@ -211,11 +222,11 @@ class MozillaMakefile(Makefile):
         targets = {}
         obj_suffix = self.get_variable_string('OBJ_SUFFIX')
 
-        target_flags = {}
-
         for p in sources:
             basename = os.path.basename(p)
             targets['%s.%s' % (os.path.splitext(basename)[0], obj_suffix)] = p
+
+        evaluate_targets = {}
 
         for tup in self.statements.target_specific_variable_assignments():
             target = tup[0].statement.targetexp.resolvestr(self.makefile,
@@ -227,14 +238,30 @@ class MozillaMakefile(Makefile):
             if not tup[2] in varnames:
                 continue
 
-            t_flags = target_flags.get(targets[target], {})
-            t_flags[tup[2]] = tup[3]
-            target_flags[targets[target]] = t_flags
+            t = evaluate_targets.get(target, set())
+            t.add(tup[2])
+            evaluate_targets[target] = t
+
+        target_flags = {}
+
+        for target, target_vars in evaluate_targets.iteritems():
+            values = {}
+
+            make_target = self.makefile.gettarget(target)
+
+            for target_var in target_vars:
+                value = make_target.variables.get(target_var, True)[2]
+                values[target_var] = value.resolvestr(self.makefile,
+                    make_target.variables)
+
+            target_flags[targets[target]] = values
 
         # We kept per-variable values above. Here, we collapse into a single
         # string.
         for path in target_flags.keys():
-            target_flags[path] = ' '.join(target_flags[path].values())
+            normalized = ' '.join(target_flags[path].values()).split()
+            target_flags[path] = self.normalize_compiler_arguments(
+                normalized, l.directory)
 
         return arguments, target_flags
 
@@ -354,8 +381,14 @@ class MozillaMakefile(Makefile):
         cxx_arguments, target_flags = self.get_compiler_flags(l, 'cpp_sources',
             flags_vars)
         l.source_specific_flags.update(target_flags)
-        cxx_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
-        cxx_arguments.append('-DMOZILLA_CLIENT')
+
+        extra_arguments = [
+            '-include',
+            '$(OBJECT_DIR)/mozilla-config.h',
+            '-DMOZILLA_CLIENT',
+        ]
+
+        cxx_arguments.extend(extra_arguments)
 
         l.compile_cxxflags = ' '.join(cxx_arguments)
 
@@ -371,8 +404,7 @@ class MozillaMakefile(Makefile):
         c_arguments, target_flags = self.get_compiler_flags(l, 'c_sources',
             flags_vars)
         l.source_specific_flags.update(target_flags)
-        c_arguments.extend(['-include', '$(OBJECT_DIR)/mozilla-config.h'])
-        c_arguments.append('-DMOZILLA_CLIENT')
+        c_arguments.extend(extra_arguments)
 
         l.compile_cflags = ' '.join(c_arguments)
 
@@ -380,6 +412,11 @@ class MozillaMakefile(Makefile):
             ['COMPILE_CMFLAGS'])
         l.source_specific_flags.update(target_flags)
         l.objc_compile_flags = l.compile_cflags + ' ' + ' '.join(cm_arguments)
+
+        # Normalize to strings.
+        for k, v in l.source_specific_flags.iteritems():
+            v.extend(extra_arguments)
+            l.source_specific_flags[k] = ' '.join(v)
 
         # TODO the above seems like a DRY violation.
 
