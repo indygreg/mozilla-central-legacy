@@ -369,9 +369,6 @@ class HybridMakeBackend(BackendBase):
 
             flags = '%s %s' % (flags, dependency_flags)
 
-            if source in obj.source_specific_flags:
-                flags += ' ' + obj.source_specific_flags[source]
-
             print >>fh, '%s += %s' % (source_variable, normpath(object_path))
             print >>fh, '%s: %s' % (normpath(object_path), normpath(source))
             print >>fh, '\techo %s; \\' % os.path.basename(source)
