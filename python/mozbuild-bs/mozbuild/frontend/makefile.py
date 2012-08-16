@@ -1528,6 +1528,19 @@ class StatementCollection(object):
 
             yield (t[0], t[2], t[3], t[4])
 
+    def target_specific_variable_assignments(self):
+        """Obtain variable assignments that are target-specific.
+
+        This is a convenience method that filters variable_assignments().
+
+        This yields the same values as variable_assignments().
+        """
+        for t in self._variable_assignments():
+            if t[0].statement.targetexp is None:
+                continue
+
+            yield t
+
     def variable_references(self):
         """Generator for references to variables.
 
