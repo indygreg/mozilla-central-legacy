@@ -42,8 +42,8 @@ class Build(Base, ArgumentProvider):
         from mozbuild.buildconfig.bxr import generate_bxr
 
         with open(filename, 'wb') as fh:
-            generate_bxr(self.config, fh, load_all=load_all,
-                load_from_make=load_from_make)
+            generate_bxr(self.settings, self.log_manager, fh,
+                load_all=load_all, load_from_make=load_from_make)
 
     @staticmethod
     def populate_argparse(parser):

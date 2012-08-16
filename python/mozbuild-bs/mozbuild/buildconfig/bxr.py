@@ -33,6 +33,7 @@ HTML_TEMPLATE = """
       <li><a href="#commands">Commands</a></li>
       <li><a href="#shell">Shell Invocations</a></li>
       <li><a href="#filesystem">Filesystem Statements</a></li>
+      <li><a href="#targetspecific">Target-Specific Statements</a></li>
     </ul>
     </section>
 
@@ -336,6 +337,27 @@ HTML_TEMPLATE = """
         % endfor
       </table>
     </section>
+
+    <section id="targetspecific">
+      <h1>Target-Specific Statements</h1>
+      <table border="1">
+        <caption>Target-specific variable assignments.</caption>
+        <tr>
+          <th>File</th>
+          <th>Target</th>
+          <th>Variable</th>
+        </tr>
+        % for path in sorted(target_specific_variables.keys()):
+          % for target, exp in target_specific_variables[path]:
+            <tr>
+              <td>${makefile_link(path)}</td>
+              <td>${target | h}</pre></td>
+              <td><pre>${exp | h}</pre></td>
+            </tr>
+          % endfor
+        % endfor
+      </table>
+    </section>
   </body>
 </html>
 
@@ -386,9 +408,10 @@ HTML_TEMPLATE = """
 </%def>
 """
 
-def generate_bxr(config, fh, load_all=False, load_from_make=False):
+def generate_bxr(settings, log_manager, fh, load_all=False,
+        load_from_make=False):
     """Generate the BXR HTML and write to the specified file handle."""
-    frontend = BuildFrontend(config)
+    frontend = BuildFrontend(settings, log_manager)
 
     if load_all:
         frontend.load_all_input_files()
@@ -412,12 +435,13 @@ def generate_bxr(config, fh, load_all=False, load_from_make=False):
     commands = {}              # Expansion str to dictionary of metadata
     shell_statements = {}      # Path to list of tuples
     filesystem_statements = {} # Path to list of tuples
+    target_specific_variables = {} # Path to list of tuples
 
     for m in frontend.makefiles.makefiles():
         key = m.filename
 
-        if key.startswith(config.source_directory):
-            key = key[len(config.source_directory) + 1:]
+        if key.startswith(frontend.srcdir):
+            key = key[len(frontend.srcdir) + 1:]
 
         statements = m.statements
         metadata = makefiles.get(key, None)
@@ -439,6 +463,14 @@ def generate_bxr(config, fh, load_all=False, load_from_make=False):
 
             vdata['set_paths'].add(key)
             variables[name] = vdata
+
+            if statement.statement.targetexp is not None:
+                lst = target_specific_variables.get(key, [])
+
+                lst.append((statement.statement.targetexp.to_source(),
+                    str(statement)))
+
+                target_specific_variables[key] = lst
 
         for statement, conditions, target, prerequisites, cmds in statements.rules():
             target_str = str(target)
@@ -544,8 +576,8 @@ def generate_bxr(config, fh, load_all=False, load_from_make=False):
     try:
         t = mako.template.Template(HTML_TEMPLATE)
         print >>fh, t.render(
-            source_directory=config.source_directory,
-            object_directory=config.object_directory,
+            source_directory=frontend.srcdir,
+            object_directory=frontend.objdir,
             makefiles=makefiles,
             variables=variables,
             targets=targets,
@@ -553,7 +585,8 @@ def generate_bxr(config, fh, load_all=False, load_from_make=False):
             commands=commands,
             shell_statements=shell_statements,
             filesystem_statements=filesystem_statements,
-            variables_by_makefile_count=variables_by_file_count
+            variables_by_makefile_count=variables_by_file_count,
+            target_specific_variables=target_specific_variables
         )
     except:
         print >>fh, mako.exceptions.html_error_template().render()
