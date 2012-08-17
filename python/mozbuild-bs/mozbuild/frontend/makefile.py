@@ -1849,6 +1849,24 @@ class Makefile(object):
         self._lines = None
         self._resolved_variable_strings = {}
 
+    def __getstate__(self):
+        return {
+            'lines': ['%s\n' % line for line in self.lines()],
+            'filename': self.filename,
+            'directory': self.directory,
+            'env': self.env
+        }
+
+    def __setstate__(self, state):
+        self._lines = state['lines']
+        self.filename = state['filename']
+        self.directory = state['directory']
+        self.env = state['env']
+
+        self._makefile = None
+        self._statements = None
+        self._resolved_variable_strings = {}
+
     @property
     def statements(self):
         """Obtain the StatementCollection for this Makefile."""

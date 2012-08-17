@@ -57,6 +57,18 @@ class MozillaMakefile(Makefile):
         self.relative_directory = relative_directory
         self.traits = None
 
+    def __getstate__(self):
+        state = Makefile.__getstate__(self)
+        state['relative_directory'] = self.relative_directory
+
+        return state
+
+    def __setstate__(self, state):
+        Makefile.__setstate__(self, state)
+
+        self.relative_directory = state['relative_directory']
+        self.traits = None
+
     #def perform_substitutions(self, bse, callback_on_missing=None):
     #    """Perform substitutions on this Makefile.
     #
