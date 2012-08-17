@@ -3,6 +3,7 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import logging
+import multiprocessing
 import os.path
 import traceback
 
@@ -23,6 +24,16 @@ IGNORE_PATHS = [
 
     'toolkit/identity',
 ]
+
+INSTANCE = []
+
+def process_makefile(m):
+    assert len(INSTANCE) == 1
+
+    try:
+        return INSTANCE[0]._generate_makefile(m)
+    except:
+        traceback.print_exc()
 
 def normpath(p):
     """Normalize a path to the format expected by pymake."""
@@ -66,6 +77,8 @@ class HybridMakeBackend(BackendBase):
             'app',
         ]
 
+        INSTANCE[:] = [self]
+
     @property
     def makefiles(self):
         if self._makefiles is None:
@@ -89,9 +102,9 @@ class HybridMakeBackend(BackendBase):
         self.log(logging.INFO, 'hybridmake_generate_start', {},
             'Reticulating Splines...')
 
-        for makefile in self.makefiles:
-            result = self._generate_makefile(makefile)
+        pool = multiprocessing.Pool()
 
+        for result in pool.map(process_makefile, self.makefiles):
             for path, dependencies in result['output_files']:
                 self.add_generate_output_file(path, dependencies)
 
