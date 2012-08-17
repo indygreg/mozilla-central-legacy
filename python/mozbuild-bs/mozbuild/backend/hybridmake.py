@@ -90,7 +90,15 @@ class HybridMakeBackend(BackendBase):
             'Reticulating Splines...')
 
         for makefile in self.makefiles:
-            self._generate_makefile(makefile)
+            result = self._generate_makefile(makefile)
+
+            for path, dependencies in result['output_files']:
+                self.add_generate_output_file(path, dependencies)
+
+            self.output_directories |= result['output_directories']
+
+            if result['splendid_path'] is not None:
+                self.splendid_files.add(result['splendid_path'])
 
         hybrid_path = os.path.join(self.objdir, 'hybridmake.mk')
         with open(hybrid_path, 'wb') as fh:
@@ -104,7 +112,12 @@ class HybridMakeBackend(BackendBase):
             self.mkdir(path)
 
     def _generate_makefile(self, original):
-        # TODO MozillaMakefile should use proper statements API.
+        meta = {
+            'output_files': [],
+            'output_directories': set(),
+            'splendid_path': None,
+        }
+
         output_path = makefile_output_path(self.srcdir, self.objdir, original)
         output_directory = os.path.dirname(output_path)
         original.directory = output_directory
@@ -127,12 +140,13 @@ class HybridMakeBackend(BackendBase):
 
             try:
                 with FileAvoidWrite(splendid_path) as buf:
-                    strip_variables = self.write_splendid_makefile(original, buf)
+                    strip_variables = self.write_splendid_makefile(original,
+                        buf, meta)
 
                     if len(buf.getvalue()):
-                        self.add_generate_output_file(splendid_path,
-                            [original.filename])
-                        self.splendid_files.add(splendid_path)
+                        meta['output_files'].append((splendid_path,
+                            [original.filename]))
+                        meta['splendid_path'] = splendid_path
             except:
                 self.log(logging.WARNING, 'splendid_generation_error',
                     {'path': original.filename},
@@ -155,9 +169,11 @@ class HybridMakeBackend(BackendBase):
         with FileAvoidWrite(output_path) as fh:
             fh.write(makefile.to_source())
 
-        self.add_generate_output_file(output_path, [original.filename])
+        meta['output_files'].append((output_path, [original.filename]))
 
-    def write_splendid_makefile(self, makefile, fh):
+        return meta
+
+    def write_splendid_makefile(self, makefile, fh, meta):
         """Writes a splendid, non-recursive make file."""
 
         strip_variables = set()
@@ -172,11 +188,11 @@ class HybridMakeBackend(BackendBase):
                 method = self._write_library
 
             if method:
-                strip_variables |= method(makefile, fh, obj)
+                strip_variables |= method(makefile, fh, obj, meta)
 
         return strip_variables
 
-    def _write_exports(self, makefile, fh, obj):
+    def _write_exports(self, makefile, fh, obj, meta):
         # Install exported files into proper location. These are
         # typically header files.
 
@@ -184,7 +200,7 @@ class HybridMakeBackend(BackendBase):
 
         directories = sorted(obj.output_directories)
         out_directories = [os.path.join(inc_dir, d) for d in directories]
-        self.output_directories |= set(out_directories)
+        meta['output_directories'] |= set(out_directories)
         print >>fh, 'CREATE_DIRS += %s' % ' '.join(
             [normpath(d) for d in out_directories])
 
@@ -209,7 +225,7 @@ class HybridMakeBackend(BackendBase):
 
         return obj.exclusive_variables
 
-    def _write_idl(self, makefile, fh, obj):
+    def _write_idl(self, makefile, fh, obj, meta):
         # IDLs are copied to a common idl directory then they are processed.
         # The copying must complete before processing starts.
         idl_output_directory = os.path.join(self.objdir, 'dist', 'idl')
@@ -217,14 +233,14 @@ class HybridMakeBackend(BackendBase):
         components_directory = os.path.join(self.objdir, 'dist', 'bin',
             'components')
 
-        self.output_directories.add(idl_output_directory)
-        self.output_directories.add(header_output_directory)
-        self.output_directories.add(components_directory)
+        meta['output_directories'].add(idl_output_directory)
+        meta['output_directories'].add(header_output_directory)
+        meta['output_directories'].add(components_directory)
 
         gen_directory = os.path.join(makefile.directory, '_xpidlgen')
         deps_directory = os.path.join(makefile.directory, '.deps')
-        self.output_directories.add(gen_directory)
-        self.output_directories.add(deps_directory)
+        meta['output_directories'].add(gen_directory)
+        meta['output_directories'].add(deps_directory)
 
         output_xpt_files = set()
         xpt_module_basename = '%s.xpt' % obj.module
@@ -325,7 +341,7 @@ class HybridMakeBackend(BackendBase):
 
         return obj.exclusive_variables
 
-    def _write_library(self, makefile, fh, obj):
+    def _write_library(self, makefile, fh, obj, meta):
         def normalize_path(p):
             if os.path.isabs(p):
                 return p
@@ -351,7 +367,7 @@ class HybridMakeBackend(BackendBase):
         cpp_args.extend(obj.cxx_flags)
 
         deps_dir = os.path.join(makefile.directory, '.deps')
-        self.output_directories.add(deps_dir)
+        meta['output_directories'].add(deps_dir)
 
         def process_file(source, source_variable, compiler, flags):
             basename = os.path.splitext(os.path.basename(source))[0]
