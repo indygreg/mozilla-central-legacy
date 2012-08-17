@@ -82,8 +82,7 @@ class Configure(Base):
         # We must use the same heuristic as Base._run_make to determine which
         # path to specify.
         if self._is_windows():
-            pymake = os.path.join(self.config.source_directory, 'build',
-                'pymake', 'make.py')
+            pymake = os.path.join(self.srcdir, 'build', 'pymake', 'make.py')
 
             # We need the Python path in the environment variable and to use
             # UNIX-style paths, even on Windows, otherwise things break.
