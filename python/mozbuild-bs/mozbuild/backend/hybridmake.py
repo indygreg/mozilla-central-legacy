@@ -113,6 +113,8 @@ class HybridMakeBackend(BackendBase):
             if result['splendid_path'] is not None:
                 self.splendid_files.add(result['splendid_path'])
 
+        pool.terminate()
+
         hybrid_path = os.path.join(self.objdir, 'hybridmake.mk')
         with open(hybrid_path, 'wb') as fh:
             self.print_hybridmake(fh)
