@@ -49,3 +49,6 @@ _OPT\.OBJ/
 
 # Python stuff installed at build-time
 \.egg-info/
+^python/psutil/.*\.so
+^python/psutil/.*\.o
+^python/psutil/.*\.dll

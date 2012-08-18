@@ -49,3 +49,7 @@ parser/html/java/javaparser/
 
 # Python stuff installed at build-time
 *.egg-info/
+
+python/psutil/*.so
+python/psutil/*.dll
+python/psutil/build/

@@ -9,5 +9,6 @@ setup.py:testing/mozbase/mozrunner:develop
 setup.py:python/blessings:develop
 setup.py:python/mozbuild-bs:develop
 setup.py:python/mach:develop
+setup.py:python/psutil:develop
 mozilla.pth:build
 mozilla.pth:config
