@@ -13,6 +13,7 @@ from mozbuild.base import Base
 from mozbuild.compilation.warnings import WarningsCollector
 from mozbuild.compilation.warnings import WarningsDatabase
 from mozbuild.configuration.configure import Configure
+from mozbuild.util import SystemResourceMonitor
 
 RE_TIER_DECLARE = re.compile(r'tier_(?P<tier>[a-z]+):\s(?P<directories>.*)')
 RE_TIER_ACTION = re.compile(r'(?P<action>[a-z]+)_tier_(?P<tier>[a-z_]+)')
@@ -30,6 +31,16 @@ class TreeBuilder(Base):
     def build(self, on_phase=None, on_backend=None):
         """Builds the tree."""
 
+        # We wrap the entire build in a resource monitor so we can capture
+        # useful data.
+        resource_monitor = SystemResourceMonitor()
+        resource_monitor.start()
+        try:
+            self._build(resource_monitor, on_phase, on_backend)
+        finally:
+            resource_monitor.stop()
+
+    def _build(self, resource_monitor, on_phase, on_backend):
         # Builds involve roughly 3 steps:
         #  1) configure
         #  2) build config
@@ -113,7 +124,6 @@ class TreeBuilder(Base):
                     on_phase(kwargs['phase'])
 
         manager.backend.add_listener(on_action)
-
         manager.build()
 
         self.log(logging.WARNING, 'warning_summary',
