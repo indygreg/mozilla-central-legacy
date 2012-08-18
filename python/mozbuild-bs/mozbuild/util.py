@@ -110,7 +110,8 @@ class SystemResourceMonitor(object):
 
     def __init__(self):
         self.start_time = None
-        self.stop_time = None
+        self.end_time = None
+
         self.events = []
         self.phases = {}
 
@@ -198,6 +199,9 @@ class SystemResourceMonitor(object):
 
         assert done
 
+        self.start_time = self.time[0]
+        self.end_time = self.time[-1]
+
     # Methods to record events alongside the monitored data.
 
     def record_event(self, name):
@@ -207,6 +211,8 @@ class SystemResourceMonitor(object):
         looking for an action that has a duration, see the phase API below.
         """
         self.events.append((time.time(), name))
+
+    # TODO it would be handy to expose a context manager for phases.
 
     def begin_phase(self, name):
         """Record the start of a phase.
@@ -226,7 +232,7 @@ class SystemResourceMonitor(object):
 
         assert name in self._active_phases
 
-        phase = (self._active_phases, time.time())
+        phase = (self._active_phases[name], time.time())
         self.phases[name] = phase
         del self._active_phases[name]
 
@@ -293,6 +299,17 @@ class SystemResourceMonitor(object):
         cores = [sum(x) for x in cpu]
 
         return sum(cores) / len(cpu) / samples
+
+    def aggregate_io(self, start=None, end=None):
+        """Obtain aggregate I/O counters for a range."""
+
+        io = [0 for i in range(self._io_len)]
+
+        for usage in self.range_usage(start, end):
+            for i, v in enumerate(usage.io):
+                io[i] += v
+
+        return self._io_type(*io)
 
     # Internal stuff.
 
