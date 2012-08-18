@@ -40,6 +40,31 @@ class TreeBuilder(Base):
         finally:
             resource_monitor.stop()
 
+            cpu = resource_monitor.aggregate_cpu()
+            io = resource_monitor.aggregate_io()
+
+            self.log(logging.INFO, 'cpu_usage',
+                {
+                    'cores': cpu,
+                    'total': resource_monitor.aggregate_cpu(per_cpu=False),
+                    'start': resource_monitor.start_time,
+                    'end': resource_monitor.end_time,
+                },
+                'Average CPU Usage: {total}%')
+
+            self.log(logging.INFO, 'io_usage',
+                {
+                    'read_count': io.read_count,
+                    'write_count': io.write_count,
+                    'read_bytes': io.read_bytes,
+                    'write_bytes': io.write_bytes,
+                    'read_time': io.read_time,
+                    'write_time': io.write_time,
+                },
+                'Reads: {read_count}; Writes: {write_count}; '
+                'Read Bytes: {read_bytes}; Write Bytes: {write_bytes}; '
+                'Read Time (ms): {read_time}; Write time (ms): {write_time}')
+
     def _build(self, resource_monitor, on_phase, on_backend):
         # Builds involve roughly 3 steps:
         #  1) configure
@@ -48,17 +73,25 @@ class TreeBuilder(Base):
 
         self._ensure_objdir_exists()
 
-        c = self._spawn(Configure)
-        c.ensure_configure()
+        try:
+            resource_monitor.begin_phase('configure')
+            c = self._spawn(Configure)
+            c.ensure_configure()
+        finally:
+            resource_monitor.finish_phase('configure')
 
         # Ensure the build config/backend is proper.
-        manager = self._spawn(BackendManager)
-        manager.set_backend(self.settings.build.backend)
+        try:
+            resource_monitor.begin_phase('backend_config')
+            manager = self._spawn(BackendManager)
+            manager.set_backend(self.settings.build.backend)
 
-        if on_backend:
-            on_backend(manager.backend)
+            if on_backend:
+                on_backend(manager.backend)
 
-        manager.ensure_generate()
+            manager.ensure_generate()
+        finally:
+            resource_monitor.finish_phase('backend_config')
 
         warnings_path = self._get_state_filename('warnings.json')
         warnings_database = WarningsDatabase()
@@ -124,7 +157,11 @@ class TreeBuilder(Base):
                     on_phase(kwargs['phase'])
 
         manager.backend.add_listener(on_action)
-        manager.build()
+        try:
+            resource_monitor.begin_phase('build')
+            manager.build()
+        finally:
+            resource_monitor.finish_phase('build')
 
         self.log(logging.WARNING, 'warning_summary',
                 {'count': len(warnings_collector.database)},
