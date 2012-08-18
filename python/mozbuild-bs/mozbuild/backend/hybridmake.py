@@ -474,25 +474,34 @@ class HybridMakeBackend(BackendBase):
         def enter_phase(phase):
             self._call_listeners('enter_phase', phase=phase)
 
+        def leave_phase(phase):
+            self._call_listeners('leave_phase', phase=phase)
+
         # We have to run all the tiers separately because the main Makefile's
         # default target removes output directories, which is silly.
         enter_phase('prelim')
         run_make(target='export_tier_base')
+        leave_phase('prelim')
 
         enter_phase('splendid-export')
         run_make(filename='hybridmake.mk', target='export')
+        leave_phase('splendid_export')
 
         enter_phase('base')
         run_make(target='tier_base')
+        leave_phase('base')
 
         enter_phase('nspr')
         run_make(target='tier_nspr')
+        leave_phase('nspr')
 
         enter_phase('js')
         run_make(target='tier_js')
+        leave_phase('js')
 
         enter_phase('export')
         run_make(target='export_tier_platform')
+        leave_phase('export')
 
         # We should be able to use the hybridmake libs target immediately.
         # Unfortunately, there are some dependencies on Makefile-specific
@@ -511,17 +520,22 @@ class HybridMakeBackend(BackendBase):
         run_make(directory='intl/locale/src',
             target='charsetalias.properties.h')
 
+        leave_phase('workaround')
+
         enter_phase('splendid-libs')
         run_make(filename='hybridmake.mk', target='libs')
+        leave_phase('splendid-libs')
 
         enter_phase('platform')
         run_make(target='libs_tier_platform')
         run_make(target='tools_tier_platform')
+        leave_phase('platform')
 
         enter_phase('app')
         run_make(target='export_tier_app')
         run_make(target='libs_tier_app')
         run_make(target='tools_tier_app')
+        leave_phase('app')
 
     def _clean(self):
         pass
