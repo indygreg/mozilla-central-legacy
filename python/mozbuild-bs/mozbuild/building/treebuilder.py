@@ -8,6 +8,8 @@ import re
 import time
 import traceback
 
+from contextlib import contextmanager
+
 from mozbuild.backend.manager import BackendManager
 from mozbuild.base import Base
 from mozbuild.compilation.warnings import WarningsCollector
@@ -92,16 +94,18 @@ class TreeBuilder(Base):
 
         self._ensure_objdir_exists()
 
-        try:
-            resource_monitor.begin_phase('configure')
+        @contextmanager
+        def do_phase(phase):
+            resource_monitor.begin_phase(phase)
+            yield
+            resource_monitor.finish_phase(phase)
+
+        with do_phase('configure'):
             c = self._spawn(Configure)
             c.ensure_configure()
-        finally:
-            resource_monitor.finish_phase('configure')
 
         # Ensure the build config/backend is proper.
-        try:
-            resource_monitor.begin_phase('backend_config')
+        with do_phase('backend_config'):
             manager = self._spawn(BackendManager)
             manager.set_backend(self.settings.build.backend)
 
@@ -109,8 +113,6 @@ class TreeBuilder(Base):
                 on_backend(manager.backend)
 
             manager.ensure_generate()
-        finally:
-            resource_monitor.finish_phase('backend_config')
 
         warnings_path = self._get_state_filename('warnings.json')
         warnings_database = WarningsDatabase()
@@ -183,11 +185,9 @@ class TreeBuilder(Base):
                 resource_monitor.finish_phase('build_%s' % kwargs['phase'])
 
         manager.backend.add_listener(on_action)
-        try:
-            resource_monitor.begin_phase('build')
+
+        with do_phase('build'):
             manager.build()
-        finally:
-            resource_monitor.finish_phase('build')
 
         self.log(logging.WARNING, 'warning_summary',
                 {'count': len(warnings_collector.database)},
