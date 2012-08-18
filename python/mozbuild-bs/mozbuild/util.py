@@ -11,6 +11,7 @@ import multiprocessing
 import psutil
 import time
 
+from collections import OrderedDict
 from collections import namedtuple
 from StringIO import StringIO
 
@@ -101,19 +102,13 @@ class SystemResourceMonitor(object):
     # collects data, it stuffs it on a unidirectional pipe. On the other end,
     # we reconstruct the data and make it available to whoever instantiated
     # a class instance.
-    #
-    # Currently, we buffer all data in a "pipe" until monitoring is stopped.
-    # multiprocessing seems to handle this quite nicely (it seems to do
-    # additional buffering so we don't run into issue with full pipes, as you
-    # would see if operating on low-level file descriptors). That being said,
-    # real-time data consumption would be a nice feature.
 
     def __init__(self):
         self.start_time = None
         self.end_time = None
 
         self.events = []
-        self.phases = {}
+        self.phases = OrderedDict()
 
         self._active_phases = {}
 
@@ -169,7 +164,6 @@ class SystemResourceMonitor(object):
         self._run_lock.release()
         self._running = False
         self._stopped = True
-        self._process.join()
 
         self.cpu = []
         self.io = []
@@ -179,7 +173,7 @@ class SystemResourceMonitor(object):
 
         done = False
 
-        while self._rx_pipe.poll():
+        while self._rx_pipe.poll(1):
             k, entry = self._rx_pipe.recv()
 
             if k == 'time':
@@ -197,6 +191,7 @@ class SystemResourceMonitor(object):
             else:
                 raise Exception('Unknown entry type: %s' % k)
 
+        self._process.join()
         assert done
 
         self.start_time = self.time[0]
@@ -293,6 +288,9 @@ class SystemResourceMonitor(object):
 
         samples = len(cpu[0])
 
+        if not samples:
+            return None
+
         if per_cpu:
             return [sum(x) / samples for x in cpu]
 
@@ -321,6 +319,9 @@ class SystemResourceMonitor(object):
         data then forwards it on a unidirectional pipe until a lock can be
         acquired (which says it is time to exit).
         """
+
+        data = []
+
         try:
             io_last = psutil.disk_io_counters()
 
@@ -335,15 +336,18 @@ class SystemResourceMonitor(object):
                 # TODO times are a little weird because the CPU metric waits
                 # a second before returning. We should fix this so it doesn't
                 # lie.
-                pipe.send(('time', time.time()))
+                data.append(('time', time.time()))
 
                 # psutil returns namedtuple instances. These can't be pickled
                 # by default. So, we just send over the values are rebuild a
                 # namedtuple on the other side.
-                pipe.send(('io', io_diff))
-                pipe.send(('virt', list(psutil.virtual_memory())))
-                pipe.send(('swap', list(psutil.swap_memory())))
-                pipe.send(('cpu', psutil.cpu_percent(1.0, True)))
+                data.append(('io', io_diff))
+                data.append(('virt', list(psutil.virtual_memory())))
+                data.append(('swap', list(psutil.swap_memory())))
+                data.append(('cpu', psutil.cpu_percent(1.0, True)))
         finally:
+            for entry in data:
+                pipe.send(entry)
+
             pipe.send(('done', None))
             pipe.close()
