@@ -7,6 +7,7 @@ import multiprocessing
 import os.path
 import traceback
 
+from contextlib import contextmanager
 from pymake.builder import Makefile
 from StringIO import StringIO
 
@@ -471,71 +472,59 @@ class HybridMakeBackend(BackendBase):
         def run_make(**kwargs):
             self._run_make(line_handler=line_handler, log=False, **kwargs)
 
-        def enter_phase(phase):
+        @contextmanager
+        def do_phase(phase):
             self._call_listeners('enter_phase', phase=phase)
-
-        def leave_phase(phase):
+            yield
             self._call_listeners('leave_phase', phase=phase)
 
         # We have to run all the tiers separately because the main Makefile's
         # default target removes output directories, which is silly.
-        enter_phase('prelim')
-        run_make(target='export_tier_base')
-        leave_phase('prelim')
+        with do_phase('prelim'):
+            run_make(target='export_tier_base')
 
-        enter_phase('splendid-export')
-        run_make(filename='hybridmake.mk', target='export')
-        leave_phase('splendid_export')
+        with do_phase('splendid-export'):
+            run_make(filename='hybridmake.mk', target='export')
 
-        enter_phase('base')
-        run_make(target='tier_base')
-        leave_phase('base')
+        with do_phase('base'):
+            run_make(target='tier_base')
 
-        enter_phase('nspr')
-        run_make(target='tier_nspr')
-        leave_phase('nspr')
+        with do_phase('nspr'):
+            run_make(target='tier_nspr')
 
-        enter_phase('js')
-        run_make(target='tier_js')
-        leave_phase('js')
+        with do_phase('js'):
+            run_make(target='tier_js')
 
-        enter_phase('export')
-        run_make(target='export_tier_platform')
-        leave_phase('export')
+        with do_phase('export'):
+            run_make(target='export_tier_platform')
 
         # We should be able to use the hybridmake libs target immediately.
         # Unfortunately, there are some dependencies on Makefile-specific
         # rules we need to manually do first.
 
-        enter_phase('workaround')
+        with do_phase('workaround'):
+            # DictionaryHelpers.h is installed by a one-off rule.
+            run_make(directory='js/xpconnect/src', target='libs',
+                ignore_errors=True)
 
-        # DictionaryHelpers.h is installed by a one-off rule.
-        run_make(directory='js/xpconnect/src', target='libs',
-            ignore_errors=True)
+            # etld_data.inc is a one-off rule.
+            run_make(directory='netwerk/dns', target='etld_data.inc')
 
-        # etld_data.inc is a one-off rule.
-        run_make(directory='netwerk/dns', target='etld_data.inc')
+            # charsetalias.properties.h is installed by a one-off rule.
+            run_make(directory='intl/locale/src',
+                target='charsetalias.properties.h')
 
-        # charsetalias.properties.h is installed by a one-off rule.
-        run_make(directory='intl/locale/src',
-            target='charsetalias.properties.h')
+        with do_phase('splendid-libs'):
+            run_make(filename='hybridmake.mk', target='libs')
 
-        leave_phase('workaround')
+        with do_phase('platform'):
+            run_make(target='libs_tier_platform')
+            run_make(target='tools_tier_platform')
 
-        enter_phase('splendid-libs')
-        run_make(filename='hybridmake.mk', target='libs')
-        leave_phase('splendid-libs')
-
-        enter_phase('platform')
-        run_make(target='libs_tier_platform')
-        run_make(target='tools_tier_platform')
-        leave_phase('platform')
-
-        enter_phase('app')
-        run_make(target='export_tier_app')
-        run_make(target='libs_tier_app')
-        run_make(target='tools_tier_app')
-        leave_phase('app')
+        with do_phase('app'):
+            run_make(target='export_tier_app')
+            run_make(target='libs_tier_app')
+            run_make(target='tools_tier_app')
 
     def _clean(self):
         pass

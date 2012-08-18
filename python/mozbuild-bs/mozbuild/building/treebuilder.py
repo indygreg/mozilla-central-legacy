@@ -40,30 +40,49 @@ class TreeBuilder(Base):
         finally:
             resource_monitor.stop()
 
-            cpu = resource_monitor.aggregate_cpu()
-            io = resource_monitor.aggregate_io()
+            def record_time(name, start, end):
+                self.log(logging.INFO, 'phase_time', {
+                    'name': name,
+                    'start': start,
+                    'end': end,
+                    'elapsed': end - start,
+                }, '{name} Time - {elapsed}s')
 
-            self.log(logging.INFO, 'cpu_usage',
-                {
+            def record_cpu(name, cpu):
+                if cpu is None:
+                    return
+
+                self.log(logging.INFO, 'cpu_usage', {
+                    'name': name,
                     'cores': cpu,
-                    'total': resource_monitor.aggregate_cpu(per_cpu=False),
-                    'start': resource_monitor.start_time,
-                    'end': resource_monitor.end_time,
-                },
-                'Average CPU Usage: {total}%')
+                    'total': sum(cpu) / len(cpu),
+                }, '{name} CPU - Average CPU Usage: {total}%')
 
-            self.log(logging.INFO, 'io_usage',
-                {
+            def record_io(name, io):
+                if io is None:
+                    return
+
+                self.log(logging.INFO, 'io_usage', {
+                    'name': name,
                     'read_count': io.read_count,
                     'write_count': io.write_count,
                     'read_bytes': io.read_bytes,
                     'write_bytes': io.write_bytes,
                     'read_time': io.read_time,
                     'write_time': io.write_time,
-                },
-                'Reads: {read_count}; Writes: {write_count}; '
-                'Read Bytes: {read_bytes}; Write Bytes: {write_bytes}; '
-                'Read Time (ms): {read_time}; Write time (ms): {write_time}')
+                }, '{name} I/O - Reads: {read_count}; Writes: {write_count}; '
+                   'Read Bytes: {read_bytes}; Write Bytes: {write_bytes}; '
+                   'Read Time (ms): {read_time}; Write time (ms): {write_time}')
+
+            record_time('total', resource_monitor.start_time,
+                resource_monitor.end_time)
+            record_cpu('total', resource_monitor.aggregate_cpu())
+            record_io('total', resource_monitor.aggregate_io())
+
+            for phase, (start, end) in resource_monitor.phases.iteritems():
+                record_time(phase, start, end)
+                record_cpu(phase, resource_monitor.aggregate_cpu(start, end))
+                record_io(phase, resource_monitor.aggregate_io(start, end))
 
     def _build(self, resource_monitor, on_phase, on_backend):
         # Builds involve roughly 3 steps:
@@ -153,8 +172,15 @@ class TreeBuilder(Base):
                 return
 
             if action == 'enter_phase':
+                resource_monitor.begin_phase('build_%s' % kwargs['phase'])
+
                 if on_phase:
                     on_phase(kwargs['phase'])
+
+                return
+
+            if action == 'leave_phase':
+                resource_monitor.finish_phase('build_%s' % kwargs['phase'])
 
         manager.backend.add_listener(on_action)
         try:
