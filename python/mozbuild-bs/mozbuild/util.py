@@ -194,6 +194,20 @@ class SystemResourceMonitor(object):
         self._process.join()
         assert done
 
+        # It's possible for the child process to be terminated in the middle of
+        # a run. If this happens, we may not have agreement between the lengths
+        # of all the data sets.
+        lengths = [len(x) for x in [self.cpu, self.io, self.virt, self.swap,
+            self.time]]
+
+        if min(lengths) != max(lengths):
+            l = min(lengths)
+            self.cpu = self.cpu[0:l]
+            self.io = self.io[0:l]
+            self.virt = self.io[0:l]
+            self.swap = self.swap[0:l]
+            self.time = self.time[0:l]
+
         self.start_time = self.time[0]
         self.end_time = self.time[-1]
 
@@ -344,7 +358,7 @@ class SystemResourceMonitor(object):
                 data.append(('io', io_diff))
                 data.append(('virt', list(psutil.virtual_memory())))
                 data.append(('swap', list(psutil.swap_memory())))
-                data.append(('cpu', psutil.cpu_percent(1.0, True)))
+                data.append(('cpu', psutil.cpu_percent(0.5, True)))
         finally:
             for entry in data:
                 pipe.send(entry)
