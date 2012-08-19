@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import json
 import logging
 import multiprocessing
 import os.path
@@ -103,6 +104,8 @@ class HybridMakeBackend(BackendBase):
         self.log(logging.INFO, 'hybridmake_generate_start', {},
             'Reticulating Splines...')
 
+        compilation_db = []
+
         pool = multiprocessing.Pool()
 
         for result in pool.map(process_makefile, self.makefiles):
@@ -114,6 +117,8 @@ class HybridMakeBackend(BackendBase):
             if result['splendid_path'] is not None:
                 self.splendid_files.add(result['splendid_path'])
 
+            compilation_db.extend(result['compilation_db'])
+
         pool.terminate()
 
         hybrid_path = os.path.join(self.objdir, 'hybridmake.mk')
@@ -124,6 +129,12 @@ class HybridMakeBackend(BackendBase):
         self.add_generate_output_file(hybrid_path, dependencies)
         self.output_directories.add(os.path.join(self.objdir, 'tmp'))
 
+        # Write out the unified compilation database.
+        compilation_db_path = os.path.join(self.objdir, 'compilation_db.json')
+        with open(compilation_db_path, 'wb') as fh:
+            json.dump(compilation_db, fh, indent=2)
+        self.add_generate_output_file(compilation_db_path, dependencies)
+
         for path in self.output_directories:
             self.mkdir(path)
 
@@ -132,6 +143,7 @@ class HybridMakeBackend(BackendBase):
             'output_files': [],
             'output_directories': set(),
             'splendid_path': None,
+            'compilation_db': [],
         }
 
         output_path = makefile_output_path(self.srcdir, self.objdir, original)
@@ -412,6 +424,17 @@ class HybridMakeBackend(BackendBase):
             print >>fh, '-include %s' % normpath(deps_path)
             print >>fh, ''
 
+            # Add to the compilation database.
+            # TODO more robust compiler path grabbing.
+            compiler_path = self.settings.compiler.cc
+            if compiler == 'CCC':
+                compiler_path = self.settings.compiler.cxx
+
+            meta['compilation_db'].append({
+                'directory': self.objdir,
+                'command': '%s %s %s' % (compiler_path, flags, source),
+                'file': source[len(self.srcdir)+1:]
+            })
 
         for source in obj.cpp_sources:
             process_file(source, 'CPP_OBJECT_FILES', 'CCC',
