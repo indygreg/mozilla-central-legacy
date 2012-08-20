@@ -8,8 +8,12 @@
 import hashlib
 import os
 import multiprocessing
-import psutil
 import time
+
+try:
+    import psutil
+except ImportError:
+    psutil = None
 
 from collections import OrderedDict
 from collections import namedtuple
@@ -112,6 +116,12 @@ class SystemResourceMonitor(object):
 
         self._active_phases = {}
 
+        self._running = False
+        self._stopped = False
+
+        if psutil is None:
+            return
+
         cpu = psutil.cpu_percent(0.0, True)
         io = psutil.disk_io_counters()
         virt = psutil.virtual_memory()
@@ -125,8 +135,6 @@ class SystemResourceMonitor(object):
         self._swap_type = type(swap)
         self._swap_len = len(swap)
 
-        self._running = False
-        self._stopped = False
         self._run_lock = multiprocessing.Lock()
         self._rx_pipe, self._tx_pipe = multiprocessing.Pipe(False)
 
@@ -146,6 +154,9 @@ class SystemResourceMonitor(object):
 
         You should only call this once per instance.
         """
+        if psutil is None:
+            return
+
         self._run_lock.acquire()
         self._running = True
         self._process.start()
@@ -158,6 +169,9 @@ class SystemResourceMonitor(object):
 
         Currently, data is not available until you call stop().
         """
+        if psutil is None:
+            return
+
         assert self._running
         assert not self._stopped
 
