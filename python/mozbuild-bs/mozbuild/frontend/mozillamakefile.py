@@ -4,7 +4,7 @@
 
 # This file contains code for extracting metadata from a Mozilla Makefile.
 
-import os.path
+import os
 
 import mozbuild.frontend.data as data
 
@@ -373,11 +373,19 @@ class MozillaMakefile(Makefile):
             flags_vars)
         l.source_specific_flags.update(target_flags)
 
+        # Holy hack, batman.
         extra_arguments = [
             '-include',
             '$(OBJECT_DIR)/mozilla-config.h',
             '-DMOZILLA_CLIENT',
         ]
+
+        if os.name in ('nt', 'ce'):
+            extra_arguments = [
+                '-FI',
+                '$(OBJECT_DIR)/mozilla-config.h',
+                '-DMOZILLA_CLIENT',
+            ]
 
         cxx_arguments.extend(extra_arguments)
 
