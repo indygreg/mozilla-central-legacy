@@ -43,7 +43,10 @@ class VisualStudioBackend(BackendBase):
 
     def _generate(self):
         for makefile in self.makefiles:
-            result = self._process_makefile(makefile)
+            try:
+                result = self._process_makefile(makefile)
+            except Exception as ex:
+                print ex
 
     def _process_makefile(self, makefile):
         for obj in makefile.get_data_objects():
@@ -198,7 +201,7 @@ class VisualStudioBackend(BackendBase):
                 continue
 
             elif flag.startswith('-wd'):
-                disabled_warnings.append(flag[2:])
+                disabled_warnings.append(flag[3:])
                 continue
 
             elif flag.startswith('-D'):
@@ -208,12 +211,12 @@ class VisualStudioBackend(BackendBase):
                 undefines.append(flag[2:])
                 continue
 
-            elif flag.startswith('we'):
-                warn_as_error.append(flag[2:])
+            elif flag.startswith('-we'):
+                warn_as_error.append(flag[3:])
                 continue
 
             elif flag.startswith('-Fd'):
-                tool_compiler.set('ProgramDatabaseFileName', flag[2:])
+                tool_compiler.set('ProgramDatabaseFileName', flag[3:])
                 continue
 
             print 'Unhandled compiler flag: %s' % flag
