@@ -321,7 +321,7 @@ class VisualStudioBackend(BackendBase):
                 ';'.join(force_includes))
 
         if len(additional):
-            tool_compiler.set('AdditionalOptions', ';'.join(additional))
+            tool_compiler.set('AdditionalOptions', ' '.join(additional))
 
         configuration.append(tool_compiler)
 
