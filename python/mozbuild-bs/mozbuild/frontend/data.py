@@ -103,7 +103,7 @@ class LibraryInfo(MakefileDerivedObject):
         # C++ compilation.
         'cpp_sources', # C++ source files.
         'compile_cxxflags', # Full C++ compiler flags.
-        'cxx_flags',           # C++ compiler flags
+        'cxx_flags', # C++ compiler flags
 
         # Objective-C compilation.
         'objc_sources', # Objective-C source files.
@@ -118,23 +118,17 @@ class LibraryInfo(MakefileDerivedObject):
         # global and per-file values.
         'source_specific_flags',
 
-        # Legacy.
-        'defines',             # set of #define strings to use when compiling this library
-        'export_library',      # Whether to export the library
-        'includes',            # Set of extra paths for included files
-                               # TODO is includes the same as local_includes?
-        'local_includes',      # Set of extra paths to search for included files in
-        'name',                # The name of the library
-        'nspr_cflags', # Flags used to build against NSPR.
-        'pic',                 # Whether to generate position-independent code
-        'is_component',        # Whether the library is a component, whatever that means
-        'is_shared',           # Whether the library is shared
-        'is_static',           # Whether the library is static
+        'export_library',  # Whether to export the library
+        'name', # The name of the library
+        'pic', # Whether to generate position-independent code
+        'is_component', # Whether the library is a component, whatever that means
+        'is_shared', # Whether the library is shared
+        'is_static', # Whether the library is static
         'shared_library_libs', # Set of static libraries to link in when building
                                # a shared library
-        'short_libname',       # This doesn't appear to be used anywhere
-                               # significant, but we capture it anyway.
-        'use_static_libs',     # Compile against static libraries
+        'short_libname', # This doesn't appear to be used anywhere
+                         # significant, but we capture it anyway.
+        'use_static_libs', # Compile against static libraries
     )
 
     def __init__(self, makefile):
@@ -151,11 +145,7 @@ class LibraryInfo(MakefileDerivedObject):
 
         self.source_specific_flags = {}
 
-        self.defines = set()
         self.export_library = None
-        self.includes = set()
-        self.local_includes = set()
-        self.nspr_cflags = set()
         self.pic = None
         self.is_component = None
         self.is_shared = None

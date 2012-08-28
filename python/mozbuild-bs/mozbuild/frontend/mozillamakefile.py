@@ -304,28 +304,6 @@ class MozillaMakefile(Makefile):
         name = self.get_variable_string('LIBRARY_NAME')
         l.name = name
 
-        # TODO We used to care about all the individual variables before. We no
-        # longer do. The following can arguably be deleted since we just grab
-        # all of the flags below.
-        l.used_variables.add('DEFINES')
-        for define in self.get_variable_split('DEFINES'):
-            if define[0:2] == '-D':
-                l.defines.add(define[2:])
-            else:
-                l.defines.add(define)
-
-        l.used_variables.add('HOST_CFLAGS')
-        for f in self.get_variable_split('HOST_CFLAGS'):
-            l.c_flags.add(f)
-
-        l.used_variables.add('HOST_CXXFLAGS')
-        for f in self.get_variable_split('HOST_CXXFLAGS'):
-            l.cxx_flags.add(f)
-
-        l.used_variables.add('NSPR_CFLAGS')
-        for f in self.get_variable_split('NSPR_CFLAGS'):
-            l.nspr_cflags.add(f)
-
         l.used_variables.add('CPPSRCS')
         l.exclusive_variables.add('CPPSRCS')
         for f in self.get_variable_split('CPPSRCS'):
@@ -374,20 +352,6 @@ class MozillaMakefile(Makefile):
         l.used_variables.add('EXPORT_LIBRARY')
         if self.has_own_variable('EXPORT_LIBRARY'):
             l.export_library = self.get_variable_string('EXPORT_LIBRARY') == '1'
-
-        l.used_variables.add('INCLUDES')
-        for s in self.get_variable_split('INCLUDES'):
-            if s[0:2] == '-I':
-                l.includes.add(s[2:])
-            else:
-                l.includes.add(s)
-
-        l.used_variables.add('LOCAL_INCLUDES')
-        for s in self.get_variable_split('LOCAL_INCLUDES'):
-            if s[0:2] == '-I':
-                l.local_includes.add(s[2:])
-            else:
-                l.local_includes.add(s)
 
         # SHORT_LIBNAME doesn't appears to be used, but we preserve it anyway.
         l.used_variables.add('SHORT_LIBNAME')
