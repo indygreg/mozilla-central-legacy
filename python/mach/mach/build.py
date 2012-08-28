@@ -55,7 +55,7 @@ class Build(Base, ArgumentProvider):
         backendconfig = parser.add_parser('backendconfig',
             help='Perform build backend configuration')
 
-        backends = set(['legacy', 'reformat', 'hybridmake'])
+        backends = set(['legacy', 'reformat', 'hybridmake', 'visualstudio'])
         backendconfig.add_argument('backend', default='hybridmake',
             choices=backends, nargs='?',
             help='Build backend to use.')

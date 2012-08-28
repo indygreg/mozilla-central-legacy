@@ -9,6 +9,7 @@ import os.path
 from mozbuild.base import Base
 from mozbuild.backend.legacy import LegacyBackend
 from mozbuild.backend.hybridmake import HybridMakeBackend
+from mozbuild.backend.visualstudio import VisualStudioBackend
 from mozbuild.frontend.frontend import BuildFrontend
 from mozbuild.util import hash_file
 
@@ -33,6 +34,8 @@ class BackendManager(Base):
             self.backend.verify_reformat = True
         elif name == 'hybridmake':
             self.backend = HybridMakeBackend(self.frontend)
+        elif name == 'visualstudio':
+            self.backend = VisualStudioBackend(self.frontend)
         else:
             raise Exception('Unknown backend: %s' % name)
 
