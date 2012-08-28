@@ -143,7 +143,7 @@ class Base(object):
         # feature... yet.
         args.append('-w')
 
-        if not builtin_rules:
+        if not builtin_rules and not self._is_windows():
             args.append('--no-builtin-rules')
 
         if isinstance(target, list):
@@ -376,8 +376,13 @@ class BuildConfig(ConfigProvider):
         register('build', 'osx_sdk_path', ConfigProvider.TYPE_ABSOLUTE_PATH,
             default=None)
 
+        # hybridmake currently has issues on Windows due to multiprocess magic.
+        default_backend = 'hybridmake'
+        if os.name in ('nt', 'ce'):
+            default_backend = 'legacy'
+
         register('build', 'backend', ConfigProvider.TYPE_STRING,
-            default='hybridmake',
+            default=default_backend,
             choices=set(['legacy', 'hybridmake']))
 
         register('compiler', 'cc', ConfigProvider.TYPE_ABSOLUTE_PATH,
