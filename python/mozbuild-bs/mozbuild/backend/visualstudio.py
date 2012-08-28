@@ -14,6 +14,31 @@ import mozbuild.frontend.data as data
 from mozbuild.backend.base import BackendBase
 from mozbuild.backend.utils import substitute_makefile
 
+# TODO validate mappings are correct. only 2008 confirmed so far
+def visual_studio_product_to_internal_version(version, solution=False):
+    if solution:
+        if version == '2005':
+            return '9.00'
+        elif version == '2008':
+            return '10.00'
+        elif version == '2010':
+            return '11.00'
+        elif version == '2011':
+            return '12.00'
+        else:
+            raise Exception('Unknown version seen: %s' % version)
+    else:
+        if version == '2005':
+            return '8.00'
+        elif version == '2008':
+            return '9.00'
+        elif version == '2010':
+            return '10.00'
+        elif version == '2011':
+            return '11.00'
+        else:
+            raise Exception('Unknown version seen: %s' % version)
+
 class VisualStudioBackend(BackendBase):
     """Backend that produces Visual Studio project files."""
 
@@ -42,25 +67,80 @@ class VisualStudioBackend(BackendBase):
             yield m
 
     def _generate(self):
+        out_dir = os.path.join(self.objdir, 'msvc')
+        self.mkdir(out_dir)
+
+        ctx = {
+            'projects': {},
+            'library_ids': set(),
+        }
         for makefile in self.makefiles:
             try:
-                result = self._process_makefile(makefile)
+                result = self._process_makefile(makefile, ctx)
             except Exception as ex:
                 print ex
 
-    def _process_makefile(self, makefile):
+        solution_path = os.path.join(out_dir, 'mozilla.sln')
+        with open(solution_path, 'w') as fh:
+            self._write_solution(ctx, fh)
+
+    def _process_makefile(self, makefile, ctx):
+        out_dir = os.path.join(self.objdir, 'msvc')
+
         for obj in makefile.get_data_objects():
+            result = None
+
             if isinstance(obj, data.LibraryInfo):
                 result = self._handle_library_info(makefile, obj)
 
+            if not result:
+                continue
+
+            filename = os.path.join(out_dir, 'lib_%s.vcproj' % result[2])
+            self.add_generate_output_file(filename)
+
+            with open(filename, 'wb') as fh:
+                fh.write(result[0])
+
+            ctx['projects'][result[1]] = {
+                'id': result[1],
+                'name': result[2],
+                'filename': filename,
+            }
+
     def _handle_library_info(self, makefile, obj):
-        result = VisualStudioBackend.write_vs_project('12.0', obj.name,
+        return VisualStudioBackend.write_vs_project(self.version, obj.name,
             'static',
             cpp_sources=obj.cpp_sources, c_sources=obj.c_sources,
             c_flags=obj.compile_cflags.split())
 
-        print result
+    def _write_solution(self, ctx, fh):
+        version = visual_studio_product_to_internal_version(self.version, True)
+        solution_id = str(uuid.uuid1())
 
+        # Visual Studio seems to require this header.
+        print >>fh, 'Microsoft Visual Studio Solution File, Format Version %s' % version
+
+        # Write out entries for each project.
+        for project in ctx['projects'].itervalues():
+            print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
+                solution_id, project['name'], project['filename'], project['id'])
+
+            # TODO dependencies.
+
+            print >>fh, 'EndProject'
+
+        # The Global section defines configurations.
+        print >>fh, 'Global'
+        print >>fh, '\tGlobalSection(SolutionConfigurationPlatforms) = preSolution'
+        print >>fh, '\t\tBuild|Win32 = Build|Win32'
+        print >>fh, '\tEndGlobalSection'
+        print >>fh, '\tGlobalSection(ProjectConfiguration) = postSolution'
+        for project in ctx['projects'].itervalues():
+            print >>fh, '\t\t{%s}.Build.ActiveCfg = Build|Win32' % project['id']
+            print >>fh, '\t\t{%s}.Build.Build.0 = Build|Win32' % project['id']
+        print >>fh, '\tEndGlobalSection'
+        print >>fh, 'EndGlobal'
 
     def _build(self):
         pass
@@ -76,7 +156,7 @@ class VisualStudioBackend(BackendBase):
 
         root = Element('VisualStudioProject', attrib={
             'ProjectType': 'Visual C++',
-            'Version': version,
+            'Version': visual_studio_product_to_internal_version(version, False),
             'Name': name,
             'ProjectGUID': project_id,
             'RootNamespace': 'mozilla',
@@ -110,7 +190,7 @@ class VisualStudioBackend(BackendBase):
             Name='Build|Win32',
             ConfigurationType=configuration_type,
             CharacterSet='1',
-            InheritedPropertySheets='.\mozilla.vsprops'
+            #InheritedPropertySheets='.\mozilla.vsprops'
         )
 
         # Parse compiler flags into project settings.
