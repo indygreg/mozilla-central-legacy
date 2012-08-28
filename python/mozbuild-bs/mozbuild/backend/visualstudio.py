@@ -14,6 +14,9 @@ import mozbuild.frontend.data as data
 from mozbuild.backend.base import BackendBase
 from mozbuild.backend.utils import substitute_makefile
 
+def get_id(name):
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, name))
+
 # TODO validate mappings are correct. only 2008 confirmed so far
 def visual_studio_product_to_internal_version(version, solution=False):
     if solution:
@@ -152,7 +155,7 @@ class VisualStudioBackend(BackendBase):
         if c_flags is None:
             c_flags = []
 
-        project_id = str(uuid.uuid1())
+        project_id = get_id(name)
 
         root = Element('VisualStudioProject', attrib={
             'ProjectType': 'Visual C++',
