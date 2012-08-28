@@ -87,6 +87,10 @@ class VisualStudioBackend(BackendBase):
         with open(solution_path, 'w') as fh:
             self._write_solution(ctx, fh)
 
+        props_path = os.path.join(out_dir, 'mozilla.vsprops')
+        with open(props_path, 'wb') as fh:
+            self._write_props(fh)
+
     def _process_makefile(self, makefile, ctx):
         out_dir = os.path.join(self.objdir, 'msvc')
 
@@ -95,6 +99,7 @@ class VisualStudioBackend(BackendBase):
 
             if isinstance(obj, data.LibraryInfo):
                 result = self._handle_library_info(makefile, obj)
+                ctx['library_ids'].add(result[1])
 
             if not result:
                 continue
@@ -133,6 +138,13 @@ class VisualStudioBackend(BackendBase):
 
             print >>fh, 'EndProject'
 
+        # Write out containers for different project types.
+        container_id = get_id('containers')
+        library_id = get_id('libraries')
+        desc = 'Libraries'
+        print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
+            container_id, desc, desc, library_id)
+
         # The Global section defines configurations.
         print >>fh, 'Global'
         print >>fh, '\tGlobalSection(SolutionConfigurationPlatforms) = preSolution'
@@ -143,7 +155,23 @@ class VisualStudioBackend(BackendBase):
             print >>fh, '\t\t{%s}.Build.ActiveCfg = Build|Win32' % project['id']
             print >>fh, '\t\t{%s}.Build.Build.0 = Build|Win32' % project['id']
         print >>fh, '\tEndGlobalSection'
+
+        # Associate projects with containers.
+        print >>fh, '\tGlobalSection(NestedProjects) = preSolution'
+        for project_id in ctx['library_ids']:
+            print >>fh, '\t\t{%s} = {%s}' % (project_id, library_id)
+        print >>fh, '\tEndGlobalSection'
+
         print >>fh, 'EndGlobal'
+
+    def _write_props(self, fh):
+        props = Element('VisualStudioPropertySheet', ProjectType='Visual C++',
+            Version='8.00',
+            Name='mozilla-build')
+
+        props.append(Element('UserMacro', Name='OBJECT_DIR', Value=self.objdir))
+
+        fh.write(xml.etree.ElementTree.tostring(props, encoding='utf-8'))
 
     def _build(self):
         pass
@@ -193,7 +221,7 @@ class VisualStudioBackend(BackendBase):
             Name='Build|Win32',
             ConfigurationType=configuration_type,
             CharacterSet='1',
-            #InheritedPropertySheets='.\mozilla.vsprops'
+            InheritedPropertySheets='.\mozilla.vsprops'
         )
 
         # Parse compiler flags into project settings.
@@ -219,10 +247,10 @@ class VisualStudioBackend(BackendBase):
 
             # Force compilation as C (-tc) or C++ (-tp)
             if lower == '-tc':
-                tool_compiler.set('CompileAs', '1')
+                #tool_compiler.set('CompileAs', '1')
                 continue
             elif lower == '-tp':
-                tool_compiler.set('CompileAs', '2')
+                #tool_compiler.set('CompileAs', '2')
                 continue
 
             elif lower == '-gy':
