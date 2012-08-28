@@ -126,11 +126,17 @@ class VisualStudioBackend(BackendBase):
         version = visual_studio_product_to_internal_version(self.version, True)
         solution_id = str(uuid.uuid1())
 
+        def sort_by_name(a, b):
+            return cmp(ctx['projects'][a]['name'], ctx['projects'][b]['name'])
+
         # Visual Studio seems to require this header.
         print >>fh, 'Microsoft Visual Studio Solution File, Format Version %s' % version
 
         # Write out entries for each project.
-        for project in ctx['projects'].itervalues():
+        sorted_projects = sorted(ctx['projects'].keys(), cmp=sort_by_name)
+        for project_id in sorted_projects:
+            project = ctx['projects'][project_id]
+
             print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
                 solution_id, project['name'], project['filename'], project['id'])
 
@@ -138,8 +144,10 @@ class VisualStudioBackend(BackendBase):
 
             print >>fh, 'EndProject'
 
-        # Write out containers for different project types.
-        container_id = get_id('containers')
+        # Write out solution folders for organizing things.
+
+        # This is the UUID you use for solution folders.
+        container_id = '2150E333-8FDC-42A3-9474-1A3956D46DE8'
         library_id = get_id('libraries')
         desc = 'Libraries'
         print >>fh, 'Project("{%s}") = "%s", "%s", "{%s}"' % (
@@ -158,7 +166,7 @@ class VisualStudioBackend(BackendBase):
 
         # Associate projects with containers.
         print >>fh, '\tGlobalSection(NestedProjects) = preSolution'
-        for project_id in ctx['library_ids']:
+        for project_id in sorted(ctx['library_ids'], cmp=sort_by_name):
             print >>fh, '\t\t{%s} = {%s}' % (project_id, library_id)
         print >>fh, '\tEndGlobalSection'
 
