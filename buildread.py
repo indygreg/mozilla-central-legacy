@@ -8,10 +8,6 @@
 #
 # e.g. ./objdir/_virtualenv/bin/python buildread.py
 
-
-import os
-import sys
-
 import mozconfig
 
 from mozbuild.frontend.reader import BuildReader
