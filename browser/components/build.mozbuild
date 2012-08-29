@@ -21,7 +21,7 @@ PARALLEL_DIRS += [
     'migration',
 ]
 
-if CONFIG.MOZ_SAVE_BROWSING:
+if CONFIG.MOZ_SAFE_BROWSING:
     PARALLEL_DIRS += ['safebrowsing']
 
 TEST_DIRS += ['test']
