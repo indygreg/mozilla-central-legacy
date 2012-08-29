@@ -3,3 +3,17 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# Theme Selection
+#
+# Windows                 Winstripe
+# GNOME/Linux             Gnomestripe
+# MacOS X                 Pinstripe
+toolkit = CONFIG.MOZ_WIDGET_TOOLKIT
+
+if toolkit == 'cocoa':
+    DIRS += ['pinstripe']
+else:
+    DIRS += ['winstripe']
+
+if 'gtk2' in toolkit or 'qt' in toolkit:
+    DIRS += ['gnomestripe']
