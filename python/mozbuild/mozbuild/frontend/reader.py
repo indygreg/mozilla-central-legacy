@@ -143,13 +143,6 @@ class Sandbox(object):
             'PARALLEL_DIRS': list(),
             'TEST_DIRS': list(),
             'GARBAGE_DIRS': list(),
-            'TIERS': {
-                'base': list(),
-                'js': list(),
-                'nspr': list(),
-                'platform': list(),
-                'app': list(),
-            },
 
             # Special functions.
             'add_tier_dir': self._add_tier_directory,
@@ -195,8 +188,9 @@ class BuildReader(object):
             dirs |= set(result['globals'][var])
 
         # We also have tiers whose members are directories.
-        for tier, values in result['globals']['TIERS'].iteritems():
-            dirs |= set(values)
+        for tier, values in self._tiers.iteritems():
+            dirs |= set(values['regular'])
+            dirs |= set(values['static'])
 
         curdir = os.path.dirname(path)
         for relpath in dirs:
