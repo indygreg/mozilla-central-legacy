@@ -3,6 +3,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+if CONFIG.LIBXUL_SDK:
+    # TODO error about compatibility regarding --enable-libxul-sdk=
+    pass
+
 include('%s/config/nspr/nspr.mozbuild' % CONFIG.topsrcdir)
 include('%s/config/js/js.mozbuild' % CONFIG.topsrcdir)
 
@@ -65,3 +69,141 @@ if CONFIG.MOZ_OPUS:
 
 if CONFIG.MOZ_WEBM:
     add_tier_dir('platform', 'media/libnestegg')
+
+if CONFIG.MOZ_VP8 and not CONFIG.MOZ_NATIVE_LIBVPX:
+    add_tier_dir('platform', 'media/libvpx')
+
+if CONFIG.MOZ_OGG:
+    add_tier_dir('platform', ['media/libogg', 'media/libtheora'])
+
+if CONFIG.MOZ_SYDNEYAUDIO:
+    add_tier_dir('platform', 'media/libsydneyaudio')
+
+if CONFIG.MOZ_PSM:
+    add_tier_dir('platform', 'security/build')
+
+if CONFIG.MOZ_WEBRTC:
+    add_tier_dir('platform', 'media/webrtc')
+
+if CONFIG.MOZ_SPEEX_RESAMPLER:
+    add_tier_dir('platform', 'media/libspeex_resampler')
+
+if CONFIG.MOZ_CUBEB:
+    add_tier_dir('platform', 'media/libcubeb')
+
+if CONFIG.MOZ_OMX_PLUGIN:
+    add_tier_dir('platform', [
+        'media/omx-plugin/lib/ics/libutils',
+        'media/omx-plugin/lib/ics/libstagefright',
+        'media/omx-plugin'
+    ])
+
+if CONFIG.MOZ_NATIVE_PNG:
+    add_tier_dir('platform', 'media/libpng')
+
+add_tier_dir('platform', [
+    'uriloader',
+    'caps',
+    'parser',
+    'gfx',
+    'image',
+    'dom',
+    'view',
+    'widget',
+    'content',
+    'editor',
+    'layout',
+    'docshell',
+    'embedding',
+    'xpfe/appshell'
+])
+
+# This needs to be built after the gfx/ directory
+# to ensure all dependencies for skia (e.g. mozalloc, xpcom)
+# have been built
+if CONFIG.MOZ_WIDGET_TOOLKIT:
+    add_tier_dir('platform', 'other-licenses/skia-npapi')
+
+if CONFIG.MOZ_UNIVERAL_CHARDET:
+    add_tier_dir('platform', 'extensions/universalcharset')
+
+if CONFIG.ACCESSIBILITY:
+    add_tier_dir('platform', 'accessible')
+
+# toolkit
+
+add_tier_dir('platform', 'profile')
+
+# This must preceed xpfe.
+if CONFIG.MOZ_JPROF:
+    add_tier_dir('platform', 'tools/jprof')
+
+add_tier_dir('platform', 'tools/profiler')
+
+add_tier_dir('platform', 'xpfe/components')
+
+if CONFIG.MOZ_ENABLE_XREMOTE:
+    add_tier_dir('platform', 'widget/xremoteclient')
+
+if CONFIG.MOZ_SPELLCHECK:
+    add_tier_dir('platform', 'extensions/spellcheck')
+
+if CONFIG.MOZ_PSM:
+    add_tier_dir('platform', 'security/manager')
+else:
+    add_tier_dir('platform', [
+        'security/manager/boot/public',
+        'security/manager/sll/public',
+    ])
+
+if CONFIG.MOZ_UPDATER:
+    add_tier_dir('platform', 'modules/libmar')
+
+add_tier_dir('platform', 'toolkit')
+
+if CONFIG.MOZ_PREF_EXTENSIONS:
+    add_tier_dir('platform', 'extensions/pref')
+
+add_tier_dir('platform', 'services/crypto/component')
+add_tier_dir('platform', 'startupcache')
+add_tier_dir('platform', 'js/ductwork/debugger')
+add_tier_dir('platform', 'other-licenses/snappy')
+
+# Applications can cheat and ask for code to be
+# built before libxul so libxul can be linked against it.
+if CONFIG.APP_LIBXUL_STATICDIRS:
+    add_tier_dir('platform', CONFIG.APP_LIBXUL_STATICDIRS, static=True)
+
+# Applications can cheat and ask for code to be
+# built before libxul so it can be linked into libxul.
+if CONFIG.APP_LIBXUL_DIRS:
+    # TODO the value is probably a whitespace delimited string.
+    add_tier_dir('platform', CONFIG.APP_LIBXUL_DIRS)
+
+add_tier_dir('platform', 'toolkit/library')
+add_tier_dir('platform', 'xpcom/stub')
+
+if CONFIG.NS_TRACE_MALLOC:
+    add_tier_dir('platform', 'tools/trace-malloc')
+
+if CONFIG.MOZ_ENABLE_GNOME_COMPONENT:
+    add_tier_dir('platform', 'toolkit/system/gnome')
+
+# if libconic is present, it will do its own network monitoring
+if not CONFIG.MOZ_ENABLE_LIBCONIC and CONFIG.MOZ_ENABLE_DBUS:
+    add_tier_dir('platform', 'toolkit/system/dbus')
+
+if CONFIG.MOZ_MAPINFO:
+    add_tier_dir('platform', 'tools/codesighs')
+
+if CONFIG.ENABLE_MARIONETTE:
+    add_tier_dir('platform', 'testing/marionette')
+
+if CONFIG.ENABLE_TESTS:
+    add_tier_dir('platform', [
+        'testing/mochitest',
+        'testing/xpcshell',
+        'testing/tools/screenshot',
+        'testing/peptest',
+        'testing/mozbase',
+    ])
