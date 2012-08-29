@@ -6,24 +6,6 @@ ifndef LIBXUL_SDK
 include $(topsrcdir)/toolkit/toolkit-tiers.mk
 endif
 
-TIERS += app
-
-ifdef MOZ_EXTENSIONS
-tier_app_dirs += extensions
-endif
-
-tier_app_dirs += $(MOZ_BRANDING_DIRECTORY)
-
-tier_app_dirs += services
-
-ifdef MOZ_WEBAPP_RUNTIME
-tier_app_dirs += webapprt
-endif
-
-tier_app_dirs += browser
-# Never add other tier_app_dirs after browser. They won't get packaged
-# properly on mac.
-
 ################################################
 # Parallel build on Windows with GNU make check
 

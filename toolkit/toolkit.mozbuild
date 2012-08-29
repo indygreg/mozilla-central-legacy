@@ -1,0 +1,67 @@
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+include('%s/config/nspr/nspr.mozbuild' % CONFIG.topsrcdir)
+include('%s/config/js/js.mozbuild' % CONFIG.topsrcdir)
+
+if CONFIG.NS_TRACE_MALLOC:
+    add_tier_dir('platform', 'tools/trace-malloc/lib')
+
+if CONFIG.MOZ_TREE_FREETYPE:
+    add_tier_dir('platform', 'modules/freetype2', static=True)
+
+add_tier_dir('platform', [
+    'xpcom',
+    'modules/libpref',
+    'intl',
+    'netwerk',
+])
+
+if CONFIG.MOZ_AUTH_EXTENSION:
+    add_tier_dir('platform', 'extensions/auth')
+
+# External/3rd party libraries.
+
+if not CONFIG.MOZ_NATIVE_JPEG:
+    add_tier_dir('platform', 'media/libjpeg')
+
+if CONFIG.MOZ_UPDATER:
+    if not CONFIG.MOZ_NATIVE_BZ2:
+        add_tier_dir('platform', 'modules/libbz2')
+
+    add_tier_dir('platform', 'other-licenses/bsdiff')
+
+add_tier_dir('platform', 'gfx/qcms')
+
+# Gecko/Core components.
+
+add_tier_dir('platform', ['ipc', 'js/ipc'])
+
+add_tier_dir('platform', ['hal', 'js/xpconnect', 'intl/chardet'])
+
+if CONFIG.MOZ_ENABLE_GTK2 and CONFIG.MOZ_X11:
+    add_tier_dir('platform', 'widget/gtkxtbin')
+
+add_tier_dir('platform', ['modules/libjar', 'storage'])
+
+if CONFIG.MOZ_PERMISSIONS:
+    add_tier_dir('platform', ['extensions/cookie', 'extensions/permissions'])
+
+add_tier_dir('platform', 'rdf')
+
+if CONFIG.MOZ_JSDEBUGGER:
+    add_tier_dir('platform', 'js/jsd')
+
+if CONFIG.MOZ_VORBIS:
+    add_tier_dir('platform', 'media/libvorbis')
+
+if CONFIG.MOZ_TREMOR:
+    add_tier_dir('platform', 'media/libtremor')
+
+if CONFIG.MOZ_OPUS:
+    add_tier_dir('platform', 'media/libopus')
+
+if CONFIG.MOZ_WEBM:
+    add_tier_dir('platform', 'media/libnestegg')

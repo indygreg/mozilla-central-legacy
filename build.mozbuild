@@ -3,3 +3,32 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# Bring in the configuration for the configured application.
+include('%s/app.mozbuild' % CONFIG.MOZ_BUILD_APP)
+
+add_tier_dir('base', ['config', 'build', 'probes', 'mfbt'])
+
+if not CONFIG.LIBXUL_SDK:
+    if CONFIG.MOZ_WIDGET_TOOLKIT in ('android', 'gonk'):
+        add_tier_dir('base', ['other-licenses', 'android'])
+
+    if CONFIG.MOZ_MEMORY:
+        add_tier_dir('base', 'memory/mozjemalloc')
+
+        if CONFIG.MOZ_JEMALLOC:
+            add_tier_dir('base', 'memory/jemalloc')
+
+        add_tier_dir('base', 'memory/build')
+
+    if not CONFIG.MOZ_NATIVE_ZLIB:
+        add_tier_dir('base', 'modules/zlib')
+
+    add_tier_dir('base', ['mozglue', 'memory/mozalloc'])
+
+GARBAGE_DIRS += [
+    'dist',
+    '_javagen',
+    '_profile',
+    '_tests',
+    'staticlib'
+]
