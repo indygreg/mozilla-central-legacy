@@ -10,3 +10,4 @@ setup.py:python/blessings:develop
 setup.py:python/mozbuild:develop
 mozilla.pth:build
 mozilla.pth:config
+copy:build/mozconfig.py

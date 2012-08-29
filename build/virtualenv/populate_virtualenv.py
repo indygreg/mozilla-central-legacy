@@ -9,6 +9,7 @@ from __future__ import with_statement
 import os.path
 import subprocess
 import sys
+import shutil
 import distutils.sysconfig
 
 def populate_virtualenv(top_source_directory, manifest_filename):
@@ -40,7 +41,10 @@ def populate_virtualenv(top_source_directory, manifest_filename):
 
             call_setup(os.path.join(top_source_directory, package[1]),
                 package[2:])
-        if package[0].endswith('.pth'):
+        elif package[0] == "copy":
+            shutil.copy(os.path.join(top_source_directory, package[1]),
+                        os.path.join(distutils.sysconfig.get_python_lib(), os.path.basename(package[1])))
+        elif package[0].endswith('.pth'):
             assert len(package) == 2
 
             with open(os.path.join(distutils.sysconfig.get_python_lib(), package[0]), 'a') as f:
