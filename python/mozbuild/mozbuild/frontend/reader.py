@@ -83,6 +83,7 @@ class Sandbox(object):
         return {
             'globals': g,
             'locals': self._locals,
+            'tiers': self._tiers,
         }
 
     def _add_tier_directory(self, tier, reldir, static=False):
@@ -113,7 +114,7 @@ class Sandbox(object):
         # basic precaution, we limit access to files in the tree of the top
         # source directory.
         normpath = os.path.normpath(os.path.realpath(path))
-        normtop = os.path.normpath(os.path.realpath(self.config['topsrcdir']))
+        normtop = os.path.normpath(os.path.realpath(self.config.topsrcdir))
 
         if not normpath.startswith(normtop):
             raise Exception('Included files must be under top source '
@@ -128,6 +129,22 @@ class Sandbox(object):
         specific variables, functions, etc.
         """
 
+        # Normalize the mozconfig into single dict.
+        # TODO make this a method on that type.
+        config = {}
+        for k, v in self.config.defines.iteritems():
+            if v == '1':
+                config[k] = True
+            elif v == '0':
+                config[k] = False
+            else:
+                config[k] = v
+
+        config.update(self.config.substs)
+
+        config['topsrcdir'] = self.config.topsrcdir
+        config['topobjdir'] = self.config.topobjdir
+
         self._globals = {
             '__builtins__': {
                 # Basic constants.
@@ -137,7 +154,7 @@ class Sandbox(object):
             },
 
             # Pre-defined variables.
-            'CONFIG': ReadOnlyDict(self.config),
+            'CONFIG': ReadOnlyDict(config),
 
             'DIRS': list(),
             'PARALLEL_DIRS': list(),
@@ -160,7 +177,7 @@ class BuildReader(object):
 
     def __init__(self, config):
         self.config = config
-        self.topsrcdir = config['topsrcdir']
+        self.topsrcdir = config.topsrcdir
 
     def read(self):
         # We start in the root directory and descend according to what we find.
@@ -180,7 +197,7 @@ class BuildReader(object):
         # We first collect directories populated in variables.
         dir_vars = ['DIRS', 'PARALLEL_DIRS']
 
-        if self.config.get('ENABLE_TESTS', False):
+        if self.config.defines.get('ENABLE_TESTS', False):
             dir_vars += ['TEST_DIRS']
 
         dirs = set()
@@ -188,7 +205,7 @@ class BuildReader(object):
             dirs |= set(result['globals'][var])
 
         # We also have tiers whose members are directories.
-        for tier, values in self._tiers.iteritems():
+        for tier, values in result['tiers'].iteritems():
             dirs |= set(values['regular'])
             dirs |= set(values['static'])
 
