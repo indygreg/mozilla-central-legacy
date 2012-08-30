@@ -244,6 +244,7 @@ class Base(object):
 
         p = ProcessHandlerMixin(args, cwd=cwd, env=use_env,
                 processOutputLine=[handleLine], universal_newlines=True)
+        p.run()
         p.processOutput()
         status = p.waitForFinish()
 
