@@ -30,13 +30,13 @@ if CONFIG.ENABLE_TESTS:
         'xul/base/test',
     ]
 
-    TOOL_DIRS += [
-        'tools/reftest',
-        'reftests/fonts',
-        'reftests/fonts/mplus',
-    ]
-
     if CONFIG.MOZ_DEBUG:
         DIRS += ['tools/layout-debug']
+
+TEST_TOOL_DIRS += [
+    'tools/reftest',
+    'reftests/fonts',
+    'reftests/fonts/mplus',
+]
 
 DIRS += ['build', 'media']

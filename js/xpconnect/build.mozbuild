@@ -5,9 +5,7 @@
 
 DIRS += ['public', 'idl', 'wrappers', 'loader', 'src']
 TOOL_DIRS += ['shell']
-
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['tests']
+TEST_TOOL_DIRS += ['tests']
 
 if CONFIG.MOZ_XPCTOOLS:
     TOOL_DIRS += ['tools']

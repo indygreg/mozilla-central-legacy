@@ -23,5 +23,4 @@ if CONFIG.MOZ_MEDIA:
 if CONFIG.MOZ_XTF:
     PARALLEL_DIRS += ['xtf']
 
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['test']
+TEST_TOOL_DIRS += ['test']

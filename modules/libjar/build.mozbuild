@@ -6,5 +6,4 @@
 if CONFIG.MOZ_ZIPWRITER:
     DIRS += ['zipwriter']
 
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['test']
+TEST_TOOL_DIRS += ['test']

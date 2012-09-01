@@ -17,5 +17,4 @@ DIRS += [
     'src',
 ]
 
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['tests']
+TEST_TOOL_DIRS += ['tests']

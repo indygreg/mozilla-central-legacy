@@ -362,7 +362,7 @@ class BuildReader(object):
         dir_vars = ['DIRS', 'PARALLEL_DIRS']
 
         if self.config.defines.get('ENABLE_TESTS', False):
-            dir_vars += ['TEST_DIRS']
+            dir_vars += ['TEST_DIRS', 'TEST_TOOL_DIRS']
 
         dirs = set()
         for var in dir_vars:

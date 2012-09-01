@@ -20,8 +20,5 @@ if CONFIG.NECKO_WIFI:
     PARALLEL_DIRS += ['wifi']
 
 PARALLEL_DIRS += ['locales']
-
 DIRS += ['build']
-
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['test']
+TEST_TOOL_DIRS += ['test']

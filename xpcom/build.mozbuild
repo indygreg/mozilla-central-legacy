@@ -22,18 +22,17 @@ DIRS += [
 if CONFIG.OS_ARCH == 'WINNT' and CONFIG.MOZ_DEBUG:
     DIRS += ['windbgdlg']
 
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += [
-        'tests',
-        'sample',
-        'typelib/xpt/tests',
-    ]
+TEST_TOOL_DIRS += [
+    'tests',
+    'sample',
+    'typelib/xpt/tests',
+]
 
-    #  Can't build internal xptcall tests that use symbols which are not exported.
-    #TOOL_DIRS += [
-    #    'reflect/xptinfo/tests',
-    #    'reflect/xptcall/tests,
-    #]
+#  Can't build internal xptcall tests that use symbols which are not exported.
+#TEST_TOOL_DIRS += [
+#    'reflect/xptinfo/tests',
+#    'reflect/xptcall/tests,
+#]
 
 if CONFIG.DEHYDRA_PATH:
     DIRS += ['analysis']

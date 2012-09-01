@@ -65,6 +65,9 @@ FRONTEND_VARIABLES = {
         complete.
         """),
 
+    'TEST_TOOL_DIRS': (list, [],
+        """TOOL_DIRS that is only executed if tests are enabled."""),
+
     # Cleaning up build files.
     'GARBAGE_DIRS': (list, [],
         """Directories relative to this one that should be cleaned up as part

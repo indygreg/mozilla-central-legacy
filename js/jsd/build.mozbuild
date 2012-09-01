@@ -4,6 +4,4 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += ['idl']
-
-if CONFIG.ENABLE_TESTS:
-    TOOL_DIRS += ['test']
+TEST_TOOL_DIRS += ['test']
