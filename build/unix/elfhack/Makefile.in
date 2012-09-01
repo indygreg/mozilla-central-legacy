@@ -97,8 +97,6 @@ inject:
 inject/%.c: inject.c $(call mkdir_deps,inject)
 	cp $< $@
 
-GARBAGE_DIRS += inject
-
 inject/%.$(OBJ_SUFFIX): DEFINES += -DBITS=$(if $(HAVE_64BIT_OS),64,32)
 inject/%.$(OBJ_SUFFIX): CFLAGS := -O2 -fno-stack-protector $(filter -m% -I%,$(CFLAGS))
 inject/$(CPU)-noinit.$(OBJ_SUFFIX): DEFINES += -DNOINIT

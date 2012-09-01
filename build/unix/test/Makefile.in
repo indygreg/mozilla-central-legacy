@@ -39,6 +39,4 @@ $(TS)/.done:
 	$(MKDIR) -p $(dir $@)
 	touch $@
 
-GARBAGE_DIRS += $(TS)
-
 # EOF
