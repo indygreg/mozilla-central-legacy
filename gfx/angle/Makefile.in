@@ -120,9 +120,6 @@ DEFINES += -DANGLE_USE_NEW_PREPROCESSOR=1
 
 ifdef MOZ_ANGLE_RENDERER
 
-# libEGL depends on (links against!) libGLESv2!
-DIRS = src/libGLESv2 src/libEGL
-
 libs::
 	expand "$(MOZ_D3DX9_CAB)" -F:$(MOZ_D3DX9_DLL) "$(DIST)/bin"
 	expand "$(MOZ_D3DCOMPILER_CAB)" -F:$(MOZ_D3DCOMPILER_DLL) "$(DIST)/bin"
