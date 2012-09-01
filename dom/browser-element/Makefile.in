@@ -17,8 +17,6 @@ FORCE_STATIC_LIB = 1
 
 include $(topsrcdir)/dom/dom-config.mk
 
-TEST_DIRS += mochitest
-
 XPIDLSRCS = \
   nsIOpenWindowEventDetail.idl \
   $(NULL)

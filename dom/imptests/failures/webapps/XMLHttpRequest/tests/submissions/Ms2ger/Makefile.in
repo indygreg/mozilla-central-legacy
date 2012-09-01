@@ -5,9 +5,6 @@ srcdir = @srcdir@
 VPATH = @srcdir@
 relativesrcdir = @relativesrcdir@
 
-DIRS = \
-  $(NULL)
-
 include $(DEPTH)/config/autoconf.mk
 
 MOCHITEST_FILES = \

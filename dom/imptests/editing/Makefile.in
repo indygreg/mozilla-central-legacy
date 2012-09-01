@@ -7,12 +7,6 @@ srcdir = @srcdir@
 VPATH = @srcdir@
 relativesrcdir = @relativesrcdir@
 
-DIRS = \
-  css \
-  conformancetest \
-  selecttest \
-  $(NULL)
-
 include $(DEPTH)/config/autoconf.mk
 include $(topsrcdir)/config/rules.mk
 

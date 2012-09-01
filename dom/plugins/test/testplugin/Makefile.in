@@ -14,8 +14,6 @@ MODULE       = nptest
 LIBRARY_NAME = nptest
 MODULE_NAME  = TestPlugin
 
-DIRS = secondplugin
-
 RELATIVE_PATH=.
 COCOA_NAME=Test
 include @srcdir@/testplugin.mk

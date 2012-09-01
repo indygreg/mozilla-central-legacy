@@ -3,3 +3,91 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+interfaces = [
+    'base',
+    'canvas',
+    'core',
+    'html',
+    'events',
+    'devicestorage',
+    'contacts',
+    'settings',
+    'stylesheets',
+    'sidebar',
+    'css',
+    'traversal',
+    'range',
+    'xbl',
+    'xpath',
+    'load-save',
+    'xul',
+    'storage',
+    'json',
+    'offline',
+    'geolocation',
+    'notification',
+    'svg',
+    'smil',
+    'apps',
+]
+
+for i in interfaces:
+    PARALLEL_DIRS.append('interfaces/' + i)
+
+PARALLEL_DIRS += [
+    'apps',
+    'base',
+    'activities',
+    'battery',
+    'browser-element',
+    'contacts',
+    'alarm',
+    'devicestorage',
+    'file',
+    'media',
+    'messages',
+    'power',
+    'settings',
+    'sms',
+    'mms',
+    'src',
+    'locales',
+    'network',
+    'permission',
+    'plugins/base',
+    'plugins/ipc',
+    'indexedDB',
+    'system',
+    'ipc',
+    'identity',
+    'workers',
+    'camera',
+]
+
+if CONFIG.MOZ_B2G_RIL:
+    PARALLEL_DIRS += [
+        'telephony',
+        'wifi',
+        'icc',
+    ]
+
+if CONFIG.MOZ_B2G_BT:
+    PARALLEL_DIRS += ['bluetooth']
+
+if CONFIG.MOZ_PAY:
+    PARALLEL_DIRS += ['payment']
+
+# Not in PARALLEL_DIRS because we need to make sure it builds before
+# bindings/test, which builds from TEST_DIRS, which gets appended to DIRS.
+DIRS += ['bindings']
+
+# bindings/test is here, because it needs to build after bindings/, and
+# we build subdirectories before ourselves.
+TEST_DIRS += [
+    'tests',
+    'imptests',
+    'bindings/test',
+]
+
+if CONFIG.MOZ_WIDGET_TOOLKIT in ('gtk2', 'cocoa', 'windows', 'android', 'qt', 'os2'):
+    TEST_DIRS += ['plugins/test']
