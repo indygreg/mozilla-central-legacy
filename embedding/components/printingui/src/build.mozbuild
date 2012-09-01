@@ -3,3 +3,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+if CONFIG.MOZ_PDF_PRINTING:
+    DIRS += ['unixshared']
+
+toolkit = CONFIG.MOZ_WIDGET_TOOLKIT
+
+if toolkit == 'os2':
+    DIRS += ['os']
+elif toolkit == 'windows':
+    DIRS += ['win']
+elif toolkit == 'cocoa':
+    DIRS += ['mac']
