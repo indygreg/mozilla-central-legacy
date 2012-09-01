@@ -23,6 +23,4 @@ NOTIFICATION_MODULE_FILES := $(modules)
 NOTIFICATION_MODULE_DEST = $(FINAL_TARGET)/modules/services-notifications
 INSTALL_TARGETS += NOTIFICATION_MODULE
 
-TEST_DIRS += tests
-
 include $(topsrcdir)/config/rules.mk
