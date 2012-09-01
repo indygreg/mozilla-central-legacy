@@ -33,8 +33,6 @@ jar-maker = \
     $(topsrcdir)/config/JarMaker.py \
   )
 
-GENERATED_DIRS += .deps
-
 ifdef LOCALE_MERGEDIR
 vpath book%.inc $(LOCALE_MERGEDIR)/mobile/profile
 endif
