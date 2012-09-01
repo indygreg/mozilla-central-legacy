@@ -48,6 +48,14 @@ FRONTEND_VARIABLES = {
         likely go away.
         """),
 
+    'TOOL_DIRS': (list, [],
+        """Like DIRS but for tools.
+
+        Tools are for pieces of the build system that aren't required to
+        produce a working binary (in theory). They provide things like test
+        code and utilities.
+        """),
+
     'TEST_DIRS': (list, [],
         """Like DIRS but only for directories that contain test-only code.
 
