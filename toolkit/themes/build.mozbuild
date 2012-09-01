@@ -3,3 +3,26 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+toolkit = CONFIG.MOZ_WIDGET_TOOLKIT
+
+# Theme Selection
+#
+# MacOS X                 Pinstripe (toolkit/themes/pinstripe)
+# Windows                 Winstripe (toolkit/themes/winstripe)
+# GNOME/Linux             Winstripe (toolkit/themes/winstripe) +
+#                         GNOMEStripe overrides (toolkit/themes/gnomestripe)
+# OS/2                    Winstripe (toolkit/themes/winstripe) +
+#                         PMStripe overrides (toolkit/themes/pmstripe)
+# faststripe              Winstripe + faststripe (no native theme components)
+
+if toolkit == 'cocoa':
+    DIRS += ['pinstripe']
+else:
+    DIRS += ['winstripe']
+
+if toolkit in ('gtk2', 'qt'):
+    DIRS += ['gnomestripe']
+elif toolkit == 'os2':
+    DIRS += ['pmstripe/global']
+elif CONFIG.MOZ_THEME_FASTSTRIPE:
+    DIRS += ['faststripe', 'global']

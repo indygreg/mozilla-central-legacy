@@ -36,20 +36,6 @@ MOCHITEST_FILES = \
 	mochitest/test_bug_461710.html \
 	$(NULL)
 
-DIRS = \
-	chrome \
-	mochitest/bug_411966 \
-	mochitest/bug_461710 \
-	$(NULL)
-
-ifneq (mobile,$(MOZ_BUILD_APP))
-	DIRS += browser
-endif
-
-TOOL_DIRS = \
-  cpp \
-  $(NULL)
-
 include $(topsrcdir)/config/rules.mk
 
 libs:: $(XPCSHELL_TESTS_COMMON)

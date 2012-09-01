@@ -3,3 +3,39 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+PARALLEL_DIRS += [
+    'addon-sdk',
+    'components',
+    'content',
+    'devtools',
+    'identity',
+    'locales',
+    'mozapps/downloads',
+    'mozapps/extensions',
+    'mozapps/handling',
+    'mozapps/preferences',
+    'mozapps/plugins',
+    'mozapps/shared',
+    'obsolete',
+    'profile',
+    'themes',
+    'webapps',
+]
+
+DIRS += [
+    'mozapps/update',
+    'xre',
+]
+
+if CONFIG.MOZ_MAINTENANCE_SERVICE:
+    DIRS += ['components/maintenanceservice']
+
+if CONFIG.MOZ_WIDGET_TOOLKIT in ('gtk2', 'qt'):
+    PARALLEL_DIRS += ['system/unixproxy']
+elif CONFIG.MOZ_WIDGET_TOOLKIT == 'cocoa':
+    PARALLEL_DIRS += ['system/osxproxy']
+elif CONFIG.MOZ_WIDGET_TOOLKIT == 'windows':
+    PARALLEL_DIRS += ['system/windowsproxy']
+
+if CONFIG.MOZ_CRASHREPORTER:
+    PARALLEL_DIRS += ['crashreporter']

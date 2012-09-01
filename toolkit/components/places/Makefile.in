@@ -103,7 +103,6 @@ EXTRA_PP_JS_MODULES = \
   PlacesUtils.jsm \
   $(NULL)
 
-TEST_DIRS += tests
 endif
 
 include $(topsrcdir)/config/config.mk

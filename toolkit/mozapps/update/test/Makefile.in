@@ -31,10 +31,6 @@ endif
 
 # Android doesn't build the updater binary, so it skips the things that test it.
 ifneq ($(OS_TARGET),Android)
-DIRS = \
-  chrome \
-  $(NULL)
-
 CPPSRCS = \
   TestAUSReadStrings.cpp \
   TestAUSHelper.cpp \
