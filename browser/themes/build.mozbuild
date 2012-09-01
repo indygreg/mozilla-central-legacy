@@ -15,5 +15,5 @@ if toolkit == 'cocoa':
 else:
     DIRS += ['winstripe']
 
-if 'gtk2' in toolkit or 'qt' in toolkit:
+if toolkit in ('gtk2', 'qt'):
     DIRS += ['gnomestripe']

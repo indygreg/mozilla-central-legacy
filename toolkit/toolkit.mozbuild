@@ -7,8 +7,8 @@ if CONFIG.LIBXUL_SDK:
     # TODO error about compatibility regarding --enable-libxul-sdk=
     pass
 
-include('%s/config/nspr/nspr.mozbuild' % CONFIG.topsrcdir)
-include('%s/config/js/js.mozbuild' % CONFIG.topsrcdir)
+include('%s/config/nspr/nspr.mozbuild' % TOPSRCDIR)
+include('%s/config/js/js.mozbuild' % TOPSRCDIR)
 
 if CONFIG.NS_TRACE_MALLOC:
     add_tier_dir('platform', 'tools/trace-malloc/lib')
