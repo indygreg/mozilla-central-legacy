@@ -13,21 +13,6 @@ include $(DEPTH)/config/autoconf.mk
 
 MODULE		= xpcom
 
-DIRS		= \
-  external \
-  component \
-  bug656331_component \
-  component_no_aslr \
-  $(NULL)
-
-ifeq ($(OS_ARCH),WINNT)
-DIRS		+= windows
-endif
-
-ifdef DEHYDRA_PATH
-DIRS += static-checker
-endif
-
 VPATH += $(topsrcdir)/build
 
 CPPSRCS = \
