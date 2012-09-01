@@ -9,9 +9,6 @@ srcdir          = @srcdir@
 VPATH           = @srcdir@
 relativesrcdir = @relativesrcdir@
 
-DIRS += mochitest \
-        $(NULL)
-
 include $(DEPTH)/config/autoconf.mk
 
 MODULE          = test_uriloader_exthandler
