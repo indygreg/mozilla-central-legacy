@@ -3,3 +3,25 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+PARALLEL_DIRS += [
+    'base',
+    'cookie',
+    'dns',
+    'socket',
+    'mime',
+    'streamconv',
+    'cache',
+    'protocol',
+    'system',
+    'ipc',
+]
+
+if CONFIG.NECKO_WIFI:
+    PARALLEL_DIRS += ['wifi']
+
+PARALLEL_DIRS += ['locales']
+
+DIRS += ['build']
+
+if CONFIG.ENABLE_TESTS:
+    TOOL_DIRS += ['test']
