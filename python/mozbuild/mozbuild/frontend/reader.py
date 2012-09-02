@@ -7,7 +7,7 @@
 
 r"""Read build frontend files into data structures.
 
-The build system consists of frontend files call "mozbuild" files. mozbuild
+The build system consists of frontend files called "mozbuild" files. mozbuild
 files are executed and the results of the execution are assembled into data
 structures representing the build system definition. This definition contains
 the set of files to compile, etc.
