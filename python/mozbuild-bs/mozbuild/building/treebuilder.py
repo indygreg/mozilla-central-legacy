@@ -76,6 +76,16 @@ class TreeBuilder(Base):
                    'Read Bytes: {read_bytes}; Write Bytes: {write_bytes}; '
                    'Read Time (ms): {read_time}; Write time (ms): {write_time}')
 
+            for point in resource_monitor.range_usage():
+                self.log(logging.DEBUG, 'resource_usage', {
+                    'start': point.start,
+                    'end': point.end,
+                    'cpu': point.cpu,
+                    'io': point.io,
+                    'virt': point.virt,
+                    'swap': point.swap
+                    }, 'Resources: {start}-{end}: {cpu} {io} {virt} {swap}')
+
             record_time('total', resource_monitor.start_time,
                 resource_monitor.end_time)
             record_cpu('total', resource_monitor.aggregate_cpu())
