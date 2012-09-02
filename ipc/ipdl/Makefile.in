@@ -9,6 +9,7 @@ VPATH = @srcdir@
 
 include $(DEPTH)/config/autoconf.mk
 
+GARBAGE_DIRS += _ipdlheaders
 GARBAGE += ipdl_lextab.py ipdl_yacctab.py $(wildcard *.pyc $(srcdir)/ipdl/*.pyc $(srcdir)/ipdl/cxx/*.pyc)
 
 MODULE = ipdlgen
@@ -71,7 +72,6 @@ CPPSRCS =					\
   $(PROTOCOLS:%.ipdlh=%.cpp)			\
   $(NULL)
 
-GARBAGE_DIRS += _ipdlheaders
 GARBAGE += $(CPPSRCS)
 
 LOCAL_INCLUDES += -I$(DEPTH)/ipc/ipdl/_ipdlheaders
