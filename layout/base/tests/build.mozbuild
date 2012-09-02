@@ -4,4 +4,4 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 TEST_DIRS += ['chrome']
-TOOL_DIRS ++ ['cpp-tests']
+TOOL_DIRS += ['cpp-tests']
