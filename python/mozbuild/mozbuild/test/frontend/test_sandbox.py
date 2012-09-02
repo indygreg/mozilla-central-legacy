@@ -44,3 +44,9 @@ class TestSandbox(unittest.TestCase):
         sandbox.exec_source('foo = True', 'foo.py')
 
         self.assertNotIn('foo', sandbox)
+
+    def test_exec_compile_error(self):
+        sandbox = self.sandbox()
+
+        with self.assertRaises(SyntaxError):
+            sandbox.exec_source('2f23;k;asfj', 'foo.py')
