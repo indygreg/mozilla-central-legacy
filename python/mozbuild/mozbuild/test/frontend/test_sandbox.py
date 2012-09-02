@@ -23,12 +23,24 @@ class MockConfig(object):
         }
 
 class TestSandbox(unittest.TestCase):
-    def default_state(self):
+    def sandbox(self):
         config = MockConfig()
-        sandbox = Sandbox(config)
+        return Sandbox(config)
 
-        self.assertEqual(sandbox['TOPSRCDIR'], config.topsrdir)
+    def test_default_state(self):
+        sandbox = self.sandbox()
+        config = sandbox.config
+
+        self.assertEqual(sandbox['TOPSRCDIR'], config.topsrcdir)
         self.assertEqual(sandbox['TOPOBJDIR'], config.topobjdir)
 
-        self.assertEqual(sandbox['MOZ_TRUE'], config.defines['MOZ_TRUE'])
-        self.assertEqual(sandbox['MOZ_FOO'], config.substs['MOZ_FOO'])
+        self.assertIn('CONFIG', sandbox)
+        self.assertEqual(sandbox['CONFIG']['MOZ_TRUE'], True)
+        self.assertEqual(sandbox['CONFIG']['MOZ_FOO'], config.substs['MOZ_FOO'])
+
+    def test_exec_source_success(self):
+        sandbox = self.sandbox()
+
+        sandbox.exec_source('foo = True', 'foo.py')
+
+        self.assertNotIn('foo', sandbox)
