@@ -6,6 +6,6 @@
 DIRS += ['chrome', 'components', 'locales']
 
 if CONFIG.OS_ARCH == 'WINNT':
-    DIRS += [TOPDIR + '/xulrunner/tools/redit']
+    DIRS += ['../xulrunner/tools/redit']
 
 DIRS += 'app'
