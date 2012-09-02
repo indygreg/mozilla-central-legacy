@@ -457,7 +457,7 @@ class BuildReader(object):
 
         # It's very tempting to use a set here. Unfortunately, the recursive
         # make backend needs order preserved. Once we autogenerate all backend
-        # files, we should be able to conver this to a set.
+        # files, we should be able to convert this to a set.
         dirs = []
         for var in dir_vars:
             if not var in result['vars']:
