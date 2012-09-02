@@ -4,7 +4,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 # Bring in the configuration for the configured application.
-include('%s/app.mozbuild' % CONFIG.MOZ_BUILD_APP)
+include(CONFIG.MOZ_BUILD_APP + '/app.mozbuild')
 
 add_tier_dir('base', ['config', 'build', 'probes', 'mfbt'])
 
