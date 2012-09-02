@@ -8,4 +8,4 @@
 TEST_DIRS += ['ipdl']
 
 if CONFIG.MOZ_IPDL_TESTS:
-    TEST_DIRS += ['css']
+    TEST_DIRS += ['cxx']
