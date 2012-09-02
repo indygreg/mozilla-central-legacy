@@ -2,15 +2,46 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-r"""Read build frontend files into data structures.
-
-TODO more docs.
-"""
-
 # This file contains code for reading metadata from the build system into
 # data structures.
 
+r"""Read build frontend files into data structures.
+
+The build system consists of frontend files call "mozbuild" files. mozbuild
+files are executed and the results of the execution are assembled into data
+structures representing the build system definition. This definition contains
+the set of files to compile, etc.
+
+mozbuild files are actually Python scripts. However, they are sandboxed and
+executed mozbuild files can only perform limited tasks.
+
+In terms of influencing the build, mozbuild files can only call specific
+exported functions and assign to a whitelist of allowed variables. The enforced
+convention is that all UPPERCASE variables are reserved. Access to these
+variables goes through a whitelist and assignment is validated to ensure values
+are proper. The set of global variables that can be assigned to is defined in
+the mozbuild.frontend.variables module.
+
+Assignment to all non-uppercase variables is allowed. However, these variables
+do not influence the output. So, non-uppercase variables are essentially
+throwaway local variables.
+
+In terms of code architecture, the main interface is BuildReader. It starts
+with a root mozbuild file. It creates a new execution environment for this
+file, which is represented by the Sandbox class. The Sandbox class is what
+defines what is allowed to execute in an individual mozbuild file. The Sandbox
+consists of a local and global namespace, which are modeled by the
+LocalNamespace and GlobalNamespace classes, respectively. The global namespace
+contains all of the takeaway information from the execution. The local
+namespace is for throwaway local variables and its contents are discarded after
+execution.
+
+The BuildReader contains basic logic for traversing a tree of mozbuild files.
+It does this by examining specific variables populated during execution.
+"""
+
 import copy
+import logging
 import os
 import sys
 
@@ -40,8 +71,6 @@ class DefaultOnReadDict(dict):
         global_default is the default value for *all* missing keys. If it isn't
         specified, no default value for keys not in defaults will be used and
         IndexError will be raised on access.
-
-        Please note that values for the defaults should be primitive 
         """
         dict.__init__(self, d)
 
@@ -211,8 +240,27 @@ class LocalNamespace(dict):
 class Sandbox(object):
     """Represents a sandbox for executing a mozbuild config file.
 
-    All functionality available to mozconfig config files is present in
-    this class.
+    This class both provides a sandbox for execution of a single mozbuild
+    frontend file as well as an interface to the results of that execution.
+
+    Sandbox is effectively a glorified wrapper around compile() + exec(). You
+    give it some code to execute and it does that. The main difference from
+    executing Python code like normal is that the executed code is very limited
+    in what it can do: the sandbox only exposes a very limited set of Python
+    functionality. Only specific types and functions are available. This
+    prevents executed code from doing things like import modules, open files,
+    etc.
+
+    Sandboxes are bound to a MozConfig instance. These objects are produced by
+    the output of configure.
+
+    Sandbox instances can be accessed like dictionaries to facilitate result
+    retrieval. e.g. foo = sandbox['FOO']. Direct assignment is not allowed.
+
+    Each sandbox has associated with it a GlobalNamespace and LocalNamespace.
+    Only data stored in the GlobalNamespace is retrievable via the dict
+    interface. This is because the local namespace should be irrelevant. It
+    should only contain throwaway variables.
     """
     def __init__(self, config):
         """Initialize an empty sandbox associated with a build configuration.
@@ -260,9 +308,19 @@ class Sandbox(object):
             # compile() needs a newline on Python < 2.7.
             source = fd.read() + '\n'
 
+        self.exec_source(source, path)
+
+    def exec_source(self, source, path):
+        """Execute Python code within a string.
+
+        The passed string should contain Python code to be executed. The string
+        will be compiled and executed.
+        """
         # We don't have to worry about bytecode generation here because we are
         # too low-level for that. However, we could add bytecode generation via
         # the marshall module if parsing performance were ever an issue.
+
+        # TODO intercept exceptions and convert to more helpful types.
         code = compile(source, path, 'exec')
         exec code in self._globals, self._locals
 
@@ -329,27 +387,56 @@ class Sandbox(object):
 
         self.exec_file(path)
 
+    # Dict interface proxies reads only to global namespace.
+    def __len__(self):
+        return len(self._globals)
+
+    def __getitem__(self, name):
+        return self._globals[name]
+
+    def __iter__(self):
+        return iter(self._globals)
+
+    def iterkeys(self):
+        return self.__iter__()
+
+    def __contains__(self, key):
+        return key in self._globals
+
 
 class BuildReader(object):
     """Read a tree of mozbuild files into a data structure.
 
-    This is where the build system starts. You give it a top source directory
-    and a configuration for the tree (the output of configure) and it parses
-    the build.mozbuild files and collects the data they define.
+    This is where the build system starts. You give it a tree configuration
+    (the output of configuration) and it executes the build.mozbuild files and
+    collects the data they define.
     """
 
     def __init__(self, config):
         self.config = config
         self.topsrcdir = config.topsrcdir
 
-    def read(self):
-        # We start in the root directory and descend according to what we find.
-        path = os.path.join(self.topsrcdir, 'build.mozbuild')
+        self._log = logging.getLogger(__name__)
+        self._read_files = set()
 
+    def read_topsrcdir(self):
+        """Read the tree of mozconfig files into a data structure.
+
+        This starts with the tree's top-most mozbuild file and descends into
+        all linked mozbuild files until all relevant files have been evaluated.
+        """
+        path = os.path.join(self.topsrcdir, 'build.mozbuild')
         self.read_mozbuild(path)
 
     def read_mozbuild(self, path):
-        print 'Reading %s' % path
+        path = os.path.normpath(path)
+        self._log.debug('Reading file: %s' % path)
+
+        if path in self._read_files:
+            self._log.warning('File already read. Skipping: %s' % path)
+            return
+
+        self._read_files.add(path)
 
         sandbox = Sandbox(self.config)
         sandbox.exec_file(path)
@@ -362,19 +449,26 @@ class BuildReader(object):
         dir_vars = ['DIRS', 'PARALLEL_DIRS']
 
         if self.config.defines.get('ENABLE_TESTS', False):
-            dir_vars += ['TEST_DIRS', 'TEST_TOOL_DIRS']
+            dir_vars.extend(['TEST_DIRS', 'TEST_TOOL_DIRS'])
 
-        dirs = set()
+        # It's very tempting to use a set here. Unfortunately, the recursive
+        # make backend needs order preserved. Once we autogenerate all backend
+        # files, we should be able to conver this to a set.
+        dirs = []
         for var in dir_vars:
             if not var in result['vars']:
                 continue
 
-            dirs |= set(result['vars'][var])
+            for d in result['vars'][var]:
+                if d not in dirs:
+                    dirs.append(d)
 
         # We also have tiers whose members are directories.
         for tier, values in result['tiers'].iteritems():
-            dirs |= set(values['regular'])
-            dirs |= set(values['static'])
+            for var in ('regular', 'static'):
+                for d in values[var]:
+                    if d not in dirs:
+                        dirs.append(d)
 
         curdir = os.path.dirname(path)
         for relpath in dirs:

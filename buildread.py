@@ -8,9 +8,14 @@
 #
 # e.g. ./objdir/_virtualenv/bin/python buildread.py
 
+import logging
+import sys
+
 import mozconfig
 
 from mozbuild.frontend.reader import BuildReader
 
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+
 reader = BuildReader(mozconfig)
-reader.read()
+reader.read_topsrcdir()
