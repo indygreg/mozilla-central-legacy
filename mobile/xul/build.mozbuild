@@ -13,5 +13,5 @@ DIRS += [
     'app',
 ]
 
-if CONFIG.LUBXUL_SDK:
+if CONFIG.LIBXUL_SDK:
     PARALLEL_DIRS += ['../../xulrunner/tools/redit']
