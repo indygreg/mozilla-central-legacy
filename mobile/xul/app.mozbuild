@@ -1,0 +1,20 @@
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+if not CONFIG.LIBXUL_SDK:
+    include(TOPSRCDIR + '/toolkit/toolkit.mozbuild')
+
+    add_tier_dir('platform', 'mobile/xul/components/build')
+elif CONFIG.ENABLE_TESTS:
+    add_tier_dir('testharness', 'testing/mochitest')
+
+if CONFIG.MOZ_EXTENSIONS:
+    add_tier_dir('app', 'extensions')
+
+if CONFIG.MOZ_SERVICES_SYNC:
+    add_tier_dir('app', 'services')
+
+add_tier_dir('app', CONFIG.MOZ_BRANDING_DIRECTORY)
+add_tier_dir('app', 'mobile/xul')
