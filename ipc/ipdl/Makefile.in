@@ -71,6 +71,7 @@ CPPSRCS =					\
   $(PROTOCOLS:%.ipdlh=%.cpp)			\
   $(NULL)
 
+GARBAGE_DIRS += _ipdlheaders
 GARBAGE += $(CPPSRCS)
 
 LOCAL_INCLUDES += -I$(DEPTH)/ipc/ipdl/_ipdlheaders

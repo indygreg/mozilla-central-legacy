@@ -261,6 +261,8 @@ GARBAGE += \
   Manifest.java \
   $(NULL)
 
+GARBAGE_DIRS += classes res sync db
+
 MOZ_ANDROID_SHARED_ID = "$(ANDROID_PACKAGE_NAME).sharedID"
 MOZ_ANDROID_SHARED_ACCOUNT_TYPE = "$(ANDROID_PACKAGE_NAME)_sync"
 

@@ -24,11 +24,3 @@ if not CONFIG.LIBXUL_SDK:
         add_tier_dir('base', 'modules/zlib')
 
     add_tier_dir('base', ['mozglue', 'memory/mozalloc'])
-
-GARBAGE_DIRS += [
-    'dist',
-    '_javagen',
-    '_profile',
-    '_tests',
-    'staticlib'
-]

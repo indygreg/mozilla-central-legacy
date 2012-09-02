@@ -97,6 +97,7 @@ export:: $(export-preqs)
 		$(srcdir)/system-headers | $(PERL) $(topsrcdir)/nsprpub/config/make-system-wrappers.pl system_wrappers
 	$(INSTALL) system_wrappers $(DIST)
 
+GARBAGE_DIRS += system_wrappers
 endif
 
 ifdef WRAP_STL_INCLUDES
@@ -120,6 +121,7 @@ $(STL_WRAPPERS_SENTINEL): $(srcdir)/make-stl-wrappers.py $(srcdir)/$(stl_compile
 export:: $(STL_WRAPPERS_SENTINEL)
 
 GARBAGE += $(STL_WRAPPERS_SENTINEL)
+GARBAGE_DIRS += stl_wrappers
 endif
 
 install::
