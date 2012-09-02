@@ -10,6 +10,24 @@ ifndef topsrcdir
 $(error topsrcdir was not set))
 endif
 
+# Integrate with mozbuild-generated make files. We first verify that no
+# variables provided by the automatically generated .mk files are
+# present. If they are, this is a violation of the separation of
+# responsibility between Makefile.in and mozbuild files.
+_MOZBUILD_VARIABLES := DIRS PARALLEL_DIRS TEST_DIRS TOOL_DIRS
+
+define ensure_not_defined
+ifdef $1
+$(error Variable $1 is defined in Makefile. It should only be defined in .mozbuild files.)
+endif
+endef
+
+$(foreach var,$(_MOZBUILD_VARIABLES),$(call ensure_not_defined,$(var)))
+
+# We import the make file generated from the mozbuild file and proceed
+# like normal, acting as if the variables came from the Makefile itself.
+-include mozbuild.mk
+
 ifndef MOZILLA_DIR
 MOZILLA_DIR = $(topsrcdir)
 endif
