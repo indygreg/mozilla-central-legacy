@@ -163,7 +163,7 @@ class GlobalNamespace(dict):
 
         default = FRONTEND_VARIABLES.get(name, None)
         if default is None:
-            raise KeyError()
+            raise KeyError('Global namespace does not contain %s' % name)
 
         dict.__setitem__(self, name, copy.deepcopy(default[1]))
         return dict.__getitem__(self, name)
@@ -176,10 +176,11 @@ class GlobalNamespace(dict):
             return
 
         if default is None:
-            raise KeyError()
+            raise KeyError('Global namespace does not contain %s' % name)
 
         if not isinstance(value, default[0]):
-            raise ValueError()
+            raise ValueError('Type must be %s. Tried to assign %s' %
+                (default[0], type(value)))
 
         dict.__setitem__(self, name, value)
 
