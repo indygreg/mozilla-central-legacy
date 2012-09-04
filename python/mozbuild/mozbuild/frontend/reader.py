@@ -26,6 +26,8 @@ import logging
 import os
 import sys
 
+from contextlib import contextmanager
+
 from .variables import FRONTEND_VARIABLES
 
 # We start with some ultra-generic data structures. These should ideally be
@@ -165,12 +167,10 @@ class GlobalNamespace(dict):
 
         dict.__setitem__(self, name, value)
 
-    def __enter__(self):
+    @contextmanager
+    def allow_all_writes(self):
         self._allow_all_writes = True
-
-        return self
-
-    def __exit__(self, exc_type, exc_value, tb):
+        yield self
         self._allow_all_writes = False
 
 
@@ -282,7 +282,7 @@ class Sandbox(object):
 
         unified.update(config.substs)
 
-        with self._globals as d:
+        with self._globals.allow_all_writes() as d:
             # Register additional global variables.
             d['TOPSRCDIR'] = config.topsrcdir
             d['TOPOBJDIR'] = topobjdir
