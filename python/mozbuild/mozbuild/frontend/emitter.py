@@ -37,7 +37,7 @@ class BuildDefinitionEmitter(object):
         Each emitted instance will be a child class of BuildObject.
         """
         have_dirs = False
-        for var in BuildObjectEmitter.DIRECTORY_TRAVERSAL_VARIABLES:
+        for var in BuildDefinitionEmitter.DIRECTORY_TRAVERSAL_VARIABLES:
             if var in sandbox:
                 have_dirs = True
                 continue
