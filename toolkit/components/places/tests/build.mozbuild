@@ -6,7 +6,7 @@
 TEST_DIRS += [
     'chrome',
     'mochitest/bug_411966',
-    'mochitest/bug_461719',
+    'mochitest/bug_461710',
 ]
 
 if CONFIG.MOZ_BUILD_APP != 'mobile':
