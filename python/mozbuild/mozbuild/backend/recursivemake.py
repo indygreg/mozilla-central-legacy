@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import logging
 import os
 
 from .base import BuildBackend
@@ -19,6 +20,8 @@ class RecursiveMakeBackend(BuildBackend):
     However, as long as there are Makefile.in files in the tree, we are tied to
     recursive make and thus will need this backend.
     """
+    def __init__(self):
+        self._log = logging.getLogger(__name__)
 
     def consume(self, objs):
         """Write out build files necessary to build with recursive make."""
@@ -48,6 +51,7 @@ class RecursiveMakeBackend(BuildBackend):
         # fail if this dependent file is missing because a missing file could
         # mean the build wasn't properly configured and we want to catch that.
 
+        self._log.info('Writing %s' % out_path)
         with open(out_path, 'w') as fh:
             print >>fh, '# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT EDIT.'
 
