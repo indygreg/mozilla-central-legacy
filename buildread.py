@@ -13,10 +13,13 @@ import sys
 
 import mozconfig
 
+from mozbuild.frontend.emitter import BuildObjectEmitter
 from mozbuild.frontend.reader import BuildReader
 
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 reader = BuildReader(mozconfig)
-for sandbox in reader.read_topsrcdir():
+emitter = BuildObjectEmitter(mozconfig)
+
+for o in emitter.emit_from_sandboxes(reader.read_topsrcdir()):
     pass
