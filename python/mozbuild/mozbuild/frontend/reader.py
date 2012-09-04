@@ -426,7 +426,7 @@ class BuildReader(object):
         # We first collect directories populated in variables.
         dir_vars = ['DIRS', 'PARALLEL_DIRS']
 
-        if self.config.defines.get('ENABLE_TESTS', False):
+        if self.config.substs.get('ENABLE_TESTS', False) == '1':
             dir_vars.extend(['TEST_DIRS', 'TEST_TOOL_DIRS'])
 
         # It's very tempting to use a set here. Unfortunately, the recursive
