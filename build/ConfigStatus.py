@@ -14,6 +14,10 @@ from StringIO import StringIO
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'config'))
 from Preprocessor import Preprocessor
 
+from mozbuild.backend.recursivemake import RecursiveMakeBackend
+from mozbuild.frontend.emitter import BuildDefinitionEmitter
+from mozbuild.frontend.reader import BuildReader
+
 # Basic logging facility
 verbose = False
 def log(string):
@@ -300,6 +304,12 @@ def config_status(topobjdir = '.', topsrcdir = '.',
                             defines = defines, non_global_defines = non_global_defines,
                             substs = substs)
 
+    reader = BuildReader(env)
+    emitter = BuildDefinitionEmitter(env)
+    backend = RecursiveMakeBackend()
+    # This won't actually do anything because of the magic of generators!
+    definitions = emitter.emit_from_sandboxes(reader.read_topsrcdir())
+
     if options.recheck:
         # Execute configure from the top object directory
         if not os.path.isabs(topsrcdir):
@@ -321,6 +331,9 @@ def config_status(topobjdir = '.', topsrcdir = '.',
         verbose = True
     if not options.files and not options.headers:
         print >>sys.stderr, "creating config files and headers..."
+
+        backend.consume(definitions)
+
         files = [os.path.join(topobjdir, f) for f in files]
         headers = [os.path.join(topobjdir, f) for f in headers]
 
