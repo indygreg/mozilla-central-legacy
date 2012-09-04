@@ -13,7 +13,7 @@ DIRS += [
     'chrome',
     'general',
     'whatwg',
-    'gelocation',
+    'geolocation',
     'localstorage',
     'orientation',
     'sessionstorage',
