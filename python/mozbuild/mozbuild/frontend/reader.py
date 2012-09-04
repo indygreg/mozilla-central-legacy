@@ -265,6 +265,8 @@ class Sandbox(object):
     Only data stored in the GlobalNamespace is retrievable via the dict
     interface. This is because the local namespace should be irrelevant. It
     should only contain throwaway variables.
+
+    TODO should Sandbox inherit from dict? It sures behaves like one.
     """
     def __init__(self, config):
         """Initialize an empty sandbox associated with a build configuration.
