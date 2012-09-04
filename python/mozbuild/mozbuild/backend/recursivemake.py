@@ -27,6 +27,8 @@ class RecursiveMakeBackend(BuildBackend):
             if isinstance(obj, DirectoryTraversal):
                 self._process_directory_traversal(obj)
 
+        # TODO we should also do Makefile.in substitution here.
+
     def _process_directory_traversal(self, o):
         """Process a data.DirectoryTraversal instance.
 
