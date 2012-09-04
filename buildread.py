@@ -18,4 +18,5 @@ from mozbuild.frontend.reader import BuildReader
 logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 reader = BuildReader(mozconfig)
-reader.read_topsrcdir()
+for sandbox in reader.read_topsrcdir():
+    pass

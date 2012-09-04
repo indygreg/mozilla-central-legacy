@@ -16,6 +16,8 @@ and what they are supposed to do, you've come to the right place.
 
 """
 
+from collections import OrderedDict
+
 # Each variable is a tuple of:
 #
 #   (type, default_value, docs)
@@ -68,4 +70,19 @@ FRONTEND_VARIABLES = {
     'TEST_TOOL_DIRS': (list, [],
         """TOOL_DIRS that is only executed if tests are enabled."""),
 
+
+    'TIERS': (OrderedDict, OrderedDict(),
+        """Defines directories constituting the tier traversal mechanism.
+
+        The recursive make backend iterates is organized into tiers. There are
+        major tiers (keys in this dict) that correspond roughly to applications
+        or libraries being built. e.g. base, nspr, js, platform, app. Within
+        each tier are phases like export, libs, and tools. The recursive make
+        backend iterates over each phase in the first tier then proceeds to the
+        next tier until all tiers are exhausted.
+
+        Tiers are a way of working around deficiencies in recursive make. These
+        will probably disappear once we no longer rely on recursive make for
+        the build backend. They will likely be replaced by DIRS.
+        """),
 }

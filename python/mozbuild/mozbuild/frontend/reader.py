@@ -301,7 +301,6 @@ class Sandbox(object):
             d['add_tier_dir'] = self._add_tier_directory
 
         self._normalized_topsrcdir = os.path.normpath(config.topsrcdir)
-        self._tiers = {}
         self._result = None
 
     def exec_file(self, path):
@@ -328,41 +327,13 @@ class Sandbox(object):
         code = compile(source, path, 'exec')
         exec code in self._globals, self._locals
 
-    @property
-    def result(self):
-        """Obtain the result of the sandbox.
-
-        This is a data structure with the raw results from execution.
-        """
-        if self._result is not None:
-            return self._result
-
-        variables = {}
-        for k, v in self._globals.iteritems():
-            if k in ('CONFIG', 'TOPSRCDIR', 'TOPOBJDIR'):
-                continue
-
-            # Ignore __builtins__ and functions, which should not be uppercase.
-            if not k.isupper():
-                continue
-
-            variables[k] = v
-
-        # We don't care about locals because that's what they are: locals.
-        self._result = {
-            'vars': variables,
-            'tiers': self._tiers,
-        }
-
-        return self._result
-
     def _add_tier_directory(self, tier, reldir, static=False):
         """Register a tier directory with the build."""
         if isinstance(reldir, basestring):
             reldir = [reldir]
 
-        if not tier in self._tiers:
-            self._tiers[tier] = {
+        if not tier in self['TIERS']:
+            self['TIERS'][tier] = {
                 'regular': [],
                 'static': [],
             }
@@ -372,10 +343,10 @@ class Sandbox(object):
             key = 'static'
 
         for path in reldir:
-            if path in self._tiers[tier][key]:
+            if path in self['TIERS'][tier][key]:
                 continue
 
-            self._tiers[tier][key].append(path)
+            self['TIERS'][tier][key].append(path)
 
     def _include(self, path):
         """Include and exec another file within the context of this one."""
@@ -430,7 +401,7 @@ class BuildReader(object):
         all linked mozbuild files until all relevant files have been evaluated.
         """
         path = os.path.join(self.topsrcdir, 'build.mozbuild')
-        self.read_mozbuild(path)
+        return self.read_mozbuild(path)
 
     def read_mozbuild(self, path):
         path = os.path.normpath(path)
@@ -444,8 +415,7 @@ class BuildReader(object):
 
         sandbox = Sandbox(self.config)
         sandbox.exec_file(path)
-
-        result = sandbox.result
+        yield sandbox
 
         # Traverse into referenced files.
 
@@ -460,15 +430,15 @@ class BuildReader(object):
         # files, we should be able to convert this to a set.
         dirs = []
         for var in dir_vars:
-            if not var in result['vars']:
+            if not var in sandbox:
                 continue
 
-            for d in result['vars'][var]:
+            for d in sandbox[var]:
                 if d not in dirs:
                     dirs.append(d)
 
         # We also have tiers whose members are directories.
-        for tier, values in result['tiers'].iteritems():
+        for tier, values in sandbox['TIERS'].iteritems():
             for var in ('regular', 'static'):
                 for d in values[var]:
                     if d not in dirs:
@@ -476,4 +446,6 @@ class BuildReader(object):
 
         curdir = os.path.dirname(path)
         for relpath in dirs:
-            self.read_mozbuild(os.path.join(curdir, relpath, 'build.mozbuild'))
+            child_path = os.path.join(curdir, relpath, 'build.mozbuild')
+            for res in self.read_mozbuild(child_path):
+                yield res
