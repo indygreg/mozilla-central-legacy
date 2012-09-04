@@ -269,8 +269,7 @@ class Sandbox(object):
     def __init__(self, config):
         """Initialize an empty sandbox associated with a build configuration.
 
-        The passed in config is the output of configure. All sandboxes have
-        access its global data.
+        The passed in config is the output of configure.
         """
         self.config = config
 
@@ -294,6 +293,8 @@ class Sandbox(object):
             # Register additional global variables.
             d['TOPSRCDIR'] = config.topsrcdir
             d['TOPOBJDIR'] = config.topobjdir
+            # TODO reldir? depth? srcdir?
+
             d['CONFIG'] = ReadOnlyDefaultDict(unified, global_default=None)
 
             # Register functions.
@@ -377,6 +378,9 @@ class Sandbox(object):
 
     def __contains__(self, key):
         return key in self._globals
+
+    def get(self, key, default=None):
+        return self._globals.get(key, default)
 
 
 class BuildReader(object):
