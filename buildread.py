@@ -13,6 +13,7 @@ import sys
 
 import mozconfig
 
+from mozbuild.backend.recursivemake import RecursiveMakeBackend
 from mozbuild.frontend.emitter import BuildDefinitionEmitter
 from mozbuild.frontend.reader import BuildReader
 
@@ -20,6 +21,7 @@ logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 reader = BuildReader(mozconfig)
 emitter = BuildDefinitionEmitter(mozconfig)
+backend = RecursiveMakeBackend()
 
-for o in emitter.emit_from_sandboxes(reader.read_topsrcdir()):
-    pass
+definitions = emitter.emit_from_sandboxes(reader.read_topsrcdir())
+backend.consume(definitions)
