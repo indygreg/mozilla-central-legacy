@@ -24,15 +24,20 @@ class BuildDefinition(object):
     """
 
     __slots__ = (
+        'objdir',
         'reldir',
         'srcdir',
+        'topobjdir',
         'topsrcdir',
     )
 
     def __init__(self, sandbox):
         self.topsrcdir = sandbox['TOPSRCDIR']
-        #self.reldir = sandbox['RELDIR']
-        #self.srcdir = sandbox['SRCDIR']
+        self.topobjdir = sandbox['TOPOBJDIR']
+
+        self.reldir = sandbox['RELDIR']
+        self.srcdir = sandbox['SRCDIR']
+        self.objdir = sandbox['OBJDIR']
 
 class DirectoryTraversal(BuildDefinition):
     """Describes how directory traversal for building should work.
