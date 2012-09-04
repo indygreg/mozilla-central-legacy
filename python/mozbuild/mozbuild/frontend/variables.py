@@ -68,14 +68,4 @@ FRONTEND_VARIABLES = {
     'TEST_TOOL_DIRS': (list, [],
         """TOOL_DIRS that is only executed if tests are enabled."""),
 
-    # Cleaning up build files.
-    'GARBAGE_DIRS': (list, [],
-        """Directories relative to this one that should be cleaned up as part
-        of the build.
-
-        This should ideally not be needed. Instead, build backends should
-        populate this. This will only live as long as Makefile.in's still
-        existing in the tree.
-        """),
-
 }
