@@ -16,17 +16,14 @@ endif
 # responsibility between Makefile.in and mozbuild files.
 _MOZBUILD_VARIABLES := DIRS PARALLEL_DIRS TEST_DIRS TOOL_DIRS
 
-define ensure_not_defined
-ifdef $1
-$(error Variable $1 is defined in Makefile. It should only be defined in .mozbuild files.)
-endif
-endef
+$(foreach var,$(_MOZBUILD_VARIABLES),$(if $($(var)),\
+    $(error Variable $(var) is defined in Makefile. It should only be defined in .mozbuild files.),\
+    ))
 
-$(foreach var,$(_MOZBUILD_VARIABLES),$(call ensure_not_defined,$(var)))
-
-# We import the make file generated from the mozbuild file and proceed
-# like normal, acting as if the variables came from the Makefile itself.
--include mozbuild.mk
+# Import the automatically generated file containing directory traversal
+# info. If this file doesn't exist, the backend hasn't been properly
+# configured. We want this to be a fatal error, hence not using "-include".
+include dirs.mk
 
 ifndef MOZILLA_DIR
 MOZILLA_DIR = $(topsrcdir)
