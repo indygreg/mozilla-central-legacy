@@ -36,25 +36,18 @@ class BuildDefinitionEmitter(object):
         This is a generator of mozbuild.frontend.data.BuildObject instances.
         Each emitted instance will be a child class of BuildObject.
         """
-        have_dirs = False
-        for var in BuildDefinitionEmitter.DIRECTORY_TRAVERSAL_VARIABLES:
-            if var in sandbox:
-                have_dirs = True
-                continue
+        o = DirectoryTraversal(sandbox)
+        o.dirs = sandbox.get('DIRS', [])
+        o.parallel_dirs = sandbox.get('PARALLEL_DIRS', [])
+        o.tool_dirs = sandbox.get('TOOL_DIRS', [])
+        o.test_dirs = sandbox.get('TEST_DIRS', [])
+        o.test_tool_dirs = sandbox.get('TEST_TOOL_DIRS', [])
 
-        if have_dirs:
-            o = DirectoryTraversal(sandbox)
-            o.dirs = sandbox.get('DIRS', [])
-            o.parallel_dirs = sandbox.get('PARALLEL_DIRS', [])
-            o.tool_dirs = sandbox.get('TOOL_DIRS', [])
-            o.test_dirs = sandbox.get('TEST_DIRS', [])
-            o.test_tool_dirs = sandbox.get('TEST_TOOL_DIRS', [])
+        if 'TIERS' in sandbox:
+            for tier in sandbox['TIERS']:
+                o.tier_dirs[tier] = sandbox['TIERS'][tier]['regular']
+                o.tier_static_dirs[tier] = sandbox['TIERS'][tier]['static']
 
-            if 'TIERS' in sandbox:
-                for tier in sandbox['TIERS']:
-                    o.tier_dirs[tier] = sandbox['TIERS'][tier]['regular']
-                    o.tier_static_dirs[tier] = sandbox['TIERS'][tier]['static']
-
-            yield o
+        yield o
 
 
