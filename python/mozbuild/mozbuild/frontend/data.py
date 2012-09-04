@@ -17,7 +17,7 @@ structures.
 
 from collections import OrderedDict
 
-class BuildObject(object):
+class BuildDefinition(object):
     """Base class for all build objects.
 
     Holds common properties shared by all function-specific build objects.
@@ -34,7 +34,7 @@ class BuildObject(object):
         #self.reldir = sandbox['RELDIR']
         #self.srcdir = sandbox['SRCDIR']
 
-class DirectoryTraversal(BuildObject):
+class DirectoryTraversal(BuildDefinition):
     """Describes how directory traversal for building should work.
 
     This build object is likely only of interest to the recursive make backend.
@@ -57,7 +57,7 @@ class DirectoryTraversal(BuildObject):
     )
 
     def __init__(self, sandbox):
-        BuildObject.__init__(self, sandbox)
+        BuildDefinition.__init__(self, sandbox)
 
         self.dirs = []
         self.parallel_dirs = []

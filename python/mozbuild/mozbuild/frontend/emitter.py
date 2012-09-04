@@ -4,7 +4,7 @@
 
 from .data import DirectoryTraversal
 
-class BuildObjectEmitter(object):
+class BuildDefinitionEmitter(object):
     """Converts read frontend files into data structures.
 
     This is a bridge between reader.py and data.py. It takes what was read by
